@@ -10,6 +10,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CalculatorService } from 'src/helpers/calculator/calculator.service';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
+import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
 
 @Injectable()
 export class ExecucaoService {
@@ -20,6 +21,7 @@ export class ExecucaoService {
     private readonly rmService: RmService,
   ) {}
   private readonly logger = new Logger(ExecucaoService.name);
+  private readonly variableWorkers = new LimitedExecutor(variableConcurrency());
 
   // Status para exibição na tabela do frontend (nível "funcionário base")
   // Ideia: refletir o progresso do pipeline do funcionário dentro da execução.
@@ -1110,7 +1112,7 @@ export class ExecucaoService {
       const basesOk: number[] = [];
       const basesComErro: number[] = [];
 
-      for (const funcionarioBase of execucao.execucao_funcionario_base) {
+      await this.variableWorkers.forEach(execucao.execucao_funcionario_base, async (funcionarioBase) => {
         try {
           const scopeBase = await this.buildUserScopeBase({
             execucao,
@@ -1271,9 +1273,9 @@ export class ExecucaoService {
               },
             }),
           });
-          continue;
+          return;
         }
-      }
+      });
 
       // Persistência em lote (createMany) em chunks para não estourar payload/timeout
       const CHUNK_SIZE = 1000;
@@ -1394,7 +1396,7 @@ export class ExecucaoService {
       const basesOk: number[] = [];
       const basesComErro: number[] = [];
 
-      for (const funcionarioBase of basesSelecionadas) {
+      await this.variableWorkers.forEach(basesSelecionadas, async (funcionarioBase) => {
         let funcionarioOk = true;
 
         const scopeBase = await this.buildUserScopeBase({
@@ -1556,7 +1558,7 @@ export class ExecucaoService {
         } else {
           basesComErro.push(funcionarioBase.execucao_funcionario_base_id);
         }
-      }
+      });
 
       this.logger.log(
         `Inserção em lote de ${memoriaRows.length} memoria_calculo para execução ${execucaoId}`,
