@@ -1,0 +1,20 @@
+.git
+.gitignore
+
+# Nunca enviar arquivos de ambiente para build context
+.env
+**/.env
+.env.*
+**/.env.*
+
+# Dependências / build outputs comuns
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.cache
+
+# Logs e temporários
+**/*.log
+**/.temp
+**/.tmp

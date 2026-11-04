@@ -1,0 +1,9 @@
+.myTabs {
+
+  background-color: var(--white);
+}
+
+/* Qualquer botão dentro do tab deve ter o background-color: var(--white); mesmo se não for filho direto do .myTabs e for filho de filho */
+.myTabs .nav-link{
+  background-color: var(--white) !important;
+}

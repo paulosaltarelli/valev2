@@ -1,0 +1,87 @@
+.ve-datepicker-popper {
+  z-index: 1080;
+}
+
+.ve-datepicker {
+  font-family: inherit;
+  font-size: 0.9rem;
+  border: 1px solid var(--bs-border-color);
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.ve-datepicker .react-datepicker__triangle {
+  display: none;
+}
+
+.ve-datepicker .react-datepicker__header {
+  background-color: var(--bs-body-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+  padding-top: 0.6rem;
+}
+
+.ve-datepicker .react-datepicker__current-month {
+  font-size: 0.85rem !important;
+  line-height: 1.2 !important;
+  font-weight: 700;
+  color: var(--bs-body-color);
+  text-transform: capitalize; /* fevereiro de 2026 */
+}
+
+.ve-datepicker .react-datepicker__header {
+  padding-top: 0.5rem;
+  padding-bottom: 0.35rem;
+}
+
+.ve-datepicker .react-datepicker__navigation {
+  top: 10px;
+}
+
+.ve-datepicker .react-datepicker__day-name,
+.ve-datepicker .react-datepicker__day,
+.ve-datepicker .react-datepicker__time-name {
+  color: var(--bs-body-color);
+}
+
+.ve-datepicker .react-datepicker__day-name {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+  text-transform: capitalize;
+}
+
+.ve-datepicker .react-datepicker__day {
+  border-radius: 0.5rem;
+}
+
+.ve-datepicker .react-datepicker__day:hover {
+  background-color: rgba(var(--bs-primary-rgb), 0.12);
+}
+
+.ve-datepicker .react-datepicker__day--selected,
+.ve-datepicker .react-datepicker__day--keyboard-selected {
+  background-color: var(--bs-primary);
+  color: #fff;
+}
+
+.ve-datepicker .react-datepicker__day--in-range,
+.ve-datepicker .react-datepicker__day--in-selecting-range {
+  background-color: rgba(var(--bs-primary-rgb), 0.18);
+  color: var(--bs-body-color);
+}
+
+.ve-datepicker .react-datepicker__day--outside-month {
+  color: var(--bs-secondary-color);
+  opacity: 0.6;
+}
+
+.ve-datepicker .react-datepicker__navigation-icon::before {
+  border-color: var(--bs-body-color);
+}
+
+.ve-datepicker .react-datepicker__navigation:hover *::before {
+  border-color: var(--bs-primary);
+}
+

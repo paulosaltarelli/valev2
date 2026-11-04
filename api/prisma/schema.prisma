@@ -1,0 +1,278 @@
+generator client {
+  provider     = "prisma-client-js"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model ajuste_manual {
+  ajuste_id               Int                  @id(map: "PK__ajuste_m__AD9C431FF53BA7CB") @default(autoincrement())
+  execucao_funcionario_id Int
+  usuario_id              Int
+  motivo                  String               @db.VarChar(255)
+  valor_anterior          Decimal?             @db.Decimal(18, 2)
+  valor_novo              Decimal?             @db.Decimal(18, 2)
+  data_ajuste             DateTime             @default(dbgenerated("sysdatetime()"), map: "DF__ajuste_ma__data___628FA481")
+  execucao_funcionario    execucao_funcionario @relation(fields: [execucao_funcionario_id], references: [execucao_funcionario_id], onUpdate: NoAction, map: "fk_ajuste_exec_func")
+  usuario                 usuario              @relation(fields: [usuario_id], references: [usuario_id], onUpdate: NoAction, map: "fk_ajuste_usuario")
+}
+
+model execucao {
+  execucao_id               Int                         @id(map: "PK__execucao__82E1C3EA2FB7A151") @default(autoincrement())
+  filial_id                 Int
+  periodo_id                Int
+  formula_id                Int?
+  usuario_execucao          Int
+  status                    String                      @db.VarChar(30)
+  data_execucao             DateTime                    @default(dbgenerated("sysdatetime()"), map: "DF__execucao__data_e__4F7CD00D")
+  filial                    filial                      @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_execucao_filial")
+  formula                   formula?                    @relation(fields: [formula_id], references: [formula_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_execucao_formula")
+  periodo                   periodo                     @relation(fields: [periodo_id], references: [periodo_id], onUpdate: NoAction, map: "fk_execucao_periodo")
+  usuario                   usuario                     @relation(fields: [usuario_execucao], references: [usuario_id], onUpdate: NoAction, map: "fk_execucao_usuario")
+  execucao_funcionario      execucao_funcionario[]
+  execucao_funcionario_base execucao_funcionario_base[]
+  execucao_queue            execucao_queue[]
+  log_execucao              log_execucao[]
+}
+
+model execucao_funcionario {
+  execucao_funcionario_id      Int                       @id(map: "PK__execucao__1DD9607F39E3D50A") @default(autoincrement())
+  execucao_id                  Int
+  funcionario_id_rm            String                    @db.VarChar(50)
+  valor_calculado              Decimal?                  @db.Decimal(18, 2)
+  valor_final                  Decimal?                  @db.Decimal(18, 2)
+  status                       String                    @db.VarChar(30)
+  ajuste_manual                Boolean                   @default(false, map: "DF__execucao___ajust__59FA5E80")
+  execucao_funcionario_base_id Int                       @default(1, map: "DF__execucao___execu__01142BA1")
+  formula_id                   Int
+  metadados_rm_id              Int?
+  ajuste_manual_fk             ajuste_manual[]
+  execucao_funcionario_base    execucao_funcionario_base @relation(fields: [execucao_funcionario_base_id], references: [execucao_funcionario_base_id], onUpdate: NoAction, map: "FK__execucao___execu__02084FDA")
+  execucao                     execucao                  @relation(fields: [execucao_id], references: [execucao_id], onUpdate: NoAction, map: "fk_exec_func_execucao")
+  formula                      formula                   @relation(fields: [formula_id], references: [formula_id], onUpdate: NoAction, map: "fk_exec_func_formula")
+  memoria_calculo              memoria_calculo[]
+
+  @@unique([execucao_id, execucao_funcionario_base_id, formula_id], map: "ux_exec_func_exec_base_formula")
+  @@index([funcionario_id_rm], map: "ix_exec_func_rm")
+  @@index([execucao_id, formula_id], map: "ix_exec_func_execucao_formula")
+}
+
+model execucao_funcionario_base {
+  execucao_funcionario_base_id Int                    @id(map: "PK__execucao__39A77246061DF61B") @default(autoincrement())
+  execucao_id                  Int
+  funcionario_id_rm            String                 @db.VarChar(50)
+  nome_funcionario             String?                @db.VarChar(150)
+  cargo                        String?                @db.VarChar(100)
+  data_admissao                DateTime?              @db.Date
+  data_registro                DateTime               @default(dbgenerated("sysdatetime()"), map: "DF__execucao___data___5629CD9C")
+  status                       String?                @default("PREVIA", map: "DF__execucao___statu__0B91BA14") @db.VarChar(50)
+  codcoligada                  Int
+  codfilial                    Int
+  km                           Decimal?               @db.Decimal(10, 2)
+  execucao_funcionario         execucao_funcionario[]
+  execucao                     execucao               @relation(fields: [execucao_id], references: [execucao_id], onUpdate: NoAction, map: "fk_exec_func_base_execucao")
+  execucao_queue               execucao_queue[]
+
+  @@index([funcionario_id_rm], map: "ix_exec_func_base_rm")
+}
+
+model filial {
+  filial_id               Int                       @id(map: "PK__filial__DE090C4D8915897C") @default(autoincrement())
+  codcoligada             Int
+  codfilial               Int
+  nome                    String                    @db.VarChar(150)
+  ativa                   Boolean                   @default(true, map: "DF__filial__ativa__3B75D760")
+  sql_codigo_rm           String                    @db.VarChar(100)
+  km_max                  Decimal                   @default(70, map: "DF__filial__km_max__0697FACD") @db.Decimal(10, 2)
+  execucao                execucao[]
+  execucao_create_queue   execucao_create_queue[]
+  formula                 formula[]
+  geo_queue               geo_queue[]
+  sql_funcionarios_filial sql_funcionarios_filial[]
+  variavel                variavel[]
+}
+
+model formula {
+  formula_id           Int                    @id(map: "PK__formula__DEDE7CC9E76518B6") @default(autoincrement())
+  filial_id            Int
+  expressao            String                 @db.VarChar(Max)
+  versao               Int
+  ativa                Boolean                @default(true, map: "DF__formula__ativa__4AB81AF0")
+  data_inicio_vigencia DateTime               @db.Date
+  data_fim_vigencia    DateTime?              @db.Date
+  data_criacao         DateTime               @default(dbgenerated("sysdatetime()"), map: "DF__formula__data_cr__4BAC3F29")
+  nome                 String                 @db.VarChar(100)
+  codEvento            String?                @db.VarChar(100)
+  tipo                 String?                @db.Char(1)
+  polaridade           String                 @default("+", map: "DF__formula__polarid__73852659") @db.Char(1)
+  execucao             execucao[]
+  execucao_funcionario execucao_funcionario[]
+  filial               filial                 @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_formula_filial")
+}
+
+model log_execucao {
+  log_id      Int      @id(map: "PK__log_exec__9E2397E0D52C0A75") @default(autoincrement())
+  execucao_id Int
+  nivel       String   @db.VarChar(20)
+  mensagem    String   @db.VarChar(Max)
+  data_log    DateTime @default(dbgenerated("sysdatetime()"), map: "DF__log_execu__data___6754599E")
+  execucao    execucao @relation(fields: [execucao_id], references: [execucao_id], onUpdate: NoAction, map: "fk_log_execucao")
+}
+
+model memoria_calculo {
+  memoria_id              Int                  @id(map: "PK__memoria___6C39F4E79B1504A1") @default(autoincrement())
+  execucao_funcionario_id Int
+  variavel_id             Int?
+  variavel_codigo         String               @db.VarChar(50)
+  variavel_nome           String               @db.VarChar(150)
+  valor                   Decimal              @db.Decimal(18, 4)
+  origem                  String               @db.VarChar(30)
+  detalhe                 String?              @db.VarChar(255)
+  data_registro           DateTime             @default(dbgenerated("sysdatetime()"), map: "DF__memoria_c__data___5DCAEF64")
+  execucao_funcionario    execucao_funcionario @relation(fields: [execucao_funcionario_id], references: [execucao_funcionario_id], onUpdate: NoAction, map: "fk_memoria_exec_func")
+  variavel                variavel?            @relation(fields: [variavel_id], references: [variavel_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_memoria_variavel")
+}
+
+model periodo {
+  periodo_id            Int                     @id(map: "PK__periodo__C736707C7F6F5DE2") @default(autoincrement())
+  data_inicio           DateTime                @db.Date
+  data_fim              DateTime                @db.Date
+  competencia           String                  @unique(map: "ux_periodo_competencia") @db.VarChar(7)
+  data_criacao          DateTime                @default(dbgenerated("sysdatetime()"), map: "DF__periodo__data_cr__3E52440B")
+  ativo                 Boolean                 @default(true, map: "DF__periodo__ativo__55F4C372")
+  execucao              execucao[]
+  execucao_create_queue execucao_create_queue[]
+}
+
+model sql_funcionarios_filial {
+  sql_func_filial_id Int      @id(map: "PK__sql_func__E199697AD28BC2D0") @default(autoincrement())
+  filial_id          Int
+  nome               String   @db.VarChar(150)
+  sql_codigo_rm      String   @db.VarChar(100)
+  ativa              Boolean  @default(true, map: "DF__sql_funci__ativa__412EB0B6")
+  data_criacao       DateTime @default(dbgenerated("sysdatetime()"), map: "DF__sql_funci__data___4222D4EF")
+  filial             filial   @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_sql_func_filial")
+}
+
+model usuario {
+  usuario_id            Int                     @id(map: "PK__usuario__2ED7D2AF7595BE5F") @default(autoincrement())
+  rm_user_id            String                  @unique(map: "ux_usuario_rm_user") @db.VarChar(50)
+  login                 String                  @db.VarChar(100)
+  nome                  String                  @db.VarChar(150)
+  perfil                String                  @db.VarChar(30)
+  ativo                 Boolean                 @default(true, map: "DF__usuario__ativo__37A5467C")
+  data_ultimo_login     DateTime?
+  data_criacao          DateTime                @default(dbgenerated("sysdatetime()"), map: "DF__usuario__data_cr__38996AB5")
+  ajuste_manual         ajuste_manual[]
+  execucao              execucao[]
+  execucao_create_queue execucao_create_queue[]
+}
+
+model rm_sessao {
+  rm_sessao_id          Int       @id(map: "PK_rm_sessao") @default(autoincrement())
+  session_id            String    @unique(map: "UX_rm_sessao_session_id") @db.VarChar(50)
+  username              String    @db.VarChar(100)
+  encrypted_credentials String    @db.VarChar(Max)
+  expires_at            DateTime
+  created_at            DateTime  @default(dbgenerated("sysdatetime()"), map: "DF_rm_sessao_created_at")
+  last_seen_at          DateTime?
+
+  @@index([username], map: "IX_rm_sessao_username")
+  @@index([expires_at], map: "IX_rm_sessao_expires_at")
+}
+
+model variavel {
+  variavel_id     Int               @id(map: "PK__variavel__D9A34CC59FE68912") @default(autoincrement())
+  filial_id       Int
+  nome            String            @db.VarChar(150)
+  codigo          String            @db.VarChar(50)
+  tipo            String            @db.VarChar(20)
+  sql_codigo_rm   String?           @db.VarChar(100)
+  valor_fixo      Decimal?          @db.Decimal(18, 4)
+  ativa           Boolean           @default(true, map: "DF__variavel__ativa__45F365D3")
+  data_criacao    DateTime          @default(dbgenerated("sysdatetime()"), map: "DF__variavel__data_c__46E78A0C")
+  memoria_calculo memoria_calculo[]
+  filial          filial            @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_variavel_filial")
+
+  @@unique([filial_id, codigo], map: "ux_variavel_filial_codigo")
+}
+
+model execucao_queue {
+  queue_id                     Int                       @id(map: "PK_execucao_queue") @default(autoincrement())
+  execucao_id                  Int
+  execucao_funcionario_base_id Int
+  tipo                         String                    @db.VarChar(20)
+  status                       String                    @default("PENDENTE", map: "DF_execucao_queue_status") @db.VarChar(20)
+  tentativas                   Int                       @default(0, map: "DF_execucao_queue_tentativas")
+  next_run_at                  DateTime?
+  lock_owner                   String?                   @db.VarChar(64)
+  locked_at                    DateTime?
+  last_error                   String?                   @db.VarChar(Max)
+  created_at                   DateTime                  @default(dbgenerated("sysdatetime()"), map: "DF_execucao_queue_created_at")
+  updated_at                   DateTime                  @default(dbgenerated("sysdatetime()"), map: "DF_execucao_queue_updated_at")
+  session_id                   String?                   @db.VarChar(50)
+  execucao_funcionario_base    execucao_funcionario_base @relation(fields: [execucao_funcionario_base_id], references: [execucao_funcionario_base_id], onUpdate: NoAction, map: "FK_execucao_queue_exec_func_base")
+  execucao                     execucao                  @relation(fields: [execucao_id], references: [execucao_id], onUpdate: NoAction, map: "FK_execucao_queue_execucao")
+
+  @@index([execucao_id, status], map: "IX_execucao_queue_execucao_status")
+  @@index([status, tipo, next_run_at, created_at], map: "IX_execucao_queue_runnable")
+  @@index([session_id], map: "IX_execucao_queue_session")
+}
+
+model sysdiagrams {
+  name         String @db.NVarChar(128)
+  principal_id Int
+  diagram_id   Int    @id(map: "PK__sysdiagr__C2B05B6119E83395") @default(autoincrement())
+  version      Int?
+  definition   Bytes?
+
+  @@unique([principal_id, name], map: "UK_principal_name")
+}
+
+model execucao_create_queue {
+  queue_id                    Int       @id(map: "PK_execucao_create_queue") @default(autoincrement())
+  filial_id                   Int
+  periodo_id                  Int
+  usuario_execucao            Int
+  session_id                  String?   @db.VarChar(50)
+  status                      String    @default("PENDENTE", map: "DF_execucao_create_queue_status") @db.VarChar(20)
+  tentativas                  Int       @default(0, map: "DF_execucao_create_queue_tentativas")
+  next_run_at                 DateTime?
+  lock_owner                  String?   @db.VarChar(64)
+  locked_at                   DateTime?
+  last_error                  String?   @db.VarChar(Max)
+  created_at                  DateTime  @default(dbgenerated("sysdatetime()"), map: "DF_execucao_create_queue_created_at")
+  updated_at                  DateTime  @default(dbgenerated("sysdatetime()"), map: "DF_execucao_create_queue_updated_at")
+  processar_variaveis_valores Boolean   @default(false, map: "DF_execucao_create_queue_processar_variaveis_valores")
+  filial                      filial    @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "FK_execucao_create_queue_filial")
+  periodo                     periodo   @relation(fields: [periodo_id], references: [periodo_id], onUpdate: NoAction, map: "FK_execucao_create_queue_periodo")
+  usuario                     usuario   @relation(fields: [usuario_execucao], references: [usuario_id], onUpdate: NoAction, map: "FK_execucao_create_queue_usuario")
+
+  @@index([status, next_run_at, created_at], map: "IX_execucao_create_queue_runnable")
+  @@index([usuario_execucao, status], map: "IX_execucao_create_queue_usuario_status")
+}
+
+model geo_queue {
+  geo_queue_id Int       @id(map: "PK__geo_queu__37412417F332FBFB") @default(autoincrement())
+  filial_id    Int
+  chapa        String    @db.VarChar(50)
+  status       String    @default("PENDENTE", map: "DF_geo_queue_status") @db.VarChar(20)
+  tentativas   Int       @default(0, map: "DF_geo_queue_tentativas")
+  next_run_at  DateTime?
+  lock_owner   String?   @db.VarChar(100)
+  locked_at    DateTime?
+  last_error   String?   @db.NVarChar(Max)
+  session_id   String?   @db.VarChar(50)
+  created_at   DateTime  @default(dbgenerated("sysdatetime()"), map: "DF_geo_queue_created_at")
+  updated_at   DateTime  @default(dbgenerated("sysdatetime()"), map: "DF_geo_queue_updated_at")
+  codcoligada  Int?
+  codfilial    Int?
+  filial       filial    @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "FK_geo_queue_filial")
+
+  @@index([filial_id, chapa], map: "IX_geo_queue_filial_chapa")
+  @@index([filial_id, status, next_run_at, created_at], map: "IX_geo_queue_filial_status_next_created")
+  @@index([status, next_run_at, created_at], map: "IX_geo_queue_status_next_created")
+  @@index([filial_id, codcoligada, codfilial, status, next_run_at, created_at], map: "IX_geo_queue_filial_rm_status_next_created")
+}

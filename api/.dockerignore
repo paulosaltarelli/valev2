@@ -1,0 +1,17 @@
+.git
+.gitignore
+
+# Nunca enviar arquivos de ambiente para build context
+.env
+.env.*
+
+# Dependências / builds
+node_modules
+dist
+build
+coverage
+
+# Logs e temporários
+*.log
+.temp
+.tmp

@@ -1,0 +1,29 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    env_file:
+      # Variáveis de runtime da API (única fonte de verdade).
+      # Use `api/.env` tanto para `npm run dev` quanto para Docker.
+      - ./api/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+      args:
+        # Variável de build do Vite (entra no bundle em build time).
+        # Pode vir do `.env` da raiz (Compose) ou cair no default /api.
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+

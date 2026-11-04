@@ -1,0 +1,13 @@
+.ve-block-ui .block-ui-container {
+  position: fixed;
+}
+
+.ve-block-ui .block-ui-overlay {
+  background-color: rgba(0, 0, 0, 0.25);
+}
+
+.ve-block-ui .block-ui-message {
+  color: #fff;
+}
+
+

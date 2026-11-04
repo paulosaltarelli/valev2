@@ -1,0 +1,11 @@
+.dashHeaderContainer {
+  position: sticky;
+  /* Mantém o header do dashboard abaixo da navbar (.navbar-header tem 4.5rem) */
+  top: 4.5rem;
+  z-index: 1;
+  background: var(--white);
+
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}

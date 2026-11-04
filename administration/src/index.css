@@ -1,0 +1,39 @@
+/* @import "datatables.net-bs5/css/dataTables.bootstrap5.min.css"; */
+@import "datatables.net-responsive-bs5/css/responsive.bootstrap5.min.css";
+@import "datatables.net-select-bs5/css/select.bootstrap5.min.css";
+@import "datatables.net-buttons-bs5/css/buttons.bootstrap5.min.css";
+
+:root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* acima do bootstrap modal/backdrop */
+.block-ui-container {
+  z-index: 2000 !important;
+}
+
+.block-ui-message-container {
+  z-index: 2001 !important;
+}
+
+.bg-opacity-0 {
+  background-color: rgba(0, 0, 0, 0) !important;
+}
