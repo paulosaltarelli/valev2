@@ -23,6 +23,15 @@ function fixture(concurrency: number, failEmployee?: string) {
   };
   const memory: unknown[] = [];
   const prisma = {
+    execucao: { findUnique: jest.fn().mockImplementation(async (query) => {
+      const filter = query.include.execucao_funcionario_base;
+      return {
+        ...execution,
+        execucao_funcionario_base: filter === true ? bases : bases.filter(
+          b => filter.where.execucao_funcionario_base_id.in.includes(b.execucao_funcionario_base_id),
+        ),
+      };
+    }) },
     execucao_funcionario: {
       findMany: jest.fn().mockResolvedValue([]),
       upsert: jest.fn(({ create }) => Promise.resolve({ ...create, execucao_funcionario_id: create.execucao_funcionario_base_id * 10 + create.formula_id })),
@@ -53,8 +62,9 @@ function fixture(concurrency: number, failEmployee?: string) {
     };
   }) };
   const service = new ExecucaoService(prisma as never, {} as never, {} as never, rm as never);
+  const log = jest.spyOn((service as unknown as { logger: { log(message: string): void } }).logger, 'log').mockImplementation(() => {});
   jest.spyOn(service, 'getExecucaoById').mockResolvedValue(execution as never);
-  return { service, bases, prisma, rm, memory, peak: () => peak, active: () => active };
+  return { service, bases, prisma, rm, memory, log, peak: () => peak, active: () => active };
 }
 
 describe('Variable processing with four employees', () => {
@@ -76,6 +86,12 @@ describe('Variable processing with four employees', () => {
     expect(parallel.peak()).toBe(4);
     expect(serial.peak()).toBe(1);
     expect(parallel.active()).toBe(0);
+    const query = parallel.prisma.execucao.findUnique.mock.calls[0][0];
+    expect(query.include.execucao_funcionario_base).toEqual({
+      where: { execucao_funcionario_base_id: { in: [1,2,3,4,5,6,7,8] } },
+    });
+    expect(JSON.stringify(query)).not.toContain('memoria_calculo');
+    expect(parallel.service.getExecucaoById).not.toHaveBeenCalled();
     for (const base of parallel.bases) {
       const calls = parallel.rm.realizaConsultaSql.mock.calls.filter(([,p]) => p.CHAPA === base.funcionario_id_rm);
       expect(calls.map(([sql]) => sql)).toEqual(['PVE.A', 'PVE.B']);
@@ -105,5 +121,21 @@ describe('Variable processing with four employees', () => {
     expect(parallel.peak()).toBe(4);
     expect(parallel.active()).toBe(0);
     expect(parallel.rm.realizaConsultaSql).toHaveBeenCalledTimes(16);
+  });
+
+  it('processes only the selected batch and reports aggregate timings without employee payloads', async () => {
+    const f = fixture(4);
+    await f.service.processarVariaveisBatch(1, f.bases.slice(0, 2) as never, 'session');
+    expect(f.rm.realizaConsultaSql).toHaveBeenCalledTimes(4);
+    expect(f.memory).toHaveLength(8);
+    const line = f.log.mock.calls.map(([message]) => message).find(m => m.startsWith('[variables.batch] '));
+    const summary = JSON.parse(line!.substring('[variables.batch] '.length));
+    expect(summary.funcionarios).toBe(2);
+    expect(summary.cacheHits).toBe(2);
+    expect(summary.consultas.reduce((n: number, x: { chamadas: number }) => n + x.chamadas, 0)).toBe(4);
+    expect(summary.duracaoMs).toBeGreaterThanOrEqual(0);
+    expect(line).not.toContain('CHAPA');
+    expect(line).not.toContain('RESULTADO');
+    expect(line).not.toContain('session');
   });
 });

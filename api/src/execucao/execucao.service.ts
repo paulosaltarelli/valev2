@@ -21,7 +21,8 @@ export class ExecucaoService {
     private readonly rmService: RmService,
   ) {}
   private readonly logger = new Logger(ExecucaoService.name);
-  private readonly variableWorkers = new LimitedExecutor(variableConcurrency());
+  private readonly variableConcurrencyLimit = variableConcurrency();
+  private readonly variableWorkers = new LimitedExecutor(this.variableConcurrencyLimit);
 
   // Status para exibição na tabela do frontend (nível "funcionário base")
   // Ideia: refletir o progresso do pipeline do funcionário dentro da execução.
@@ -146,6 +147,29 @@ export class ExecucaoService {
       if (match[1]) codes.add(match[1]);
     }
     return codes;
+  }
+
+  private async getContextoVariaveis(execucaoId: number, baseIds?: number[]) {
+    const execucao = await this.prisma.execucao.findUnique({
+      where: { execucao_id: execucaoId },
+      include: {
+        filial: {
+          include: {
+            formula: {
+              where: { ativa: true },
+              orderBy: [{ nome: 'asc' }, { versao: 'desc' }],
+            },
+            variavel: true,
+          },
+        },
+        periodo: true,
+        execucao_funcionario_base: baseIds
+          ? { where: { execucao_funcionario_base_id: { in: baseIds } } }
+          : true,
+      },
+    });
+    if (!execucao) throw new NotFoundException('Execucao not found');
+    return execucao;
   }
 
   private async loadMemoriaScopeByExecucaoId(
@@ -1069,7 +1093,7 @@ export class ExecucaoService {
     sessionId: string,
   ): Promise<{ status: boolean; message: string }> {
     try {
-      const execucao = await this.getExecucaoById(execucaoId);
+      const execucao = await this.getContextoVariaveis(execucaoId);
       if (!execucao) throw new NotFoundException('Execucao not found');
       if (
         !execucao.execucao_funcionario_base ||
@@ -1078,6 +1102,11 @@ export class ExecucaoService {
         throw new NotFoundException('Execucao sem funcionarios');
 
       const formulasAtivas = this.getFormulasAtivasDaExecucao(execucao);
+      const codigosPorFormula = new Map(
+        formulasAtivas.map((formula) => [
+          formula.formula_id, this.extractCodesFromExpressao(formula.expressao),
+        ]),
+      );
       const variaveisFixas = this.getVariaveisFixas(execucao);
 
       const variaveisAtivas = execucao.filial.variavel.filter((v) => v.ativa);
@@ -1129,7 +1158,7 @@ export class ExecucaoService {
               formulaId: formula.formula_id,
             });
 
-            const codigos = this.extractCodesFromExpressao(formula.expressao);
+            const codigos = codigosPorFormula.get(formula.formula_id)!;
             if (codigos.size === 0) continue;
 
             for (const codigo of codigos) {
@@ -1319,11 +1348,17 @@ export class ExecucaoService {
     rows: execucao_funcionario_base[],
     sessionId: string,
   ): Promise<{ status: boolean; message: string }> {
+    const startedAt = process.hrtime.bigint();
+    let cacheHits = 0;
+    const timings = new Map<string, { chamadas: number; totalMs: number; maxMs: number }>();
     try {
       this.logger.log(
         `Processando variáveis batch para execução ${execucaoId} com ${rows.length} funcionários`,
       );
-      const execucao = await this.getExecucaoById(execucaoId);
+      const execucao = await this.getContextoVariaveis(
+        execucaoId,
+        (rows ?? []).map((r) => r.execucao_funcionario_base_id).filter(Boolean),
+      );
       if (!execucao) throw new NotFoundException('Execucao not found');
       if (
         !execucao.execucao_funcionario_base ||
@@ -1349,6 +1384,11 @@ export class ExecucaoService {
       }
 
       const formulasAtivas = this.getFormulasAtivasDaExecucao(execucao);
+      const codigosPorFormula = new Map(
+        formulasAtivas.map((formula) => [
+          formula.formula_id, this.extractCodesFromExpressao(formula.expressao),
+        ]),
+      );
       const variaveisFixas = this.getVariaveisFixas(execucao);
 
       const variaveisAtivas = execucao.filial.variavel.filter((v) => v.ativa);
@@ -1414,13 +1454,10 @@ export class ExecucaoService {
             formulaId: formula.formula_id,
           });
 
-          const codigos = this.extractCodesFromExpressao(formula.expressao);
+          const codigos = codigosPorFormula.get(formula.formula_id)!;
           if (codigos.size === 0) continue;
 
           for (const codigo of codigos) {
-            this.logger.log(
-              `Processando variável ${codigo} para funcionário ${funcionarioBase.funcionario_id_rm} na fórmula ${formula.formula_id}`,
-            );
             const variavel = variavelByCodigo.get(codigo);
             if (!variavel) continue;
 
@@ -1450,6 +1487,7 @@ export class ExecucaoService {
               // Ainda assim, registramos na memória (por fórmula) usando o mesmo valor.
               const cached = scopeBase[codigo];
               if (cached !== undefined) {
+                cacheHits++;
                 memoriaRows.push({
                   execucao_funcionario_id: execFunc.execucao_funcionario_id,
                   variavel_id: variavel.variavel_id,
@@ -1472,9 +1510,7 @@ export class ExecucaoService {
                 CHAPA: funcionarioBase.funcionario_id_rm,
                 KM_MAX: execucao.filial.km_max.toNumber(),
               };
-              this.logger.log(
-                `Consultando variável ${variavel.codigo} (${variavel.sql_codigo_rm}) para funcionário ${funcionarioBase.funcionario_id_rm} com data: ${JSON.stringify(dataToConsulta)}`,
-              );
+              const queryStartedAt = process.hrtime.bigint();
               const resultadoConsulta =
                 (await this.rmService.realizaConsultaSql(
                   variavel.sql_codigo_rm,
@@ -1492,15 +1528,12 @@ export class ExecucaoService {
                     axiosCode?: string;
                   };
                 };
-              const resultadoConsultaLog = {
-                status: resultadoConsulta.status,
-                message: resultadoConsulta.message,
-                http: resultadoConsulta.http,
-                data: resultadoConsulta.data,
-              };
-              this.logger.log(
-                `Resultado consulta SQL para variável ${variavel.codigo} (${variavel.sql_codigo_rm}) para funcionário ${funcionarioBase.funcionario_id_rm}: ${JSON.stringify(resultadoConsultaLog)}`,
-              );
+              const elapsedMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
+              const timing = timings.get(variavel.sql_codigo_rm) ?? { chamadas: 0, totalMs: 0, maxMs: 0 };
+              timing.chamadas++;
+              timing.totalMs += elapsedMs;
+              timing.maxMs = Math.max(timing.maxMs, elapsedMs);
+              timings.set(variavel.sql_codigo_rm, timing);
               if (!resultadoConsulta.status) {
                 funcionarioOk = false;
                 this.logger.error(
@@ -1595,6 +1628,14 @@ export class ExecucaoService {
         });
       }
 
+      this.logger.log('[variables.batch] ' + JSON.stringify({
+        execucaoId, funcionarios: basesSelecionadas.length,
+        concorrencia: this.variableConcurrencyLimit,
+        duracaoMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
+        cacheHits, funcionariosOk: basesOk.length,
+        funcionariosErro: basesComErro.length,
+        consultas: [...timings].map(([sentenca, timing]) => ({ sentenca, ...timing })),
+      }));
       return {
         status: true,
         message: 'Processamento de variáveis (batch) concluído com sucesso',
