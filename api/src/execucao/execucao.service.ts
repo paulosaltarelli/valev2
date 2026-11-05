@@ -842,7 +842,7 @@ export class ExecucaoService {
   async processarValoresBatch(
     execucaoId: number,
     rows: execucao_funcionario_base[],
-  ): Promise<{ status: boolean; message: string }> {
+  ): Promise<{ status: boolean; message: string; falhasFormulaIds?: number[] }> {
     try {
       this.logger.log(
         `Processando valores batch para execução ${execucaoId} com ${rows.length} funcionários`,
@@ -911,6 +911,7 @@ export class ExecucaoService {
         memoriaScopeByExecFuncId.set(row.execucao_funcionario_id, scope);
       }
 
+      const falhasFormulaIds = new Set<number>();
       const basesComErro: number[] = [];
       const basesOk: number[] = [];
 
@@ -988,6 +989,7 @@ export class ExecucaoService {
             );
 
             if (!resultado.status) {
+              falhasFormulaIds.add(funcionarioBase.execucao_funcionario_base_id);
               teveErro = true;
               this.logger.error(
                 `Erro ao calcular fórmula ${formula.formula_id} para funcionário ${funcionarioBase.funcionario_id_rm}: ${resultado.message}`,
@@ -1074,6 +1076,7 @@ export class ExecucaoService {
       return {
         status: true,
         message: 'Processamento de valores (batch) concluído com sucesso',
+        falhasFormulaIds: [...falhasFormulaIds],
       };
     } catch (error) {
       console.error(error);

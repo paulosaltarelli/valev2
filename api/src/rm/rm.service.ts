@@ -7,6 +7,7 @@ import {
   type RmSessaoRow,
 } from 'src/rm-session/rm-session.service';
 import { FilialRm } from 'src/models/FilialRmModel';
+import { RmRequestGate } from './rm-request-gate';
 
 type RmUserResponse = {
   data?: RmUserModel[];
@@ -67,6 +68,24 @@ function extractAxiosResponseMessage(data: unknown): string | undefined {
 @Injectable()
 export class RmService {
   private readonly logger = new Logger(RmService.name);
+  private readonly traffic = new RmRequestGate();
+  private readonly http = axios.create({
+    adapter: (config) => this.traffic.run(async () => {
+      try {
+        return await axios.getAdapter(axios.defaults.adapter)(config);
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+          this.pauseRm(error.response.headers['retry-after']);
+        }
+        throw error;
+      }
+    }),
+  });
+
+  private pauseRm(retryAfter: unknown) {
+    const wait = this.traffic.defer(retryAfter);
+    this.logger.warn(`RM respondeu HTTP 429. Novas chamadas aguardam ${wait} ms.`);
+  }
   constructor(
     private readonly rmSessionService: RmSessionService,
     private readonly cryptoService: CryptoService,
@@ -84,12 +103,16 @@ export class RmService {
       'base64',
     );
 
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Basic ${basic}`,
-        Accept: 'application/json',
-      },
+    const resp = await this.traffic.run(async () => {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${basic}`,
+          Accept: 'application/json',
+        },
+      });
+      if (response.status === 429) this.pauseRm(response.headers.get('retry-after'));
+      return response;
     });
 
     if (!resp.ok) {
@@ -167,7 +190,7 @@ export class RmService {
       const url = joinUrl(baseUrl, `?parameters=${parameters}`);
 
       const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-      const response = await axios.get<unknown>(url, {
+      const response = await this.http.get<unknown>(url, {
         headers: {
           Authorization: authorization,
           Accept: 'application/json',
@@ -230,7 +253,7 @@ export class RmService {
     //monta url assim: FopFuncData/9$_$0311825
     const url = joinUrl(rmBase, `FopFuncData/${coligada}$_$${chapa}`);
     const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-    const response = await axios.get<{ data: unknown }>(url, {
+    const response = await this.http.get<{ data: unknown }>(url, {
       headers: {
         Authorization: authorization,
         Accept: 'application/json',
@@ -255,7 +278,7 @@ export class RmService {
     if (!rmBase) throw new Error('RM_API_URL not configured');
     const url = joinUrl(rmBase, `FopFuncData/${codcoligada}$_$${chapa}`);
     const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-    const response = await axios.put<unknown>(url, funcData, {
+    const response = await this.http.put<unknown>(url, funcData, {
       headers: {
         Authorization: authorization,
         Accept: 'application/json',
@@ -284,7 +307,7 @@ export class RmService {
       `FisFilialDataBR/${codcoligada}$_$${codfilial}`,
     );
     const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-    const response = await axios.get<{ data: FilialRm }>(url, {
+    const response = await this.http.get<{ data: FilialRm }>(url, {
       headers: {
         Authorization: authorization,
         Accept: 'application/json',
@@ -334,7 +357,7 @@ export class RmService {
           },
         ],
       } as Record<string, unknown>;
-      const response = await axios.post<unknown>(url, body, {
+      const response = await this.http.post<unknown>(url, body, {
         headers: {
           Authorization: authorization,
           Accept: 'application/json',
@@ -386,7 +409,7 @@ export class RmService {
       // Por enquanto, enviamos como "tableName" apenas se for exigido; o recomendado é usar saveRecordMetaData.
       tableName: dataRecords,
     } as Record<string, unknown>;
-    const response = await axios.post<unknown>(url, body, {
+    const response = await this.http.post<unknown>(url, body, {
       headers: {
         Authorization: authorization,
         Accept: 'application/json',
@@ -418,7 +441,7 @@ export class RmService {
         },
       ],
     } as Record<string, unknown>;
-    const response = await axios.put<unknown>(url, body, {
+    const response = await this.http.put<unknown>(url, body, {
       headers: {
         Authorization: authorization,
         Accept: 'application/json',

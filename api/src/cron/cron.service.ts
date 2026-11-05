@@ -59,15 +59,30 @@ export class CronService {
         `,
       );
 
-      // 1) Seleciona uma execução por vez que tenha algo pendente/rodando
+      const runnable = Prisma.sql`
+        q.status = 'PENDENTE'
+        AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME())
+        AND NOT EXISTS (
+          SELECT 1 FROM dbo.execucao_queue anterior
+          WHERE anterior.execucao_id = q.execucao_id
+            AND anterior.execucao_funcionario_base_id = q.execucao_funcionario_base_id
+            AND anterior.status IN ('PENDENTE', 'PROCESSANDO')
+            AND (
+              (q.tipo IN ('VALORES', 'ENVIAR_RM') AND anterior.tipo = 'VARIAVEIS')
+              OR (q.tipo = 'ENVIAR_RM' AND anterior.tipo = 'VALORES')
+            )
+        )
+      `;
+
+      // Uma execução em espera de retry cede a vez a outra pronta.
       const execRows = await this.prisma.$queryRaw<
         Array<{ execucao_id: number }>
       >(
         Prisma.sql`
-        SELECT TOP 1 execucao_id
-        FROM dbo.execucao_queue
-        WHERE status IN ('PENDENTE', 'PROCESSANDO')
-        ORDER BY created_at ASC;
+        SELECT TOP 1 q.execucao_id
+        FROM dbo.execucao_queue q
+        WHERE ${runnable}
+        ORDER BY q.created_at ASC, q.queue_id ASC;
         `,
       );
       const execucaoId = execRows?.[0]?.execucao_id;
@@ -77,10 +92,9 @@ export class CronService {
       const tipoRows = await this.prisma.$queryRaw<Array<{ tipo: string }>>(
         Prisma.sql`
         SELECT TOP 1 tipo
-        FROM dbo.execucao_queue
-        WHERE execucao_id = ${execucaoId}
-          AND status = 'PENDENTE'
-          AND (next_run_at IS NULL OR next_run_at <= SYSDATETIME())
+        FROM dbo.execucao_queue q
+        WHERE q.execucao_id = ${execucaoId}
+          AND ${runnable}
         ORDER BY
           CASE
             WHEN tipo = 'VARIAVEIS' THEN 0
@@ -117,8 +131,7 @@ export class CronService {
         FROM dbo.execucao_queue q
         WHERE q.execucao_id = ${execucaoId}
           AND q.tipo = ${tipo}
-          AND q.status = 'PENDENTE'
-          AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME());
+          AND ${runnable};
         `,
       );
 
@@ -169,6 +182,7 @@ export class CronService {
         where: { execucao_funcionario_base_id: { in: baseIds } },
       });
 
+      const errosSemRetry = new Set<number>();
       // 4) Processa (usa seus métodos batch existentes)
       if (tipo === 'VARIAVEIS') {
         await this.execucaoService.processarVariaveisBatch(
@@ -177,7 +191,15 @@ export class CronService {
           sessionId!,
         );
       } else if (tipo === 'VALORES') {
-        await this.execucaoService.processarValoresBatch(execucaoId, rows);
+        const aptos = rows.filter((row) => {
+          if (row.status !== 'ERRO_VARIAVEIS') return true;
+          errosSemRetry.add(row.execucao_funcionario_base_id);
+          return false;
+        });
+        if (aptos.length) {
+          const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos);
+          for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
+        }
       } else if (tipo === 'ENVIAR_RM') {
         await this.execucaoService.processarEnviarRmBatch(
           execucaoId,
@@ -195,7 +217,9 @@ export class CronService {
       const okIds: number[] = [];
       const errIds: number[] = [];
       for (const r of refreshed) {
-        if (tipo === 'VARIAVEIS') {
+        if (errosSemRetry.has(r.execucao_funcionario_base_id)) {
+          errIds.push(r.execucao_funcionario_base_id);
+        } else if (tipo === 'VARIAVEIS') {
           if (r.status === 'VARIAVEIS_PROCESSADAS') {
             okIds.push(r.execucao_funcionario_base_id);
           } else if (r.status === 'ERRO_VARIAVEIS') {
@@ -235,14 +259,15 @@ export class CronService {
       }
 
       if (errIds.length > 0) {
+        const terminal = Prisma.sql`execucao_funcionario_base_id IN (${Prisma.join([...errosSemRetry, -1])}) OR tentativas + 1 >= ${this.maxAttempts}`;
         await this.prisma.$executeRaw(
           Prisma.sql`
           UPDATE dbo.execucao_queue
           SET
-            status = CASE WHEN tentativas + 1 >= ${this.maxAttempts} THEN 'ERRO' ELSE 'PENDENTE' END,
+            status = CASE WHEN ${terminal} THEN 'ERRO' ELSE 'PENDENTE' END,
             tentativas = tentativas + 1,
             next_run_at = CASE
-              WHEN tentativas + 1 >= ${this.maxAttempts} THEN NULL
+              WHEN ${terminal} THEN NULL
               ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
             END,
             last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
