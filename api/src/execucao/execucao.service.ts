@@ -8,6 +8,7 @@ import {
 import { FormulaService } from 'src/filial/formula/formula.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CalculatorService } from 'src/helpers/calculator/calculator.service';
+import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
@@ -138,15 +139,7 @@ export class ExecucaoService {
   }
 
   private extractCodesFromExpressao(expressao: string): Set<string> {
-    // A expressão usa ":CODIGO" (ex.: "(:VR) + (:VX)"); o CalculatorService remove ":".
-    // Aqui extraímos "VR", "VX", etc.
-    const codes = new Set<string>();
-    const regex = /:([A-Za-z0-9_]+)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(expressao)) !== null) {
-      if (match[1]) codes.add(match[1]);
-    }
-    return codes;
+    return analisarExpressao(expressao).codigos;
   }
 
   private async getContextoVariaveis(execucaoId: number, baseIds?: number[]) {
