@@ -635,14 +635,13 @@ export function ProcessamentoPage() {
                 </div>
               )}
           </section>
-          <section className="vale-table" aria-label="Histórico de processamentos">
+          <section className="vale-table vale-history" aria-label="Histórico de processamentos">
             <h2>Histórico de execuções</h2>
             <DataTable
-              className="table striped-table mb-0"
+              className="table striped-table mb-0 w-100"
               options={{
                 pageLength: 10,
                 order: [[4, "desc"]],
-                scrollX: true,
                 layout: {
                   topStart: "buttons",
                 },
@@ -696,9 +695,8 @@ export function ProcessamentoPage() {
                 ),
                 status: (status: string) =>
                   FunctionsHelper.formatStatusExecucao(status),
-                data_execucao: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateTimePtBr(data)}</span>
-                ),
+                data_execucao: (data: string, type: string, _row: Execucao) =>
+                  type === "display" ? FunctionsHelper.formatDateTimePtBr(data) : data,
               }}
               onSelect={() => syncDataTableButtonsState()}
               onDeselect={() => syncDataTableButtonsState()}

@@ -135,6 +135,15 @@ body {
   min-width: 0;
 }
 
+.vale-history .dt-layout-table {
+  overflow-x: auto;
+}
+
+.vale-history th,
+.vale-history .btn {
+  white-space: nowrap;
+}
+
 .vale-table .dt-buttons {
   display: flex;
   flex-wrap: wrap;
