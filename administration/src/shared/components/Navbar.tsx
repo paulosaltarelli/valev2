@@ -41,6 +41,8 @@ export function Navbar() {
             <button
               type="button"
               className="sidebar-toggle"
+              aria-label="Recolher ou expandir menu"
+              aria-expanded={!state.sidebarActive}
               onClick={handleToggleSidebar}
             >
               {state.sidebarActive ? (
@@ -59,6 +61,8 @@ export function Navbar() {
               onClick={handleToggleMobileMenu}
               type="button"
               className="sidebar-mobile-toggle"
+              aria-label="Abrir menu de navegação"
+              aria-expanded={state.mobileMenu}
             >
               <Icon icon="heroicons:bars-3-solid" className="icon" />
             </button>
@@ -77,10 +81,11 @@ export function Navbar() {
                 className="d-flex justify-content-center align-items-center rounded-circle"
                 type="button"
                 data-bs-toggle="dropdown"
+                aria-label="Abrir menu da conta"
               >
                 <img
                   src={avatar}
-                  alt="image_user"
+                  alt=""
                   className="w-40-px h-40-px object-fit-cover rounded-circle border-1 border-neutral-600"
                 />
               </button>
@@ -96,7 +101,7 @@ export function Navbar() {
                       Vale Expresso
                     </span> */}
                   </div>
-                  <button type="button" className="hover-text-danger">
+                  <button type="button" className="hover-text-danger" aria-label="Fechar menu da conta">
                     <Icon icon="radix-icons:cross-1" className="icon text-xl" />
                   </button>
                 </div>
@@ -140,8 +145,7 @@ export function Navbar() {
                       to="#"
                       onClick={handleLogout}
                     >
-                      <Icon icon="lucide:power" className="icon text-xl" /> Log
-                      Out
+                      <Icon icon="lucide:power" className="icon text-xl" /> Sair
                     </Link>
                   </li>
                 </ul>

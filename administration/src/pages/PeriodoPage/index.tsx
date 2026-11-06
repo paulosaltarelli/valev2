@@ -142,7 +142,7 @@ export function PeriodoPage() {
   const handleDeletePeriodo = async (periodo: Periodo) => {
     console.log(`excluindo periodo: ${periodo.periodo_id}`);
     const result = await Swal.fire({
-      title: "Excluir Período",
+      title: "Excluir Competência",
       text: "Tem certeza que deseja excluir o período?",
       icon: "warning",
       showDenyButton: true,
@@ -198,7 +198,7 @@ export function PeriodoPage() {
                   height={20}
                 />
               </Button>
-              <h1 className="h4 m-0 p-0">Períodos</h1>
+              <h1 className="h4 m-0 p-0">Competências</h1>
             </div>
             <div className="d-flex align-items-center gap-2">
               <Button
@@ -207,7 +207,7 @@ export function PeriodoPage() {
                 onClick={openCreateModal}
               >
                 <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Novo Período</span>
+                <span className="ms-1">Novo Competência</span>
               </Button>
             </div>
           </div>
@@ -290,7 +290,7 @@ export function PeriodoPage() {
       </div>
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
         <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Período</Modal.Title>
+          <Modal.Title>Editar Competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveEditPeriodo} id="editPeriodoForm">
@@ -384,7 +384,7 @@ export function PeriodoPage() {
       </Modal>
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
         <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Cadastrar Período</Modal.Title>
+          <Modal.Title>Cadastrar Competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveCreatePeriodo} id="createPeriodoForm">

@@ -61,7 +61,7 @@ function fixture(concurrency: number, failEmployee?: string) {
       data: [{ RESULTADO: sql === 'PVE.A' ? Number(params.CHAPA) : 0 }],
     };
   }) };
-  const service = new ExecucaoService(prisma as never, {} as never, {} as never, rm as never);
+  const service = new ExecucaoService(prisma as never, {} as never, {} as never, rm as never, {} as never);
   const log = jest.spyOn((service as unknown as { logger: { log(message: string): void } }).logger, 'log').mockImplementation(() => {});
   jest.spyOn(service, 'getExecucaoById').mockResolvedValue(execution as never);
   return { service, bases, prisma, rm, memory, log, peak: () => peak, active: () => active };

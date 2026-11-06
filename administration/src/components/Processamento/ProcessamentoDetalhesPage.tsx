@@ -1,1640 +1,960 @@
-import { Icon } from "@iconify/react";
-import { Button } from "../utils/Button";
-import { Link, useParams } from "react-router";
-import { useState, useEffect, useRef, useCallback } from "react";
-
-import DataTable, { type DataTableRef } from "datatables.net-react";
-import DataTablesCore from "datatables.net-bs5";
-import "datatables.net-responsive-bs5";
-import "datatables.net-bs5";
-// JS do plugin (registra `render.select()` etc.)
-import "datatables.net-select";
-// Wrapper Bootstrap (ajusta classes do checkbox para Bootstrap 5)
-import "datatables.net-select-bs5";
-// JS do Buttons (para ações no header do DataTable)
-import "datatables.net-buttons";
-// Wrapper Bootstrap 5 do Buttons
-import "datatables.net-buttons-bs5";
-import { ExecucaoApi } from "../../utils/api/execucaoApi";
-import type { Execucao } from "../../models/ExecucaoModel";
-import { FunctionsHelper } from "../../utils/functionsHelper";
-import { processamentoTableConfig } from "../../utils/datatables/defaultConfig";
-import Swal from "sweetalert2";
-import "sweetalert2/dist/sweetalert2.min.css";
-import { SwalHelper } from "../../utils/swalHelper";
 import {
-  Alert,
-  Form,
-  Modal,
-  OverlayTrigger,
-  Popover as BootstrapPopover,
-  Table,
-} from "react-bootstrap";
-import { Popover } from "../Popover";
-import { useBlockUi } from "../../app/providers/blockUiContext";
-import type { ExecFuncBase } from "../../models/ExecFuncBaseModel";
-import { Tooltip } from "../Tooltip";
-import type { ExecFunc } from "../../models/ExecFuncModel";
-import { Limited } from "../utils/Limited";
-import { renderToString } from "react-dom/server";
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { Link, useParams, useSearchParams } from "react-router";
+import {
+  OperacaoApi,
+  type Etapa,
+  type OperationRequest,
+  type ResultDetail,
+} from "../../utils/api/operacaoApi";
+import api from "../../utils/api/Api";
+import { ExecucaoApi } from "../../utils/api/execucaoApi";
+import {
+  dateTime,
+  errorMessage,
+  etapaLabel,
+  money,
+  OperationReview,
+  QueryNotice,
+  StageCount,
+  statusLabel,
+  useOperationQuery,
+} from "./OperationCommon";
 
-// o react-hooks/rules-of-hooks confunde esse método com um Hook por ser `.use`
-// eslint-disable-next-line react-hooks/rules-of-hooks
-DataTable.use(DataTablesCore);
-
-type EditResultFunc = ExecFunc & {
-  new_valor_final?: number;
-  motivo_ajuste?: string;
-};
-export function ProcessamentoDetalhesPage() {
-  const { execucaoId } = useParams<{ execucaoId: string }>();
-  const [execucao, setExecucao] = useState<Execucao>({} as Execucao);
-  const execucaoRef = useRef<Execucao | null>(null);
-  const execucaoFilialIdRef = useRef<number>(0);
-  const kmMaxFilialRef = useRef<number>(0);
-  const [viewResultsFuncBase, setViewResultsFuncBase] = useState<ExecFuncBase>(
-    {} as ExecFuncBase,
+function ResultPanel({
+  execucaoId,
+  resultId,
+  onChanged,
+}: {
+  execucaoId: number;
+  resultId: number;
+  onChanged: () => void;
+}) {
+  const fetcher = useCallback(
+    () => OperacaoApi.result(execucaoId, resultId),
+    [execucaoId, resultId],
   );
-  const [editResultFunc, setEditResultFunc] = useState<EditResultFunc>(
-    {} as EditResultFunc,
+  const query = useOperationQuery(fetcher, 0);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [historyOlder, setHistoryOlder] = useState<ResultDetail["historico"]>(
+    [],
   );
-  const [showVerFormulasModal, setShowVerFormulasModal] = useState(false);
-  const [showVerResultadosModal, setShowVerResultadosModal] = useState(false);
-  const [showEditarResultadoModal, setShowEditarResultadoModal] =
-    useState(false);
-  const [showVerVariaveisModal, setShowVerVariaveisModal] = useState(false);
-  const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
-  const [, setSelectedRows] = useState<ExecFuncBase[]>([]);
-  const tableRef = useRef<DataTableRef>(null);
-  const [queueStatus, setQueueStatus] = useState<{
-    hasRunning: boolean;
-    pending: number;
-    processing: number;
-    nextRunAt: string | null;
-  } | null>(null);
-  const [queueItems, setQueueItems] = useState<
-    Array<{
-      queueId: number;
-      execucaoFuncionarioBaseId: number;
-      nomeFuncionario: string;
-      funcionarioIdRm: string;
-      cargo: string;
-      tipo: string;
-      status: string;
-      tentativas: number;
-      nextRunAt: string | null;
-      lockedAt: string | null;
-      createdAt: string;
-      updatedAt: string;
-    }>
-  >([]);
-  const [showQueueDetails, setShowQueueDetails] = useState(false);
-  const [showErrorsModal, setShowErrorsModal] = useState(false);
-  const [errorsRows, setErrorsRows] = useState<
-    Array<{
-      id: string;
-      source: "QUEUE" | "LOG";
-      tipo: string | null;
-      status: string | null;
-      funcionarioIdRm: string | null;
-      nomeFuncionario: string | null;
-      message: string;
-      createdAt: string;
-    }>
-  >([]);
-  const [errorsFilterSource, setErrorsFilterSource] = useState<
-    "ALL" | "QUEUE" | "LOG"
-  >("ALL");
-  const [errorsFilterTipo, setErrorsFilterTipo] = useState<
-    "ALL" | "VARIAVEIS" | "VALORES" | "ENVIAR_RM"
-  >("ALL");
-
-  const buildGestaoKmUrl = useCallback((filialId: number, chapa?: string) => {
-    const params = new URLSearchParams();
-    if (Number(filialId) > 0) params.set("filialId", String(filialId));
-    if (chapa && String(chapa).trim())
-      params.set("chapa", String(chapa).trim());
-    const qs = params.toString();
-    return qs ? `/gestao-km?${qs}` : "/gestao-km";
-  }, []);
-
-  const openGestaoKm = useCallback(
-    (filialId: number, chapa?: string) => {
-      const url = buildGestaoKmUrl(filialId, chapa);
-      window.open(url, "_blank", "noopener");
-    },
-    [buildGestaoKmUrl],
-  );
-
-  const parseKmToNumber = useCallback((value: unknown): number | null => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    // Prisma Decimal às vezes pode vir como objeto com toString/toJSON.
-    // Também tolera valores "stringified".
-    if (typeof value !== "string") {
-      try {
-        const s0 = (value as { toString?: () => string } | null)?.toString?.();
-        if (typeof s0 !== "string") return null;
-        if (s0 === "[object Object]") return null;
-        value = s0;
-      } catch {
-        return null;
-      }
-    }
-    const s = String(value).trim();
-    if (!s) return null;
-    // tolera "5,68", "5.68", "5,68 km"
-    const normalized = s
-      .replace(/km/gi, "")
-      .replace(/\s+/g, "")
-      .replace(",", ".");
-    const n = Number(normalized);
-    return Number.isFinite(n) ? n : null;
-  }, []);
-
-  const missingKmCount = (execucao.execucao_funcionario_base ?? []).filter(
-    (b) => b.km === null || b.km === undefined || b.km === 0,
-  ).length;
-
-  const kmMaxFilial = parseKmToNumber(execucao.filial?.km_max);
-  const kmMaxExceededCount =
-    kmMaxFilial !== null && Number.isFinite(kmMaxFilial) && kmMaxFilial > 0
-      ? (execucao.execucao_funcionario_base ?? []).filter((b) => {
-          const kmNumber = parseKmToNumber(b.km);
-          return (
-            kmNumber !== null &&
-            Number.isFinite(kmNumber) &&
-            kmNumber > kmMaxFilial
-          );
-        }).length
-      : 0;
-
-  const updateKmMaxFilialRefFromExecucao = useCallback(
-    (e: Execucao) => {
-      const km = parseKmToNumber(e?.filial?.km_max);
-      kmMaxFilialRef.current =
-        km !== null && Number.isFinite(km) && km > 0 ? km : 0;
-    },
-    [parseKmToNumber],
-  );
-
-  // Evita callback "stale" preso no DataTables (slots/renderers podem cachear closures do 1º render)
   useEffect(() => {
-    kmMaxFilialRef.current =
-      kmMaxFilial !== null && Number.isFinite(kmMaxFilial) ? kmMaxFilial : 0;
-  }, [kmMaxFilial]);
-
-  // type ExecFuncBaseTableRow = ExecFuncBase & { km_sort: number | null };
-  // const funcionariosTableData = useMemo<ExecFuncBaseTableRow[]>(() => {
-  //     return (execucao.execucao_funcionario_base ?? []).map((row) => ({
-  //       ...(row as ExecFuncBase),
-  //       km_sort: parseKmToNumber(row.km),
-  //     }));
-  //   }, [execucao.execucao_funcionario_base, parseKmToNumber]);
-
-  const [kmMaxFilterActive, setKmMaxFilterActive] = useState<boolean>(false);
-  type DtSearchFn = (
-    settings: unknown,
-    data: unknown,
-    dataIndex: number,
-  ) => boolean;
-  const kmMaxFilterFnRef = useRef<DtSearchFn | null>(null);
-
-  useEffect(() => {
-    // Cleanup: remove filtro global se estiver registrado
-    return () => {
-      if (kmMaxFilterFnRef.current) {
-        const fn = kmMaxFilterFnRef.current;
-        const core = DataTablesCore as unknown as {
-          ext?: { search?: DtSearchFn[] };
-        };
-        const current = Array.isArray(core.ext?.search)
-          ? core.ext!.search!
-          : [];
-        if (!core.ext) core.ext = {};
-        core.ext.search = current.filter((x) => x !== fn);
-        kmMaxFilterFnRef.current = null;
-      }
-    };
-  }, []);
-
-  const toggleKmMaxFilter = useCallback(() => {
-    const api = tableRef.current?.dt();
-    if (!api) return;
-
-    const tableNode = api.table().node();
-
-    if (!kmMaxFilterActive) {
-      const kmMax = parseKmToNumber(execucao.filial?.km_max);
-      const fn: DtSearchFn = (settings, _data, dataIndex) => {
-        try {
-          const s = settings as {
-            nTable?: unknown;
-            aoData?: Array<{ _aData?: unknown }>;
-          };
-          // garante que filtra só esta tabela
-          if (s?.nTable !== tableNode) return true;
-          const rowDataRaw = s?.aoData?.[dataIndex]?._aData as unknown;
-          const rowData = rowDataRaw as ExecFuncBase | undefined;
-          if (!rowData) return true;
-          const anyRow = rowData as unknown as {
-            km_sort?: unknown;
-            km?: unknown;
-          };
-          const kmSort =
-            typeof anyRow.km_sort === "number" &&
-            Number.isFinite(anyRow.km_sort)
-              ? anyRow.km_sort
-              : null;
-          const kmNumber = kmSort ?? parseKmToNumber(anyRow.km);
-          if (kmNumber === null || !Number.isFinite(kmNumber)) return false;
-          if (kmMax === null || !Number.isFinite(kmMax) || kmMax <= 0)
-            return false;
-          return kmNumber > kmMax;
-        } catch {
-          return true;
-        }
-      };
-
-      const core = DataTablesCore as unknown as {
-        ext?: { search?: DtSearchFn[] };
-      };
-      if (!core.ext) core.ext = {};
-      const arr = Array.isArray(core.ext.search) ? core.ext.search : [];
-      arr.push(fn);
-      core.ext.search = arr;
-      kmMaxFilterFnRef.current = fn;
-      setKmMaxFilterActive(true);
-      api.draw();
-      return;
-    }
-
-    // desativar
-    if (kmMaxFilterFnRef.current) {
-      const fn = kmMaxFilterFnRef.current;
-      const core = DataTablesCore as unknown as {
-        ext?: { search?: DtSearchFn[] };
-      };
-      const current = Array.isArray(core.ext?.search) ? core.ext!.search! : [];
-      if (!core.ext) core.ext = {};
-      core.ext.search = current.filter((x) => x !== fn);
-      kmMaxFilterFnRef.current = null;
-    }
-    setKmMaxFilterActive(false);
-    api.draw();
-  }, [execucao.filial?.km_max, kmMaxFilterActive, parseKmToNumber]);
-
-  // Evita callback "stale" preso no DataTables (ex.: filial_id ainda 0 no primeiro render)
-  const execucaoFilialId = execucao?.filial_id;
-  useEffect(() => {
-    const fid = Number(execucaoFilialId);
-    execucaoFilialIdRef.current = Number.isFinite(fid) ? fid : 0;
-  }, [execucaoFilialId]);
-
-  const syncDataTableButtonsState = useCallback(() => {
-    const api = tableRef.current?.dt();
-    if (!api) return;
-
-    const selectedRows = api
-      .rows({ selected: true })
-      .data()
-      .toArray() as ExecFuncBase[];
-
-    const currentStatus = execucaoRef.current?.status;
-    const canRun =
-      Boolean(currentStatus) && currentStatus !== "EM_PROCESSAMENTO";
-    const hasSelection = selectedRows.length > 0;
-    const allReadyToSendRm =
-      hasSelection &&
-      selectedRows.every(
-        (r) =>
-          r.status === "RESULTADOS_PROCESSADOS" ||
-          r.status === "ENVIADO_RM" ||
-          r.status === "ERRO_RM",
-      );
-
-    api.button(".dt-btn-processar-valores").enable(canRun && hasSelection);
-    api.button(".dt-btn-processar-variaveis").enable(canRun && hasSelection);
-    api
-      .button(".dt-btn-enviar-rm")
-      .enable(canRun && hasSelection && allReadyToSendRm);
-  }, []);
-
-  const atualizaTabelaFuncionarios =
-    useCallback(async (): Promise<Execucao> => {
-      const execucaoAtualizada = await ExecucaoApi.getById(Number(execucaoId));
-      console.log("execucaoAtualizada", execucaoAtualizada);
-      changeAllKmToNumber(execucaoAtualizada);
-      updateKmMaxFilialRefFromExecucao(execucaoAtualizada);
-      setExecucao(execucaoAtualizada);
-      // garante que os botões do DT reflitam o status novo (ex.: EM_PROCESSAMENTO)
-      setTimeout(() => syncDataTableButtonsState(), 0);
-      return execucaoAtualizada;
-    }, [
-      execucaoId,
-      syncDataTableButtonsState,
-      updateKmMaxFilialRefFromExecucao,
-    ]);
-
-  useEffect(() => {
-    ExecucaoApi.getById(Number(execucaoId)).then((execucao: Execucao) => {
-      changeAllKmToNumber(execucao);
-      updateKmMaxFilialRefFromExecucao(execucao);
-      setExecucao(execucao);
-    });
-  }, [execucaoId, updateKmMaxFilialRefFromExecucao]);
-
-  // Mantém o status mais recente em ref (evita callback "stale" preso no DataTables)
-  useEffect(() => {
-    execucaoRef.current = execucao;
-  }, [execucao]);
-
-  const fetchQueueStatus = useCallback(async () => {
-    if (!execucaoId) return;
-    const status = await ExecucaoApi.getQueueStatus(Number(execucaoId));
-    setQueueStatus(status);
-    if (
-      !status.hasRunning &&
-      execucaoRef.current?.status === "EM_PROCESSAMENTO"
-    ) {
-      void atualizaTabelaFuncionarios();
-    }
-  }, [execucaoId, atualizaTabelaFuncionarios]);
-
-  const fetchQueueItems = useCallback(async () => {
-    if (!execucaoId) return;
-    const items = await ExecucaoApi.getQueueItems(Number(execucaoId));
-    setQueueItems(items);
-  }, [execucaoId]);
-
-  const fetchErrors = useCallback(async () => {
-    if (!execucaoId) return;
-    const rows = await ExecucaoApi.getErrors(Number(execucaoId));
-    setErrorsRows(rows);
-  }, [execucaoId]);
-
-  // Polling leve (20s) para status da fila enquanto houver processamento
-  useEffect(() => {
-    if (!execucaoId) return;
-    if (execucao.status !== "EM_PROCESSAMENTO") return;
-
-    void fetchQueueStatus();
-    if (showQueueDetails) {
-      void fetchQueueItems();
-    }
-    const interval = setInterval(() => {
-      void fetchQueueStatus();
-      if (showQueueDetails) {
-        void fetchQueueItems();
-      }
-    }, 20000);
-
-    return () => clearInterval(interval);
-  }, [
-    execucao.status,
-    execucaoId,
-    showQueueDetails,
-    fetchQueueStatus,
-    fetchQueueItems,
-  ]);
-
-  useEffect(() => {
-    if (!showQueueDetails) return;
-    void fetchQueueItems();
-  }, [showQueueDetails, fetchQueueItems]);
-
-  // Sempre que o status mudar, sincroniza os botões do DataTable
-  useEffect(() => {
-    syncDataTableButtonsState();
-  }, [execucao.status, syncDataTableButtonsState]);
-
-  const changeAllKmToNumber = (execucao: Execucao) => {
-    execucao.execucao_funcionario_base?.forEach((b) => {
-      b.km = Number(b.km) || 0;
-    });
+    setEditing(false);
+    setNotice("");
+    setHistoryOlder([]);
+  }, [resultId]);
+  const changed = () => {
+    query.refresh();
+    onChanged();
   };
-
-  const getKmMax = useCallback(() => kmMaxFilialRef.current, []);
-
-  //Handlers
-  const handleProcessarValores = async () => {
-    console.log("Processar Todos");
-    const confirm = await Swal.fire({
-      title: "Processar todos?",
-      text: "Esta ação irá calcular todos os valores de todos os funcionários do processamento.",
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "Sim, processar todos",
-      confirmButtonColor: "#28a745",
-      cancelButtonText: "Cancelar",
-      cancelButtonColor: "#dc3545",
-    });
-
+  const review = async () => {
+    const r = query.data;
+    if (!r) return;
+    setBusy(true);
+    setNotice("");
     try {
-      if (confirm.isConfirmed) {
-        if (execucao.status === "EM_PROCESSAMENTO") {
-          SwalHelper.errorToast("Já existe um processamento em andamento.");
-          return;
-        }
-
-        const allRows = execucao.execucao_funcionario_base ?? [];
-        // exige que todos tenham variáveis processadas (senão valores vão falhar)
-        const hasPrevia = allRows.some(
-          (r) => r.status === "PREVIA" || !r.status,
-        );
-        if (hasPrevia) {
-          SwalHelper.errorToast(
-            "Primeiro é necessário processar as variáveis de todos os funcionários.",
-          );
-          return;
-        }
-
-        const response = await ExecucaoApi.enqueueValoresTodos(
-          Number(execucaoId),
-          allRows.map((r) => r.execucao_funcionario_base_id),
-        );
-        if (response.status) {
-          SwalHelper.successToast(response.message);
-          void atualizaTabelaFuncionarios();
-        } else {
-          Swal.fire(response.message, "error");
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      Swal.fire("Erro ao processar valores", "", "error");
+      await OperacaoApi.review(execucaoId, resultId, r.revisao);
+      setNotice("Conferência registrada para a versão atual.");
+      changed();
+    } catch (e) {
+      setNotice(errorMessage(e));
     } finally {
-      blockUiHide();
+      setBusy(false);
     }
   };
-  const handleVerFormulas = () => {
-    console.log("Ver Formulas");
-    setShowVerFormulasModal(true);
-  };
-
-  const handleProcessarVariaveis = async () => {
-    try {
-      if (execucao.status === "EM_PROCESSAMENTO") {
-        SwalHelper.errorToast("Já existe um processamento em andamento.");
-        return;
-      }
-      blockUiShow("Processando variáveis");
-
-      const allRows = execucao.execucao_funcionario_base ?? [];
-      const response = await ExecucaoApi.enqueueVariaveisTodos(
-        Number(execucaoId),
-        allRows.map((r) => r.execucao_funcionario_base_id),
-      );
-
-      if (response.status) {
-        SwalHelper.successToast(response.message);
-        void atualizaTabelaFuncionarios();
-      } else {
-        Swal.fire(response.message, "error");
-      }
-    } catch (err) {
-      console.error(err);
-      Swal.fire("Erro ao processar variáveis", "", "error");
-    } finally {
-      blockUiHide();
-    }
-  };
-
-  const handleVisualizarResultados = (row: ExecFuncBase) => {
-    console.log("Visualizar Resultados", row);
-    setViewResultsFuncBase(row);
-    setShowVerResultadosModal(true);
-  };
-  const handleEditarResultado = (execFunc: ExecFunc) => {
-    console.log("Editar Resultado", execFunc);
-    setEditResultFunc(execFunc);
-    setShowVerResultadosModal(false);
-    setShowEditarResultadoModal(true);
-  };
-
-  const handleCloseEditarResultadoModal = () => {
-    setShowEditarResultadoModal(false);
-    setShowVerResultadosModal(true);
-  };
-
-  const handleSaveEditarResultado = async (
-    e: React.FormEvent<HTMLFormElement>,
-  ) => {
+  const adjust = async (e: FormEvent) => {
     e.preventDefault();
-
-    blockUiShow("Salvando resultado");
-    const response = await ExecucaoApi.editarResultado(
-      Number(execucaoId),
-      editResultFunc.execucao_funcionario_id,
-      editResultFunc,
-    );
-    if (response.status) {
-      SwalHelper.successToast(response.message);
-      const execucaoAtualizada = await atualizaTabelaFuncionarios();
-      const funcBaseAtualizado =
-        execucaoAtualizada.execucao_funcionario_base?.find(
-          (f) =>
-            f.execucao_funcionario_base_id ===
-            viewResultsFuncBase.execucao_funcionario_base_id,
-        );
-      if (funcBaseAtualizado) {
-        setViewResultsFuncBase(funcBaseAtualizado);
-      }
-      handleCloseEditarResultadoModal();
-    } else {
-      Swal.fire(response.message, "error");
-    }
-    blockUiHide();
-  };
-  const handleVisualizarVariaveis = (row: ExecFuncBase) => {
-    console.log("Visualizar Variaveis", row);
-    setViewResultsFuncBase(row);
-    setShowVerVariaveisModal(true);
-  };
-  const handleSelectFuncionarios = () => {
-    const api = tableRef.current?.dt();
-    if (!api) return;
-
-    const rows = api
-      .rows({ selected: true })
-      .data()
-      .toArray() as ExecFuncBase[];
-    setSelectedRows(rows);
-
-    console.log("Selected Rows", rows);
-
-    syncDataTableButtonsState();
-  };
-  const handleProcessarValoresSelecionados = async (rows: ExecFuncBase[]) => {
-    //passa por rows e verifica se algum é PREVIA
-    const isPrevio = rows.some((row) => row.status === "PREVIA");
-    if (isPrevio) {
-      SwalHelper.errorToast(
-        "Primeiro é necessário processar as variáveis de todos os funcionários selecionados.",
-      );
-      return;
-    }
-
-    const confirm = await SwalHelper.confirm(
-      "Processar Valores?",
-      "Esta ação irá calcular os valores de todos os funcionários selecionados. Se algum funcionário já tiver valores processados, eles serão sobrescritos.",
-      "question",
-      "Sim, processar valores",
-      "Não, cancelar",
-    );
-    if (!confirm.isConfirmed) return;
-
+    const r = query.data;
+    if (!r) return;
+    setBusy(true);
+    setNotice("");
     try {
-      if (execucao.status === "EM_PROCESSAMENTO") {
-        SwalHelper.errorToast("Já existe um processamento em andamento.");
-        return;
-      }
-      const response = await ExecucaoApi.processarValoresSelecionados(
-        Number(execucaoId),
-        rows.map((r) => r.execucao_funcionario_base_id),
+      await OperacaoApi.adjust(
+        execucaoId,
+        resultId,
+        r.revisao,
+        Number(value),
+        reason,
       );
-      if (response.status) {
-        SwalHelper.successToast(response.message);
-        void atualizaTabelaFuncionarios();
-      } else {
-        Swal.fire(response.message, "error");
-      }
+      setEditing(false);
+      setNotice("Ajuste registrado. A nova versão precisa de conferência.");
+      changed();
     } catch (error) {
-      console.error(error);
-      Swal.fire("Erro ao processar valores", "", "error");
+      setNotice(errorMessage(error));
+    } finally {
+      setBusy(false);
     }
   };
-
-  const handleEnviarRmSelecionados = async (rows: ExecFuncBase[]) => {
-    const current = execucaoRef.current;
-    const hasInvalid = rows.some(
-      (r) =>
-        r.status !== "RESULTADOS_PROCESSADOS" &&
-        r.status !== "ENVIADO_RM" &&
-        r.status !== "ERRO_RM",
-    );
-    if (hasInvalid) {
-      SwalHelper.errorToast(
-        "Selecione funcionários com valores calculados, já enviados ou com erro de envio.",
-      );
-      return;
-    }
-
-    const confirm = await SwalHelper.confirm(
-      "Enviar para o RM?",
-      `${current?.filial?.nome ?? "Filial"} · ${current?.periodo?.competencia ?? "Competência"} — ${rows.length} funcionário(s) selecionado(s), incluindo ${rows.filter((row) => row.status === "ENVIADO_RM").length} já enviado(s).`,
-      "question",
-      "Sim, enviar",
-      "Não, cancelar",
-    );
-    if (!confirm.isConfirmed) return;
-
+  const older = async () => {
+    const all = [...(query.data?.historico ?? []), ...historyOlder];
+    if (!all.length) return;
+    setBusy(true);
     try {
-      if (execucaoRef.current?.status === "EM_PROCESSAMENTO") {
-        SwalHelper.errorToast("Já existe um processamento em andamento.");
-        return;
-      }
-      const response = await ExecucaoApi.enqueueEnviarRmBatch(
-        Number(execucaoId),
-        rows.map((r) => r.execucao_funcionario_base_id),
-      );
-      if (response.status) {
-        SwalHelper.successToast(response.message);
-        void atualizaTabelaFuncionarios();
-      } else {
-        Swal.fire(response.message, "error");
-      }
-    } catch (error) {
-      console.error(error);
-      Swal.fire("Erro ao enviar para o RM", "", "error");
+      const rows = (await api.get(
+        `/operacao/${execucaoId}/resultado/${resultId}/historico?antes=${all[all.length - 1].id}`,
+      )) as Array<
+        Omit<ResultDetail["historico"][number], "detalhe"> & { detalhe: string }
+      >;
+      setHistoryOlder((prev) => [
+        ...prev,
+        ...rows.map((h) => ({
+          ...h,
+          detalhe: JSON.parse(h.detalhe) as Record<string, unknown>,
+        })),
+      ]);
+      if (!rows.length) setNotice("Fim do histórico.");
+    } catch (e) {
+      setNotice(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
-
-  const handleEnviarRmTodos = async () => {
-    const eligibleRows = (execucao.execucao_funcionario_base ?? []).filter(
-      (row) => row.status === "RESULTADOS_PROCESSADOS" || row.status === "ENVIADO_RM" || row.status === "ERRO_RM",
-    );
-    if (!eligibleRows.length) return;
-    const alreadySent = eligibleRows.filter((row) => row.status === "ENVIADO_RM").length;
-    const confirm = await SwalHelper.confirm(
-      "Confirmar envio ao RM",
-      `${execucao.filial?.nome ?? "Filial"} · ${execucao.periodo?.competencia ?? "Competência"} — ${eligibleRows.length} funcionário(s), incluindo ${alreadySent} já enviado(s).`,
-      "question",
-      "Enviar ao RM",
-      "Cancelar",
-    );
-    if (!confirm.isConfirmed) return;
-
-    try {
-      if (execucaoRef.current?.status === "EM_PROCESSAMENTO") {
-        SwalHelper.errorToast("Já existe um processamento em andamento.");
-        return;
-      }
-      const response = await ExecucaoApi.enqueueEnviarRmBatch(
-        Number(execucaoId),
-        eligibleRows.map((row) => row.execucao_funcionario_base_id),
-      );
-      if (response.status) {
-        SwalHelper.successToast(response.message);
-        void atualizaTabelaFuncionarios();
-      } else {
-        Swal.fire(response.message, "error");
-      }
-    } catch (error) {
-      console.error(error);
-      Swal.fire("Erro ao enviar para o RM", "", "error");
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (query.data) {
+      panelRef.current?.focus({ preventScroll: true });
+      panelRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
     }
-  };
-  const handleProcessarVariaveisSelecionados = async (rows: ExecFuncBase[]) => {
-    const confirm = await SwalHelper.confirm(
-      "Processar Variaveis?",
-      "Esta ação irá calcular as variáveis de todos os funcionários selecionados. Se algum funcionário já tiver variáveis processadas, elas serão sobrescritas.",
-      "question",
-      "Sim, processar variaveis",
-      "Não, cancelar",
+  }, [resultId, query.data?.execucao_funcionario_id]);
+  const r = query.data;
+  const f = r?.formulaUtilizada ?? r?.formula;
+  const valid =
+    r &&
+    ["PROCESSADO", "ENVIADO_RM"].includes(r.status) &&
+    ["RESULTADOS_PROCESSADOS", "ENVIADO_RM", "ERRO_RM"].includes(
+      r.execucao_funcionario_base.status,
     );
-    if (!confirm.isConfirmed) return;
-
-    try {
-      if (execucao.status === "EM_PROCESSAMENTO") {
-        SwalHelper.errorToast("Já existe um processamento em andamento.");
-        return;
-      }
-      const response = await ExecucaoApi.processarVariaveisSelecionados(
-        Number(execucaoId),
-        rows.map((r) => r.execucao_funcionario_base_id),
-      );
-      if (response.status) {
-        SwalHelper.successToast(response.message);
-        void atualizaTabelaFuncionarios();
-      } else {
-        Swal.fire(response.message, "error");
-      }
-    } catch (error) {
-      console.error(error);
-      Swal.fire("Erro ao processar variáveis", "", "error");
-    }
-  };
-  const uniqueMemorias = (() => {
-    const seen = new Set<string>();
-    const memorias =
-      viewResultsFuncBase.execucao_funcionario?.flatMap(
-        (execFunc) => execFunc.memoria_calculo ?? [],
-      ) ?? [];
-    return memorias.filter((memoria) => {
-      const codigo = String(memoria.variavel_codigo ?? "");
-      if (!codigo || seen.has(codigo)) {
-        return false;
-      }
-      seen.add(codigo);
-      return true;
-    });
-  })();
-  const employees = execucao.execucao_funcionario_base ?? [];
-  const pendingVariables = employees.filter((row) => !row.status || row.status === "PREVIA" || row.status === "ERRO_VARIAVEIS").length;
-  const readyForRm = employees.filter((row) => row.status === "RESULTADOS_PROCESSADOS" || row.status === "ERRO_RM").length;
-  const sentToRm = employees.filter((row) => row.status === "ENVIADO_RM").length;
-  const running = execucao.status === "EM_PROCESSAMENTO";
-  const nextAction = pendingVariables ? "variables" : readyForRm ? "send" : sentToRm < employees.length ? "values" : null;
-  const hasUnprocessed = employees.some((row) => !row.status || row.status === "PREVIA");
-
   return (
-    <div className="card card-body vale-workspace">
-      <nav aria-label="Localização">
-        <Link to="/processamento" className="vale-back-link">
-          <Icon icon="mdi:arrow-left" aria-hidden="true" />
-          Voltar a Processamentos
-        </Link>
-      </nav>
-      <header className="vale-page-header">
-        <div>
-          <h1>{execucao.filial?.nome ?? "Processamento"}</h1>
+    <section
+      ref={panelRef}
+      tabIndex={-1}
+      className="op-result"
+      aria-label="Resultado selecionado"
+      aria-busy={query.loading}
+    >
+      <QueryNotice {...query} />
+      {notice && (
+        <div className="op-notice" role="status">
+          {notice}
+        </div>
+      )}
+      {r && (
+        <>
+          <header>
+            <p className="op-eyebrow">
+              Resultado #{resultId} · versão {r.revisao}
+            </p>
+            <h2>{r.execucao_funcionario_base.nome_funcionario}</h2>
+            <p>
+              {r.execucao_funcionario_base.funcionario_id_rm} · {f?.nome}
+            </p>
+          </header>
+          <div className="op-result-status">
+            <span
+              className={`op-status op-${r.conferido_revisao === r.revisao ? "success" : "warning"}`}
+            >
+              {r.conferido_revisao === r.revisao
+                ? "Versão conferida"
+                : "Conferência pendente"}
+            </span>
+            <span className="op-status op-neutral">
+              {r.enviado_revisao === r.revisao && r.status === "ENVIADO_RM"
+                ? "Versão enviada"
+                : r.enviado_revisao
+                  ? "Alterado após envio"
+                  : "Envio pendente"}
+            </span>
+          </div>
+          {r.enviado_revisao && r.enviado_revisao !== r.revisao && (
+            <div className="op-notice op-warning">
+              O RM recebeu a versão {r.enviado_revisao}. A versão atual é{" "}
+              {r.revisao}; confira e revise a atualização antes do próximo
+              envio.
+            </div>
+          )}
+          <div className="op-value-pair">
+            <div>
+              Valor calculado<strong>{money(r.valor_calculado)}</strong>
+            </div>
+            <div>
+              Valor final<strong>{money(r.valor_final)}</strong>
+              <small>
+                {r.ajuste_manual ? "Com ajuste manual" : "Sem ajuste manual"}
+              </small>
+            </div>
+          </div>
+          <h3>Regra e memória deste resultado</h3>
           <p>
-            {execucao.periodo?.competencia && <>Competência {execucao.periodo.competencia} · </>}
-            {execucao.status ? FunctionsHelper.formatStatusExecucao(execucao.status) : "Carregando execução…"}
+            Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+            fórmula v{f?.versao ?? "—"}
+          </p>
+          {(!r.formulaUtilizada ||
+            r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
+            <p className="op-notice op-warning">
+              Resultado legado: a fórmula histórica não foi armazenada. A regra
+              exibida é a configuração atual; verifique-a antes de registrar a
+              conferência.
+            </p>
+          )}
+          <pre className="op-formula">
+            {f?.expressao || "Expressão indisponível"}
+          </pre>
+          <div className="op-scroll">
+            <table className="op-table">
+              <caption className="visually-hidden">
+                Entradas da fórmula deste resultado
+              </caption>
+              <thead>
+                <tr>
+                  <th>Variável</th>
+                  <th>Valor</th>
+                  <th>Origem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.memoria_calculo.map((m) => (
+                  <tr key={m.memoria_id}>
+                    <th scope="row">
+                      {m.variavel_nome}
+                      <small>{m.variavel_codigo}</small>
+                    </th>
+                    <td>
+                      {Number(m.valor).toLocaleString("pt-BR", {
+                        maximumFractionDigits: 4,
+                      })}
+                    </td>
+                    <td>
+                      {m.origem}
+                      <details>
+                        <summary>Ver origem e data</summary>
+                        <p>{m.detalhe || "Sem detalhe adicional"}</p>
+                        <small>{dateTime(m.data_registro)}</small>
+                      </details>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!r.memoria_calculo.length && (
+              <p className="op-notice">
+                Não há entradas armazenadas para este resultado. Confira a regra
+                e a origem antes de prosseguir.
+              </p>
+            )}
+          </div>
+          <div className="op-actions">
+            <button
+              className="btn btn-primary"
+              disabled={
+                busy ||
+                !valid ||
+                Boolean(query.error) ||
+                r.conferido_revisao === r.revisao
+              }
+              onClick={() => void review()}
+            >
+              {busy
+                ? "Salvando…"
+                : r.conferido_revisao === r.revisao
+                  ? "Conferência registrada"
+                  : "Registrar conferência desta versão"}
+            </button>
+            <button
+              className="btn btn-outline-secondary"
+              disabled={busy || !valid || Boolean(query.error)}
+              onClick={() => {
+                setValue(String(r.valor_final ?? ""));
+                setReason("");
+                setEditing(!editing);
+              }}
+            >
+              Ajustar valor
+            </button>
+            <button
+              className="btn btn-link"
+              disabled={busy || editing}
+              onClick={query.refresh}
+            >
+              Atualizar resultado
+            </button>
+          </div>
+          {editing && (
+            <form className="op-adjust" onSubmit={(e) => void adjust(e)}>
+              <h3>Ajustar valor final</h3>
+              <p>
+                Calculado: {money(r.valor_calculado)} · atual:{" "}
+                {money(r.valor_final)}. O ajuste invalida a conferência
+                anterior.
+              </p>
+              <label>
+                Novo valor final
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                />
+              </label>
+              <label>
+                Motivo do ajuste
+                <textarea
+                  required
+                  minLength={5}
+                  maxLength={255}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </label>
+              <div className="op-actions">
+                <button className="btn btn-primary" disabled={busy}>
+                  Salvar ajuste
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  disabled={busy}
+                  onClick={() => setEditing(false)}
+                >
+                  Cancelar ajuste
+                </button>
+              </div>
+            </form>
+          )}
+          <h3>Histórico e confirmações do RM</h3>
+          {r.metadados_rm_id && (
+            <p>
+              Identificador no RM: <strong>{r.metadados_rm_id}</strong>
+              {!r.historico.some((h) => h.tipo === "ENVIO_RM") &&
+                " · registro legado, sem recibo detalhado armazenado nesta versão do sistema."}
+            </p>
+          )}
+          {[...r.historico, ...historyOlder].map((h) => (
+            <details className="op-history-item" key={h.id}>
+              <summary>
+                {{
+                  CALCULO: "Cálculo",
+                  CONFERENCIA: "Conferência",
+                  AJUSTE: "Ajuste",
+                  ENVIO_RM: "Confirmado pelo RM",
+                  ERRO_RM: "Falha no RM",
+                }[h.tipo] ?? h.tipo}{" "}
+                · v{h.revisao} · {dateTime(h.registrado_em)}
+                {h.usuario_id ? ` · usuário #${h.usuario_id}` : ""}
+              </summary>
+              {h.tipo === "ENVIO_RM" ? (
+                <p>
+                  Confirmação no RM:{" "}
+                  <strong>{String(h.detalhe.metadadosRmId)}</strong>
+                </p>
+              ) : null}
+              {h.tipo === "AJUSTE" && (
+                <p>
+                  {String(h.detalhe.motivo ?? "")} · {money(h.detalhe.anterior)}{" "}
+                  → {money(h.detalhe.novo)}
+                </p>
+              )}
+              {h.tipo === "ENVIO_RM" && Boolean(h.detalhe.record) && (
+                <p>
+                  Evento{" "}
+                  {String(
+                    (h.detalhe.record as Record<string, unknown>).CODEVENTO,
+                  )}{" "}
+                  · {money((h.detalhe.record as Record<string, unknown>).VALOR)}
+                </p>
+              )}
+              <details>
+                <summary>Dados completos do registro</summary>
+                <pre>{JSON.stringify(h.detalhe, null, 2)}</pre>
+              </details>
+            </details>
+          ))}
+          {!r.historico.length && (
+            <p className="op-muted">
+              Nenhum evento detalhado registrado. Os eventos passam a ser
+              guardados a partir desta atualização.
+            </p>
+          )}
+          {r.historico.length >= 100 && (
+            <button
+              className="btn btn-link"
+              disabled={busy}
+              onClick={() => void older()}
+            >
+              Carregar histórico anterior
+            </button>
+          )}
+          {r.ajuste_manual_fk.length > 0 && (
+            <details>
+              <summary>Ajustes registrados anteriormente</summary>
+              {r.ajuste_manual_fk.map((a) => (
+                <div key={a.ajuste_id}>
+                  <p>
+                    {dateTime(a.data_ajuste)} · {a.usuario.nome} ·{" "}
+                    {money(a.valor_anterior)} → {money(a.valor_novo)}
+                  </p>
+                  <p>{a.motivo}</p>
+                </div>
+              ))}
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function ProcessamentoDetalhesPage() {
+  const id = Number(useParams().execucaoId);
+  const [params, setParams] = useSearchParams();
+  const tabs = [
+    ["acompanhamento", "Acompanhamento"],
+    ["pendencias", "Pendências"],
+    ["conferencia", "Conferência"],
+    ["envios", "Envio ao RM"],
+    ["historico", "Histórico"],
+  ];
+  const tab = tabs.some(([key]) => key === params.get("aba"))
+    ? params.get("aba")!
+    : "acompanhamento";
+  const page = Math.max(1, Number(params.get("pagina")) || 1);
+  const search = params.get("busca") ?? "";
+  const filter = params.get("filtro") ?? "todos";
+  const resultId = Number(params.get("resultado")) || 0;
+  const fetcher = useCallback(
+    () => OperacaoApi.detail(id, page, search, filter),
+    [id, page, search, filter],
+  );
+  const query = useOperationQuery(fetcher);
+  const summaryFetcher = useCallback(
+    () =>
+      OperacaoApi.summary(query.data?.execucao.periodo.periodo_id.toString()),
+    [query.data?.execucao.periodo.periodo_id],
+  );
+  const summary = useOperationQuery(summaryFetcher, 20000);
+  const row = summary.data?.rows.find((r) => r.id === id);
+  const errorsFetcher = useCallback(() => ExecucaoApi.getErrors(id), [id]);
+  const errors = useOperationQuery(errorsFetcher, 60000);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [selecting, setSelecting] = useState(false);
+  const [request, setRequest] = useState<OperationRequest | null>(null);
+  const [notice, setNotice] = useState("");
+  const [searchDraft, setSearchDraft] = useState(search);
+  const [recalculate, setRecalculate] = useState(false);
+  useEffect(() => {
+    setSelected([]);
+    setSelecting(false);
+    setRequest(null);
+    setRecalculate(false);
+  }, [id, page, search, filter]);
+  const setContext = (
+    entries: Record<string, string>,
+    resetSelection = true,
+  ) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(entries))
+      v ? next.set(k, v) : next.delete(k);
+    setParams(next);
+    if (resetSelection) {
+      setSelected([]);
+      setSelecting(false);
+    }
+  };
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+  useEffect(() => {
+    if (query.data)
+      document.title = `${query.data.execucao.filial.nome} · ${query.data.execucao.periodo.competencia} | Vale Expresso`;
+  }, [query.data]);
+  const exec = query.data?.execucao;
+  const rawReturn = params.get("retorno");
+  const returnTo = rawReturn?.startsWith("/processamento?")
+    ? rawReturn
+    : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;
+  const review = (etapa: Etapa) =>
+    setRequest({
+      etapa,
+      execucaoIds: [id],
+      ...(selecting ? { baseIds: selected } : {}),
+      recalcular: etapa !== "ENVIAR_RM" && recalculate,
+    });
+  const refresh = () => {
+    query.refresh();
+    summary.refresh();
+  };
+  const commandDisabled =
+    query.loading ||
+    Boolean(query.error) ||
+    Boolean(summary.error) ||
+    (selecting && !selected.length);
+  return (
+    <div className="op-page">
+      <Link className="op-back" to={returnTo}>
+        ← Voltar à operação
+      </Link>
+      <header className="op-page-head">
+        <div>
+          <p className="op-eyebrow">Execução #{id}</p>
+          <h1>{exec?.filial.nome ?? "Detalhe da execução"}</h1>
+          <p>
+            {exec
+              ? `Competência ${exec.periodo.competencia} · criada em ${dateTime(exec.data_execucao)}`
+              : "Carregando identificação…"}
           </p>
         </div>
-        <div className="d-flex flex-wrap gap-2">
-          <Button variant="outline-secondary" onClick={handleVerFormulas}>Ver fórmulas</Button>
-          <Button variant="outline-secondary" onClick={() => {
-            setShowErrorsModal(true);
-            void fetchErrors();
-          }}>Ver falhas</Button>
-        </div>
+        <button
+          className="btn btn-outline-secondary"
+          onClick={refresh}
+          disabled={query.loading}
+        >
+          Atualizar
+        </button>
       </header>
-      <div className="vale-queue">
-        <div className="vale-page-header">
-          <div>
-            <h2>Etapas da execução</h2>
-            <p>As ações abaixo se aplicam à filial e à competência desta execução.</p>
-          </div>
-        </div>
-        <ol className="vale-steps">
-          <li>
-            <h3>1. Variáveis</h3>
-            <p>{pendingVariables} pendentes ou com erro</p>
-            <Button variant={nextAction === "variables" ? "primary" : "outline-primary"} disabled={running || !employees.length || !execucao.status} onClick={handleProcessarVariaveis}>
-              Calcular variáveis
-            </Button>
-          </li>
-          <li>
-            <h3>2. Valores</h3>
-            <p>{hasUnprocessed ? "Aguarda cálculo das variáveis" : "Calcula os valores da execução"}</p>
-            <Button variant={nextAction === "values" ? "primary" : "outline-primary"} disabled={running || !employees.length || !execucao.status || hasUnprocessed} onClick={handleProcessarValores}>
-              Calcular valores
-            </Button>
-          </li>
-          <li>
-            <h3>3. Envio ao RM</h3>
-            <p>{readyForRm} para enviar ou tentar novamente · {sentToRm} enviados</p>
-            <Button variant={nextAction === "send" ? "primary" : "outline-primary"} disabled={running || !execucao.status || readyForRm + sentToRm === 0} onClick={handleEnviarRmTodos}>
-              Revisar envio ao RM
-            </Button>
-          </li>
-        </ol>
-      </div>
-      <details className="vale-run-meta">
-        <summary>Dados da execução</summary>
-        <dl>
-          <div><dt>Período de referência</dt><dd>{FunctionsHelper.formatDateOnlyPtBr(execucao.periodo?.data_inicio)} a {FunctionsHelper.formatDateOnlyPtBr(execucao.periodo?.data_fim)}</dd></div>
-          <div><dt>Criado por</dt><dd>{execucao.usuario?.nome ?? "—"}</dd></div>
-          <div><dt>Criado em</dt><dd>{FunctionsHelper.formatDateTimePtBr(execucao.data_execucao)}</dd></div>
-        </dl>
-      </details>
-      <section className="vale-table" aria-label="Funcionários do processamento">
-        <h2>Funcionários <span className="vale-count">{employees.length}</span></h2>
-        <p>Selecione as linhas para executar ações em funcionários específicos.</p>
-        <div className="row">
-          <div className="col-12">
-            {execucao.status === "EM_PROCESSAMENTO" &&
-              queueStatus?.hasRunning && (
-                <div className="alert alert-info py-2 px-3 mb-2">
-                  <div className="d-flex align-items-center justify-content-between gap-2">
-                    <span>
-                      Processando... Pendentes: {queueStatus.pending} /
-                      Processando: {queueStatus.processing}
-                    </span>
-                    <Button
-                      variant="link"
-                      className="p-0 m-0 fs-12"
-                      onClick={() => setShowQueueDetails((prev) => !prev)}
-                    >
-                      {showQueueDetails ? "Ocultar fila" : "Ver fila"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            {execucao.status === "EM_PROCESSAMENTO" &&
-              queueStatus?.hasRunning &&
-              showQueueDetails && (
-                <div className="border rounded bg-neutral p-2 mb-2">
-                  <div className="d-flex align-items-center justify-content-between mb-2">
-                    <strong>Fila em andamento</strong>
-                    <span className="text-neutral-500 fs-12">
-                      {queueItems.length} itens
-                    </span>
-                  </div>
-                  {queueItems.length === 0 ? (
-                    <div className="text-muted fs-12">
-                      Nenhum item pendente no momento.
-                    </div>
-                  ) : (
-                    <div
-                      className="table-responsive"
-                      style={{ maxWidth: "100%" }}
-                    >
-                      <Table className="table table-sm mb-0 fs-10 striped-table w-100">
-                        <thead>
-                          <tr>
-                            <th>Funcionário</th>
-                            <th>Chapa</th>
-                            <th>Tipo</th>
-                            <th>Status</th>
-                            <th>Tentativas</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {queueItems.map((item) => (
-                            <tr key={item.queueId}>
-                              <td>
-                                <Limited limit={10}>
-                                  {item.nomeFuncionario}
-                                </Limited>
-                              </td>
-                              <td>{item.funcionarioIdRm}</td>
-                              <td>{item.tipo}</td>
-                              <td>{item.status}</td>
-                              <td>{item.tentativas}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-              )}
-          </div>
-        </div>
-        <div className="w-100 datatable-fullwidth">
-          {missingKmCount > 0 && (
-            <Alert variant="warning" className="mb-2">
-              <div className="d-flex align-items-center justify-content-between gap-2">
-                <div>
-                  <Alert.Heading className="h6 mb-1">
-                    Atenção: KM faltando
-                  </Alert.Heading>
-                  <div className="fs-12">
-                    Existem <strong>{missingKmCount}</strong> funcionário(s) sem
-                    KM calculado neste processamento. Isso não impede o
-                    processamento, mas pode afetar validações/avisos.
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  <Button
-                    variant="outline-warning"
-                    className="m-0"
-                    onClick={() => openGestaoKm(execucaoFilialIdRef.current)}
-                    tooltip="Abrir Gestão KM"
-                  >
-                    <Icon icon="solar:map-point-wave-bold-duotone" width={18} />
-                    <span className="ms-1">Abrir Gestão KM</span>
-                  </Button>
-                </div>
-              </div>
-            </Alert>
-          )}
-          {kmMaxExceededCount > 0 && (
-            <Alert variant="danger" className="mb-2">
-              <div className="d-flex align-items-center justify-content-between gap-2">
-                <div>
-                  <Alert.Heading className="h6 mb-1">
-                    Atenção: KM acima do limite
-                  </Alert.Heading>
-                  <div className="fs-12">
-                    Existem <strong>{kmMaxExceededCount}</strong> funcionário(s)
-                    com KM calculado acima do limite da filial{" "}
-                    <strong>
-                      {Number(kmMaxFilial ?? 0)
-                        .toFixed(2)
-                        .replace(".", ",")}{" "}
-                      km
-                    </strong>
-                    .
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  <Button
-                    variant={
-                      kmMaxFilterActive ? "outline-secondary" : "outline-danger"
-                    }
-                    className="m-0"
-                    onClick={toggleKmMaxFilter}
-                    tooltip={
-                      kmMaxFilterActive
-                        ? "Remover filtro"
-                        : "Filtrar somente KM acima do limite"
-                    }
-                  >
-                    <Icon icon="solar:filter-bold-duotone" width={18} />
-                    <span className="ms-1">
-                      {kmMaxFilterActive
-                        ? "Mostrar todos"
-                        : "Mostrar somente acima"}
-                    </span>
-                  </Button>
-                </div>
-              </div>
-            </Alert>
-          )}
-          <DataTable
-            className="table striped-table mb-0 fs-12"
-            options={{
-              ...processamentoTableConfig,
-              pageLength: 50,
-              // `responsive` e `scrollY/scrollX` tendem a conflitar (wrappers com largura calculada menor que o container)
-              responsive: false,
-              // Com scroll, deixa o DT calcular corretamente a largura/colunas
-              autoWidth: true,
-              columnDefs: [
-                {
-                  // KM (índice 5): sort/type numérico, display vem do slot React
-                  targets: [5],
-                  type: "num",
-                  render: (data: unknown, type: string) => {
-                    if (type === "sort" || type === "type") {
-                      const kmNumber = parseKmToNumber(data);
-                      return kmNumber !== null && Number.isFinite(kmNumber)
-                        ? kmNumber
-                        : -1;
-                    }
-                    return data;
-                  },
-                },
-                {
-                  targets: ["_all"],
-                  className: "text-center",
-                  render: (data: unknown) => {
-                    if (data === null || data === undefined || data === "") {
-                      return "<span className='text-muted'>-</span>";
-                    }
-                    return data;
-                  },
-                },
-              ],
-              layout: {
-                topStart: "buttons",
-              },
-              order: [[1, "asc"]],
-              paging: true,
-              scrollCollapse: true,
-              scrollX: true,
-              scrollY: "52vh",
-              select: {
-                style: "multi+shift",
-                selector: "td:first-child",
-              },
-              buttons: [
-                {
-                  text: "<i class='ri-calculator-line me-1'></i>Variáveis dos selecionados",
-                  enabled: false,
-                  titleAttr: "Processar Variaveis dos selecionados",
-                  title: "Processar Variaveis dos selecionados",
-                  className:
-                    "btn btn-outline-success btn-sm dt-btn-processar-variaveis",
-                  action: () => {
-                    const api = tableRef.current?.dt();
-                    if (!api) return;
-                    const rows = api
-                      .rows({ selected: true })
-                      .data()
-                      .toArray() as ExecFuncBase[];
-                    void handleProcessarVariaveisSelecionados(rows);
-                  },
-                },
-                {
-                  text: "<i class='ri-calculator-line me-1'></i>Valores dos selecionados",
-                  enabled: false,
-                  titleAttr: "Processar Valores dos selecionados",
-                  title: "Processar Valores dos selecionados",
-                  className:
-                    "btn btn-outline-primary btn-sm dt-btn-processar-valores bg-opacity-0 text-primary btn-processar-valores",
-
-                  action: () => {
-                    const api = tableRef.current?.dt();
-                    if (!api) return;
-                    const rows = api
-                      .rows({ selected: true })
-                      .data()
-                      .toArray() as ExecFuncBase[];
-                    void handleProcessarValoresSelecionados(rows);
-                  },
-                },
-
-                {
-                  text: "<i class='ri-upload-2-line me-1'></i>Enviar selecionados ao RM",
-                  enabled: false,
-                  titleAttr: "Enviar para RM (selecionados)",
-                  title: "Enviar para RM (selecionados)",
-                  className:
-                    "btn btn-outline-dark btn-sm dt-btn-enviar-rm btn-enviar-rm",
-                  action: () => {
-                    const api = tableRef.current?.dt();
-                    if (!api) return;
-                    const rows = api
-                      .rows({ selected: true })
-                      .data()
-                      .toArray() as ExecFuncBase[];
-                    void handleEnviarRmSelecionados(rows);
-                  },
-                },
-              ],
-            }}
-            data={execucao.execucao_funcionario_base}
-            columns={[
-              {
-                data: null,
-                name: "selection",
-                orderable: false,
-                searchable: false,
-                render: DataTablesCore.render.select(),
-              },
-              { data: "nome_funcionario", name: "nome" },
-              { data: "funcionario_id_rm", name: "codigo" },
-              { data: "cargo", name: "cargo" },
-              { data: "data_admissao", name: "data_admissao" },
-              {
-                data: "km",
-                name: "km",
-                render: (data: unknown, type: string) => {
-                  const normalized = Number(
-                    String(data ?? "").replace(",", "."),
-                  );
-                  const hasValue = Number.isFinite(normalized);
-                  if (type === "sort" || type === "type") {
-                    return hasValue ? normalized : -1;
-                  }
-                  if (type === "display") {
-                    const kmMax = getKmMax();
-                    const isAboveMax = normalized > kmMax;
-                    const isKmMissing = normalized === 0;
-                    // const finalHtml = `
-                    //   <div className="d-flex align-items-center flex-row gap-2">
-                    //     <span class=>${normalized.toFixed(2).replace(".", ",")} km</span>
-                    //     ${isAboveMax ? `<span class="text-danger">${kmMax}</span>` : `<span class="text-success">${kmMax}</span>`}
-                    //     <button type="button" class="btn btn-link p-0 m-0 border-0" onclick="openGestaoKm(${execucaoFilialIdRef.current}, ${row.funcionario_id_rm})">
-                    //   </div>
-                    // `;
-                    return renderToString(
-                      <span
-                        className={`${isAboveMax ? "text-danger" : isKmMissing ? "text-warning" : "text-success"}`}
-                      >
-                        {normalized.toFixed(2).replace(".", ",")} km
-                      </span>,
-                    );
-                  }
-                  return hasValue ? String(normalized) : "";
-                },
-              },
-              // {
-              //   data: null,
-              //   name: "km_actions",
-              //   orderable: false,
-              //   searchable: false,
-              // },
-              { data: "status", name: "status" },
-              {
-                data: null,
-                name: "resultados",
-                orderable: false,
-                searchable: false,
-              },
-              // {
-              //   data: "execucao_funcionario[0].valor_calculado",
-              //   name: "valor_calculado",
-              // },
-              // {
-              //   data: "execucao_funcionario[0].valor_final",
-              //   name: "valor_final",
-              // },
-              {
-                data: null,
-                name: "actions",
-                orderable: false,
-                searchable: false,
-              },
-            ]}
-            slots={{
-              actions: (row: ExecFuncBase) => (
-                <div>
-                  {/* <Button
-                    variant="outline-warning"
-                    className="m-0 px-1 py-1 border-0"
-                    onClick={() => handleProcessarVariaveisSelecionados([row])}
-                    tooltip="Calcular Variáveis"
-                  >
-                    <Icon icon="solar:calculator-bold-duotone" width={20} height={20} />
-                  </Button> */}
-                  {row.status !== "PREVIA" && row.status !== "" && (
-                    <>
-                      <Button
-                        variant="outline-info"
-                        className="m-0 px-1 py-1 border-0"
-                        onClick={() => handleVisualizarVariaveis(row)}
-                        tooltip="Visualizar Variáveis"
-                      >
-                        <Icon
-                          icon="hugeicons:variable"
-                          width={20}
-                          height={20}
-                        />
-                      </Button>
-                      {/* <Button
-                        variant="outline-warning"
-                        className="m-0 px-1 py-1 border-0"
-                        onClick={() =>
-                          handleProcessarValoresSelecionados([row])
-                        }
-                        tooltip="Calcular Valores"
-                      >
-                        <Icon
-                          icon="solar:calculator-bold-duotone"
-                          width={20}
-                          height={20}
-                        />
-                      </Button> */}
-                    </>
-                  )}
-
-                  {(row.status === "RESULTADOS_PROCESSADOS" ||
-                    row.status === "ENVIADO_RM" ||
-                    row.status === "ERRO_RM") && (
-                    <Button
-                      variant="outline-primary"
-                      className="m-0 px-1 py-1 border-0"
-                      onClick={() => handleVisualizarResultados(row)}
-                      tooltip="Visualizar Resultados"
-                    >
-                      <Icon
-                        icon="solar:eye-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                  )}
-
-                  <Button
-                    variant="link"
-                    className="m-0 px-1 py-1 border-0 text-decoration-none text-info"
-                    onClick={() => openGestaoKm(execucaoFilialIdRef.current, row.funcionario_id_rm)}
-                    tooltip="Abrir Gestao de KM"
-                  >
-                    <Icon icon="solar:map-point-bold" width={20} height={20} />
-                  </Button>
-                </div>
-              ),
-              status: (status: string) => {
-                if (status === undefined || status === null || status === "") {
-                  return FunctionsHelper.formatStatusExecucaoFuncionario(
-                    "PREVIA",
-                  );
-                }
-                return FunctionsHelper.formatStatusExecucaoFuncionario(status);
-              },
-              data_admissao: (data: unknown) => {
-                if (data === undefined || data === null || data === "") {
-                  return "-";
-                }
-                return FunctionsHelper.formatDateOnlyPtBr(data);
-              },
-
-              selection: () => {
-                return <input type="checkbox" className="form-check-input" />;
-              },
-              resultados: (row: ExecFuncBase) => {
-                if (
-                  row.execucao_funcionario === undefined ||
-                  row.execucao_funcionario === null ||
-                  row.execucao_funcionario.length === 0 ||
-                  row.status !== "RESULTADOS_PROCESSADOS"
-                ) {
-                  return (
-                    <Button
-                      variant="link"
-                      className="m-0 px-1 py-1 border-0"
-                      disabled
-                    >
-                      <Icon
-                        icon="solar:eye-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                  );
-                }
-                //Faz uma lista com <ul> e <li> de todos os resultados, com o nome da formula primeiro e o valor final segundo
-                const resultados = row.execucao_funcionario?.map(
-                  (execFunc) =>
-                    `${execFunc.formula.nome}: ${execFunc.valor_final}`,
-                );
-                if (resultados && resultados.length === 0) {
-                  return "-";
-                }
-                const resultadosList = resultados?.map((resultado) => (
-                  <li key={resultado}>•{resultado}</li>
-                ));
-
-                return (
-                  <Popover
-                    popover={<ul className="m-0 p-0">{resultadosList}</ul>}
-                  >
-                    <Button variant="link" className="m-0 px-1 py-1 border-0">
-                      <Icon
-                        icon="solar:eye-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                  </Popover>
-                );
-              },
-            }}
-            onSelect={handleSelectFuncionarios}
-            onDeselect={handleSelectFuncionarios}
-            ref={tableRef}
+      <QueryNotice {...query} />
+      {notice && (
+        <div className="op-notice" role="status">
+          {notice}
+          <button
+            className="op-dismiss"
+            aria-label="Dispensar mensagem"
+            onClick={() => setNotice("")}
           >
-            <thead>
-              <tr className="bg-primary bg-opacity-25">
-                <th></th>
-                <th>Nome</th>
-                <th>Chapa</th>
-                <th>Cargo</th>
-                <th>Data de Admissão</th>
-                <th>Km</th>
-                <th>Status</th>
-                <th>Resultados</th>
-                {/* <th>Valor Calculado</th>
-                <th>Valor Final</th> */}
-                <th>Ações</th>
-              </tr>
-            </thead>
-          </DataTable>
+            ×
+          </button>
         </div>
-      </section>
-
-      <Modal
-        show={showVerFormulasModal}
-        size="lg"
-        onHide={() => {
-          setShowVerFormulasModal(false);
-        }}
-      >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Formulas</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Table className="table striped-table mb-0 fs-12">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Expressão</th>
-              </tr>
-            </thead>
-            <tbody>
-              {execucao.filial?.formula?.map((formula) => (
-                <tr key={formula.formula_id}>
-                  <td>{formula.nome}</td>
-                  <td>
-                    <span>
-                      {formula.expressao.length > 30
-                        ? formula.expressao.substring(0, 30) + "..."
-                        : formula.expressao}
-                    </span>
-                    <OverlayTrigger
-                      key={`expressao-${formula.expressao}`}
-                      placement="top"
-                      trigger="click"
-                      overlay={
-                        <BootstrapPopover title={formula.expressao}>
-                          <BootstrapPopover.Body>
-                            {formula.expressao}
-                          </BootstrapPopover.Body>
-                        </BootstrapPopover>
-                      }
-                    >
-                      <Button variant="link" className="m-0 px-1 py-1 border-0">
-                        <Icon
-                          icon="solar:eye-bold-duotone"
-                          width={20}
-                          height={20}
-                        />
-                      </Button>
-                    </OverlayTrigger>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </Modal.Body>
-      </Modal>
-      <Modal
-        show={showVerResultadosModal}
-        size="lg"
-        onHide={() => {
-          setShowVerResultadosModal(false);
-        }}
-      >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>
-            Resultados de{" "}
-            <Limited limit={10} placement="bottom">
-              {viewResultsFuncBase?.nome_funcionario}
-            </Limited>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Table className="table striped-table mb-0 fs-12">
-            <thead>
-              <tr className="bg-primary bg-opacity-25">
-                <th className="text-center">Formula</th>
-                <th className="text-center">Expressão</th>
-                <th className="text-center">Valor Calculado</th>
-                <th className="text-center">Valor Final</th>
-                <th className="text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {viewResultsFuncBase.execucao_funcionario?.map((execFunc) => (
-                <tr key={execFunc.execucao_funcionario_id}>
-                  <td className="text-center">
-                    <Limited limit={10}>{execFunc.formula.nome}</Limited>
-                  </td>
-                  <td className="text-center">
-                    <Limited limit={10}>{execFunc.formula.expressao}</Limited>
-                  </td>
-                  <td className="text-center">{execFunc.valor_calculado}</td>
-                  <td className="text-center">
-                    <span
-                      className={execFunc.ajuste_manual ? "text-danger" : ""}
-                    >
-                      {execFunc.valor_final}
-                      {execFunc.ajuste_manual && (
-                        <Tooltip title="Houve ajuste manual">
-                          <span className="text-danger d-inline-flex align-items-center">
-                            <Icon
-                              icon="solar:pen-bold-duotone"
-                              width={12}
-                              height={12}
-                            />
-                          </span>
-                        </Tooltip>
-                      )}
-                    </span>
-                  </td>
-                  <td className="text-center">
-                    <Button
-                      variant="outline-warning"
-                      className="m-0 px-1 py-1 border-0"
-                      tooltip="Editar valor final"
-                      onClick={() => handleEditarResultado(execFunc)}
-                    >
-                      <Icon
-                        icon="solar:pen-new-square-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </Modal.Body>
-      </Modal>
-      <Modal
-        show={showEditarResultadoModal}
-        size="lg"
-        onHide={handleCloseEditarResultadoModal}
-      >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>
-            Editar valor final de{" "}
-            <Limited limit={10} placement="top">
-              {viewResultsFuncBase?.nome_funcionario}
-            </Limited>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form id="editar-resultado-form" onSubmit={handleSaveEditarResultado}>
-            <Form.Group controlId="valor_final">
-              <Form.Label>Valor Final</Form.Label>
-              <Form.Control
-                type="number"
-                required
-                defaultValue={editResultFunc.valor_final}
-                value={editResultFunc.new_valor_final}
-                onChange={(e) =>
-                  setEditResultFunc({
-                    ...editResultFunc,
-                    new_valor_final: Number(e.target.value),
-                  })
-                }
-              />
-            </Form.Group>
-            <Form.Group controlId="motivo_ajuste">
-              <Form.Label>Motivo do Ajuste</Form.Label>
-              <Form.Control
-                as="textarea"
-                required
-                value={editResultFunc.motivo_ajuste}
-                onChange={(e) =>
-                  setEditResultFunc({
-                    ...editResultFunc,
-                    motivo_ajuste: e.target.value,
-                  })
-                }
-              />
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={handleCloseEditarResultadoModal}>
-            Cancelar
-          </Button>
-          <Button variant="primary" type="submit" form="editar-resultado-form">
-            Salvar
-          </Button>
-        </Modal.Footer>
-      </Modal>
-      {/* Modal que mostra as variaveis processadas do funcionário */}
-      <Modal
-        show={showVerVariaveisModal}
-        size="lg"
-        onHide={() => {
-          setShowVerVariaveisModal(false);
-        }}
-      >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>
-            Variáveis de{" "}
-            <Limited limit={10} placement="bottom">
-              {viewResultsFuncBase?.nome_funcionario}
-            </Limited>
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Table className="table striped-table mb-0 fs-12">
-            <thead>
-              <tr className="bg-primary bg-opacity-25">
-                <th className="text-center">Variavel</th>
-                <th className="text-center">Codigo</th>
-                <th className="text-center">Origem</th>
-                <th className="text-center">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {uniqueMemorias.map((memoria) => (
-                <tr key={memoria.memoria_id}>
-                  <td className="text-center">{memoria.variavel_nome}</td>
-                  <td className="text-center">{memoria.variavel_codigo}</td>
-                  <td className="text-center">{memoria.origem}</td>
-                  <td className="text-center">{memoria.valor}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </Modal.Body>
-      </Modal>
-
-      <Modal
-        show={showErrorsModal}
-        size="xl"
-        onHide={() => setShowErrorsModal(false)}
-        centered
-      >
-        <Modal.Header closeButton className="bg-danger text-white">
-          <Modal.Title>Erros do processamento</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <div className="d-flex flex-wrap align-items-end gap-2 mb-3">
-            <div>
-              <Form.Label>Fonte</Form.Label>
-              <Form.Select
-                value={errorsFilterSource}
-                onChange={(e) =>
-                  setErrorsFilterSource(
-                    e.target.value as "ALL" | "QUEUE" | "LOG",
-                  )
-                }
-              >
-                <option value="ALL">Todas</option>
-                <option value="QUEUE">Fila</option>
-                <option value="LOG">Log</option>
-              </Form.Select>
+      )}
+      {row && (
+        <div className="op-summary">
+          <StageCount
+            label="Variáveis"
+            value={row.variaveis}
+            total={row.total}
+          />
+          <StageCount label="Valores" value={row.valores} total={row.total} />
+          <StageCount label="Enviados ao RM" value={row.rm} total={row.total} />
+        </div>
+      )}
+      {summary.error && (
+        <div className="op-notice op-error" role="alert">
+          O resumo não pôde ser atualizado. Atualize antes de realizar ações.
+        </div>
+      )}
+      <nav className="op-tabs" aria-label="Etapas da execução">
+        {tabs.map(([key, label]) => (
+          <button
+            key={key}
+            aria-current={tab === key ? "page" : undefined}
+            onClick={() => setContext({ aba: key, resultado: "" })}
+          >
+            {label}
+            {key === "pendencias" && row && row.errors + row.pending > 0
+              ? ` (${row.errors + row.pending})`
+              : ""}
+          </button>
+        ))}
+      </nav>
+      {tab === "pendencias" && (
+        <section className="op-panel">
+          <h2>Pendências e próximas tentativas</h2>
+          {query.data?.queue.length ? (
+            <div className="op-scroll">
+              <table className="op-table">
+                <thead>
+                  <tr>
+                    <th>Pessoa na execução</th>
+                    <th>Etapa</th>
+                    <th>Situação</th>
+                    <th>Próxima tentativa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {query.data.queue.map((q) => (
+                    <tr key={q.queue_id}>
+                      <td>
+                        {q.execucao_funcionario_base.nome_funcionario}
+                        <small>
+                          {q.execucao_funcionario_base.funcionario_id_rm}
+                        </small>
+                      </td>
+                      <td>{etapaLabel(q.tipo)}</td>
+                      <td>
+                        {q.status === "PROCESSANDO"
+                          ? "Em andamento"
+                          : q.tentativas
+                            ? "Aguardando nova tentativa"
+                            : "Na fila"}
+                        <small>{q.tentativas} tentativas concluídas</small>
+                      </td>
+                      <td>
+                        {q.next_run_at
+                          ? dateTime(q.next_run_at)
+                          : q.status === "PROCESSANDO"
+                            ? "Em execução"
+                            : "Aguardando disponibilidade"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <Form.Label>Tipo</Form.Label>
-              <Form.Select
-                value={errorsFilterTipo}
-                onChange={(e) =>
-                  setErrorsFilterTipo(
-                    e.target.value as
-                      | "ALL"
-                      | "VARIAVEIS"
-                      | "VALORES"
-                      | "ENVIAR_RM",
-                  )
-                }
-              >
-                <option value="ALL">Todos</option>
-                <option value="VARIAVEIS">Variáveis</option>
-                <option value="VALORES">Valores</option>
-                <option value="ENVIAR_RM">Enviar RM</option>
-              </Form.Select>
-            </div>
-            <Button
-              variant="outline-secondary"
-              onClick={() => void fetchErrors()}
-              tooltip="Atualizar lista de erros"
+          ) : (
+            <p>Não há itens agendados ou em execução na última consulta.</p>
+          )}
+          <p className="op-muted">
+            Uma tentativa agendada é automática. A revisão de retomada exclui
+            trabalhos já ativos.
+          </p>
+          <details>
+            <summary>Mensagens de falhas e histórico técnico</summary>
+            <QueryNotice {...errors} />
+            {errors.data?.length
+              ? errors.data.map((e) => (
+                  <details className="op-history-item" key={e.id}>
+                    <summary>
+                      {e.nomeFuncionario ?? e.funcionarioIdRm ?? "Execução"} ·{" "}
+                      {e.tipo ? etapaLabel(e.tipo) : e.source} ·{" "}
+                      {dateTime(e.createdAt)}
+                    </summary>
+                    <pre>{e.message}</pre>
+                  </details>
+                ))
+              : !errors.loading &&
+                !errors.error && <p>Nenhuma falha retornada na consulta.</p>}
+            <p className="op-muted">
+              Mensagens históricas podem pertencer a tentativas já resolvidas.
+              Use o estado atual da pessoa e da fila para decidir.
+            </p>
+          </details>
+        </section>
+      )}
+      {tab === "envios" && (
+        <section className="op-panel">
+          <h2>Revisão e confirmação de envio</h2>
+          <p>
+            Confira cada resultado antes de revisar o lote. A prévia separa
+            novos eventos, atualizações e exclusões. Resultados já confirmados
+            na mesma versão não são reenviados.
+          </p>
+          <button
+            className="btn btn-primary"
+            disabled={commandDisabled}
+            onClick={() => review("ENVIAR_RM")}
+          >
+            Revisar envio {selecting ? "da seleção" : "da execução"}
+          </button>
+          <p className="op-muted">
+            Abra um resultado abaixo para consultar a versão e a confirmação por
+            evento.
+          </p>
+        </section>
+      )}
+      {exec && (
+        <>
+          <section className="op-toolbar">
+            <form
+              className="op-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setContext({ busca: searchDraft, pagina: "1", resultado: "" });
+              }}
             >
-              <Icon icon="solar:refresh-bold-duotone" width={20} height={20} />
-              <span className="ms-1">Atualizar</span>
-            </Button>
-          </div>
-
-          {(() => {
-            const filtered = (errorsRows ?? []).filter((r) => {
-              if (
-                errorsFilterSource !== "ALL" &&
-                r.source !== errorsFilterSource
-              )
-                return false;
-              if (errorsFilterTipo !== "ALL") {
-                if (!r.tipo) return false;
-                if (r.tipo !== errorsFilterTipo) return false;
-              }
-              return true;
-            });
-
-            return (
-              <div className="table-responsive" style={{ maxWidth: "100%" }}>
-                <Table className="table table-sm striped-table w-100 mb-0 fs-12">
+              <label>
+                Nome ou matrícula
+                <input
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                  type="search"
+                />
+              </label>
+              <button className="btn btn-outline-primary">Buscar</button>
+            </form>
+            <label>
+              Mostrar pessoas
+              <select
+                value={filter}
+                onChange={(e) =>
+                  setContext({
+                    filtro: e.target.value,
+                    pagina: "1",
+                    resultado: "",
+                  })
+                }
+              >
+                <option value="todos">Todas</option>
+                <option value="pendencias">
+                  Com falha ou resultado parcial
+                </option>
+                <option value="conferencia">
+                  Prontas para conferência / envio pendente
+                </option>
+                <option value="enviados">Enviadas ao RM</option>
+              </select>
+            </label>
+            <button
+              className="btn btn-outline-secondary"
+              onClick={() => {
+                setSelecting(!selecting);
+                setSelected([]);
+              }}
+            >
+              {selecting ? "Encerrar seleção" : "Selecionar pessoas"}
+            </button>
+          </section>
+          {tab === "conferencia" && (
+            <section className="op-step-actions" aria-label="Conferir seleção">
+              <div>
+                <strong>{selected.length} pessoas selecionadas nesta página</strong>
+                <p>Selecione pessoas para revisar os valores juntos. Abra um resultado para consultar sua memória ou registrar um ajuste.</p>
+              </div>
+              <button className="btn btn-outline-primary" disabled={!selecting || commandDisabled} onClick={() => review("CONFERIR")}>
+                Revisar conferência da seleção
+              </button>
+            </section>
+          )}
+          {(tab === "acompanhamento" || tab === "pendencias") && (
+            <section className="op-step-actions" aria-label="Processar etapas">
+              <div>
+                <strong>
+                  {selecting
+                    ? `${selected.length} pessoas selecionadas nesta página`
+                    : "Retomar pendentes da execução inteira"}
+                </strong>
+                <p>
+                  Filtros da lista não alteram o escopo de “execução inteira”.
+                  Para um conjunto específico, selecione as pessoas.
+                </p>
+              </div>
+              <div className="op-actions">
+                <button
+                  className="btn btn-outline-primary"
+                  disabled={commandDisabled}
+                  onClick={() => review("VARIAVEIS")}
+                >
+                  Revisar Variáveis
+                </button>
+                <button
+                  className="btn btn-outline-primary"
+                  disabled={commandDisabled}
+                  onClick={() => review("VALORES")}
+                >
+                  Revisar Valores
+                </button>
+                {exec && (
+                  <Link
+                    className="btn btn-link"
+                    to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}
+                  >
+                    Gestão de KM
+                  </Link>
+                )}
+              </div>
+              <details>
+                <summary>Recálculo de etapas já concluídas</summary>
+                <label className="op-check">
+                  <input
+                    type="checkbox"
+                    checked={recalculate}
+                    onChange={(e) => setRecalculate(e.target.checked)}
+                  />
+                  <span>
+                    Incluir concluídos na revisão de recálculo. As conferências
+                    serão invalidadas e envios anteriores permanecerão no
+                    histórico.
+                  </span>
+                </label>
+              </details>
+            </section>
+          )}
+          <div
+            className={
+              tab === "conferencia" || tab === "envios" || tab === "historico"
+                ? "op-conference-layout"
+                : ""
+            }
+          >
+            <div>
+              <div className="op-scroll">
+                <table className="op-table op-people">
+                  <caption className="visually-hidden">
+                    Funcionários e resultados da execução
+                  </caption>
                   <thead>
-                    <tr className="bg-danger bg-opacity-10">
-                      <th>Data/Hora</th>
-                      <th>Fonte</th>
-                      <th>Tipo</th>
-                      <th>Funcionário</th>
-                      <th>Mensagem</th>
+                    <tr>
+                      <th>
+                        {selecting && (
+                          <input type="checkbox" className="me-2" aria-label="Selecionar todas as pessoas desta página"
+                            checked={Boolean(query.data?.bases.length) && query.data!.bases.every(b => selected.includes(b.execucao_funcionario_base_id))}
+                            onChange={e => setSelected(e.target.checked ? (query.data?.bases.map(b => b.execucao_funcionario_base_id) ?? []) : [])} />
+                        )}
+                        Pessoa
+                      </th>
+                      <th>Situação e resultados</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="text-muted text-center">
-                          Nenhum erro encontrado.
+                    {query.data?.bases.map((b) => (
+                      <tr key={b.execucao_funcionario_base_id}>
+                        <th scope="row">
+                          <div className="op-branch-name">
+                            {selecting && (
+                              <input
+                                type="checkbox"
+                                aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
+                                checked={selected.includes(
+                                  b.execucao_funcionario_base_id,
+                                )}
+                                onChange={(e) =>
+                                  setSelected((prev) =>
+                                    e.target.checked
+                                      ? [
+                                          ...prev,
+                                          b.execucao_funcionario_base_id,
+                                        ]
+                                      : prev.filter(
+                                          (x) =>
+                                            x !==
+                                            b.execucao_funcionario_base_id,
+                                        ),
+                                  )
+                                }
+                              />
+                            )}
+                            <span>{b.nome_funcionario}</span>
+                          </div>
+                          <small>
+                            {b.funcionario_id_rm} · {b.cargo}
+                          </small>
+                          <small>KM: {b.km ?? "não informado"}</small>
+                        </th>
+                        <td>
+                          <span
+                            className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}
+                          >
+                            {statusLabel(b.status)}
+                          </span>
+                          {b.execucao_funcionario.map((r) => (
+                            <button
+                              key={r.execucao_funcionario_id}
+                              className="op-result-link"
+                              aria-pressed={
+                                resultId === r.execucao_funcionario_id
+                              }
+                              onClick={() =>
+                                setContext(
+                                  {
+                                    aba:
+                                      tab === "envios"
+                                        ? "envios"
+                                        : tab === "historico"
+                                          ? "historico"
+                                          : "conferencia",
+                                    resultado: String(
+                                      r.execucao_funcionario_id,
+                                    ),
+                                  },
+                                  false,
+                                )
+                              }
+                            >
+                              <strong>{r.formula.nome}</strong>
+                              <span>
+                                {money(r.valor_final)} · v{r.revisao} ·{" "}
+                                {r.status === "ENVIADO_RM" &&
+                                r.enviado_revisao === r.revisao
+                                  ? "Enviado"
+                                  : r.conferido_revisao === r.revisao
+                                    ? "Conferido"
+                                    : "Conferir"}
+                                {r.ajuste_manual ? " · ajustado" : ""}
+                              </span>
+                            </button>
+                          ))}
+                          {!b.execucao_funcionario.length && (
+                            <small>Resultados ainda não disponíveis</small>
+                          )}
                         </td>
                       </tr>
-                    ) : (
-                      filtered.map((r) => (
-                        <tr key={r.id}>
-                          <td>
-                            {FunctionsHelper.formatDateTimePtBr(r.createdAt)}
-                          </td>
-                          <td>{r.source === "QUEUE" ? "Fila" : "Log"}</td>
-                          <td>{r.tipo ?? "-"}</td>
-                          <td>
-                            {r.nomeFuncionario ? (
-                              <>
-                                <Limited limit={18}>
-                                  {r.nomeFuncionario}
-                                </Limited>
-                                {r.funcionarioIdRm ? (
-                                  <span className="text-muted ms-1">
-                                    ({r.funcionarioIdRm})
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : r.funcionarioIdRm ? (
-                              r.funcionarioIdRm
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td>
-                            <Limited limit={120} placement="top">
-                              {r.message}
-                            </Limited>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
-                </Table>
+                </table>
               </div>
-            );
-          })()}
-        </Modal.Body>
-      </Modal>
+              {query.data && !query.data.bases.length && (
+                <div className="op-empty">
+                  Nenhuma pessoa neste recorte. Ajuste os filtros.
+                </div>
+              )}
+              <div className="op-pagination">
+                <span>
+                  {query.data?.total ?? "—"} pessoas no recorte · página {page}{" "}
+                  de {Math.max(1, Math.ceil((query.data?.total ?? 0) / 25))}
+                </span>
+                <button
+                  className="btn btn-outline-secondary"
+                  disabled={page <= 1}
+                  onClick={() =>
+                    setContext({ pagina: String(page - 1), resultado: "" })
+                  }
+                >
+                  Anterior
+                </button>
+                <button
+                  className="btn btn-outline-secondary"
+                  disabled={page * 25 >= (query.data?.total ?? 0)}
+                  onClick={() =>
+                    setContext({ pagina: String(page + 1), resultado: "" })
+                  }
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
+            {(tab === "conferencia" ||
+              tab === "envios" ||
+              tab === "historico") &&
+              (resultId ? (
+                <ResultPanel
+                  execucaoId={id}
+                  resultId={resultId}
+                  onChanged={refresh}
+                />
+              ) : (
+                <div className="op-empty">
+                  <h2>Selecione um resultado</h2>
+                  <p>
+                    Veja valor, regra, memória de cálculo, ajustes e confirmação
+                    do RM no mesmo contexto.
+                  </p>
+                </div>
+              ))}
+          </div>
+          <p className="op-muted">
+            Última consulta: {dateTime(query.at)} · atualização automática a
+            cada 20 segundos. A ordem da lista permanece estável.
+          </p>
+        </>
+      )}
+      <OperationReview
+        request={request}
+        onClose={() => setRequest(null)}
+        onDone={(message) => {
+          setNotice(message);
+          setSelected([]);
+          setSelecting(false);
+          setRecalculate(false);
+          refresh();
+        }}
+      />
     </div>
   );
 }

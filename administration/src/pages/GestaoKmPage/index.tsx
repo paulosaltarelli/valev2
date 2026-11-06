@@ -1,3 +1,4 @@
+import { safeReturn } from "../../utils/safeReturn";
 import { Icon } from "@iconify/react";
 import { Button } from "../../components/utils/Button";
 import { useLocation, useNavigate } from "react-router";
@@ -357,7 +358,8 @@ export function GestaoKmPage() {
               <Button
                 variant="outline-secondary"
                 className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
+                aria-label="Voltar ao contexto anterior"
+                onClick={() => navigate(safeReturn(new URLSearchParams(location.search).get("retorno")))}
               >
                 <Icon
                   icon="solar:alt-arrow-left-linear"

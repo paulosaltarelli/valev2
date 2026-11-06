@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Get,
   Param,
   UseGuards,
@@ -15,7 +16,6 @@ import { CurrentUserService } from 'src/auth/current-user.service';
 import {
   execucao,
   execucao_funcionario,
-  execucao_funcionario_base,
 } from '@prisma/client';
 
 @Controller()
@@ -210,42 +210,26 @@ export class ExecucaoController {
   }
   @Post('execucao/:execucaoId/processar-todos')
   @UseGuards(JwtAuthGuard)
-  async processarTodos(
-    @Param('execucaoId') execucaoId: number,
-  ): Promise<{ status: boolean; message: string }> {
-    return await this.execucaoService.processarTodos(execucaoId);
+  async processarTodos(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   @Post('execucao/:execucaoId/processar-valores-batch')
   @UseGuards(JwtAuthGuard)
-  async processarValoresBatch(
-    @Param('execucaoId') execucaoId: number,
-    @Body() rows: execucao_funcionario_base[],
-  ): Promise<{ status: boolean; message: string }> {
-    return await this.execucaoService.processarValoresBatch(execucaoId, rows);
+  async processarValoresBatch(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   @Post('execucao/:execucaoId/enqueue-variaveis-batch')
   @UseGuards(JwtAuthGuard)
-  async enqueueVariaveisBatch(
-    @Param('execucaoId') execucaoId: number,
-    @Body() ids: number[],
-  ): Promise<{ status: boolean; message: string }> {
-    const { sessionId } = this.currentUserService.getJwtPayload();
-    return await this.execucaoService.enqueueVariaveisBatch(
-      execucaoId,
-      ids,
-      sessionId,
-    );
+  async enqueueVariaveisBatch(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   @Post('execucao/:execucaoId/processar-variaveis')
   @UseGuards(JwtAuthGuard)
-  async processarVariaveis(
-    @Param('execucaoId') execucaoId: number,
-  ): Promise<{ status: boolean; message: string }> {
-    const { sessionId } = this.currentUserService.getJwtPayload();
-    return await this.execucaoService.processarVariaveis(execucaoId, sessionId);
+  async processarVariaveis(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   /**
@@ -257,30 +241,14 @@ export class ExecucaoController {
    */
   @Post('execucao/:execucaoId/processar-variaveis-batch')
   @UseGuards(JwtAuthGuard)
-  async processarVariaveisBatch(
-    @Param('execucaoId') execucaoId: number,
-    @Body() rows: execucao_funcionario_base[],
-  ): Promise<{ status: boolean; message: string }> {
-    const { sessionId } = this.currentUserService.getJwtPayload();
-    return await this.execucaoService.processarVariaveisBatch(
-      execucaoId,
-      rows,
-      sessionId,
-    );
+  async processarVariaveisBatch(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   @Post('execucao/:execucaoId/enqueue-valores-batch')
   @UseGuards(JwtAuthGuard)
-  async enqueueValoresBatch(
-    @Param('execucaoId') execucaoId: number,
-    @Body() ids: number[],
-  ): Promise<{ status: boolean; message: string }> {
-    const { sessionId } = this.currentUserService.getJwtPayload();
-    return await this.execucaoService.enqueueValoresBatch(
-      execucaoId,
-      ids,
-      sessionId,
-    );
+  async enqueueValoresBatch(): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise a etapa na Central de Operação.');
   }
 
   @Post('execucao/:execucaoId/enqueue-enviar-rm-batch')

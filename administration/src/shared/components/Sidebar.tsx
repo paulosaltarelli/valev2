@@ -10,24 +10,23 @@ const navigation = [
   {
     label: "Operação",
     links: [
-      ["/dashboard", "Visão geral", "mdi:home-outline"],
-      ["/processamento", "Processamentos", "mdi:clipboard-list-outline"],
+      ["/processamento", "Operação por competência", "mdi:clipboard-list-outline"],
       ["/gestao-km", "Gestão de KM", "mdi:map-marker-distance"],
     ],
   },
   {
-    label: "Consulta",
-    links: [["/relatorios", "Relatórios", "mdi:chart-box-outline"]],
+    label: "Análise",
+    links: [["/dashboard", "Visão geral", "mdi:home-outline"], ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"]],
   },
   {
-    label: "Administração",
+    label: "Regras e cadastros",
     adminOnly: true,
     links: [
-      ["/filial", "Filiais", "mdi:store-outline"],
+      ["/filial", "Filiais e regras", "mdi:store-outline"],
       ["/periodo", "Competências", "mdi:calendar-month-outline"],
-      ["/usuarios", "Usuários", "mdi:account-outline"],
     ],
   },
+  { label: 'Administração', adminOnly: true, links: [['/usuarios', 'Usuários e acesso', 'mdi:account-outline']] },
 ];
 
 export function Sidebar() {

@@ -849,7 +849,7 @@ export function DashboardPage() {
                     </div>
                     <div className="d-flex flex-column gap-2">
                       <Link
-                        to="/processamento"
+                        to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                         className="text-decoration-none"
                       >
                         <div className="d-flex align-items-center justify-content-between p-2 border rounded">
@@ -1242,7 +1242,7 @@ export function DashboardPage() {
                         Filiais que ainda não finalizaram o período selecionado.
                       </div>
                       <Link
-                        to="/processamento"
+                        to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                         className="text-decoration-none"
                       >
                         Ir para Processamentos
@@ -1280,7 +1280,7 @@ export function DashboardPage() {
                             <div className="d-flex align-items-center justify-content-between gap-2">
                               <h3 className="h6 m-0">Funcionários com erro</h3>
                               <Link
-                                to="/processamento"
+                                to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                                 className="text-decoration-none"
                               >
                                 Ir para Processamentos
@@ -1425,7 +1425,7 @@ export function DashboardPage() {
                         filial, no período selecionado.
                       </div>
                       <Link
-                        to="/processamento"
+                        to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                         className="text-decoration-none"
                       >
                         Ir para Processamentos
@@ -1726,7 +1726,7 @@ export function DashboardPage() {
                                 Processamentos (amostra)
                               </h3>
                               <Link
-                                to="/processamento"
+                                to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                                 className="text-decoration-none"
                               >
                                 Ir para Processamentos

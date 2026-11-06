@@ -38,6 +38,12 @@ model execucao {
 }
 
 model execucao_funcionario {
+  revisao                     Int                       @default(1)
+  conferido_revisao            Int?
+  conferido_por               Int?
+  conferido_em                DateTime?
+  enviado_revisao             Int?
+  formula_snapshot            String?                   @db.NVarChar(Max)
   execucao_funcionario_id      Int                       @id(map: "PK__execucao__1DD9607F39E3D50A") @default(autoincrement())
   execucao_id                  Int
   funcionario_id_rm            String                    @db.VarChar(50)
@@ -200,6 +206,7 @@ model variavel {
 }
 
 model execucao_queue {
+  revisao_payload              String?                   @db.NVarChar(Max)
   queue_id                     Int                       @id(map: "PK_execucao_queue") @default(autoincrement())
   execucao_id                  Int
   execucao_funcionario_base_id Int
@@ -219,6 +226,30 @@ model execucao_queue {
   @@index([execucao_id, status], map: "IX_execucao_queue_execucao_status")
   @@index([status, tipo, next_run_at, created_at], map: "IX_execucao_queue_runnable")
   @@index([session_id], map: "IX_execucao_queue_session")
+}
+
+// Eventos imutáveis. Os registros legados continuam identificados como legados.
+model resultado_historico {
+  id           Int      @id @default(autoincrement())
+  resultado_id Int
+  execucao_id  Int
+  revisao      Int
+  tipo         String   @db.VarChar(30)
+  usuario_id   Int?
+  registrado_em DateTime @default(now())
+  detalhe      String   @db.NVarChar(Max)
+  @@index([resultado_id, id])
+  @@index([execucao_id, id])
+}
+
+model operacao_previa {
+  id           String   @id @db.VarChar(36)
+  usuario_id   Int
+  expira_em    DateTime
+  consumida_em DateTime?
+  pedido       String   @db.NVarChar(Max)
+  fingerprint  String   @db.VarChar(64)
+  @@index([expira_em])
 }
 
 model sysdiagrams {

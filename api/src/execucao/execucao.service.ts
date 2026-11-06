@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   execucao,
   execucao_funcionario,
@@ -11,6 +11,7 @@ import { CalculatorService } from 'src/helpers/calculator/calculator.service';
 import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
+import { OperacaoService } from './operacao.service';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class ExecucaoService {
     private readonly formulaService: FormulaService,
     private readonly calculatorService: CalculatorService,
     private readonly rmService: RmService,
+    private readonly operacao: OperacaoService,
   ) {}
   private readonly logger = new Logger(ExecucaoService.name);
   private readonly variableConcurrencyLimit = variableConcurrency();
@@ -746,29 +748,7 @@ export class ExecucaoService {
             continue;
           }
 
-          // Se houve ajuste manual, não sobrescrevemos valor_final (só atualizamos o calculado).
-          if (execFunc.ajuste_manual) {
-            await this.prisma.execucao_funcionario.update({
-              where: {
-                execucao_funcionario_id: execFunc.execucao_funcionario_id,
-              },
-              data: {
-                valor_calculado: resultado.resultado,
-                status: 'PROCESSADO',
-              },
-            });
-          } else {
-            await this.prisma.execucao_funcionario.update({
-              where: {
-                execucao_funcionario_id: execFunc.execucao_funcionario_id,
-              },
-              data: {
-                valor_calculado: resultado.resultado,
-                valor_final: resultado.resultado,
-                status: 'PROCESSADO',
-              },
-            });
-          }
+          await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula);
           teveProcessado = true;
         } catch (error) {
           console.error(error);
@@ -1010,30 +990,8 @@ export class ExecucaoService {
               continue;
             }
 
-            // Se houve ajuste manual, não sobrescrevemos valor_final (só atualizamos o calculado).
-            if (execFunc.ajuste_manual) {
-              await this.prisma.execucao_funcionario.update({
-                where: {
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                },
-                data: {
-                  valor_calculado: resultado.resultado,
-                  status: 'PROCESSADO',
-                },
-              });
-            } else {
-              await this.prisma.execucao_funcionario.update({
-                where: {
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                },
-                data: {
-                  valor_calculado: resultado.resultado,
-                  valor_final: resultado.resultado,
-                  status: 'PROCESSADO',
-                },
-              });
-            }
-            teveProcessado = true;
+            await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula);
+          teveProcessado = true;
           } catch (error) {
             this.logger.error(
               `Erro inesperado ao processar valores do funcionário ${funcionarioBase.funcionario_id_rm}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1645,316 +1603,20 @@ export class ExecucaoService {
     }
   }
 
-  async enqueueVariaveisBatch(
-    execucaoId: number,
-    ids: number[],
-    sessionId: string,
-  ): Promise<{ status: boolean; message: string }> {
-    try {
-      if (!ids || ids.length === 0) {
-        return { status: false, message: 'Nenhum funcionário selecionado' };
-      }
-
-      // Garante que os IDs pertencem à execução (não confiar no front)
-      const bases = await this.prisma.execucao_funcionario_base.findMany({
-        where: {
-          execucao_id: execucaoId,
-          execucao_funcionario_base_id: { in: ids },
-        },
-        select: { execucao_funcionario_base_id: true },
-      });
-      if (bases.length === 0) {
-        return {
-          status: false,
-          message: 'Nenhum funcionário selecionado pertence a esta execução',
-        };
-      }
-
-      // Enfileira apenas os selecionados (IDs validados)
-      for (const row of bases) {
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          IF NOT EXISTS (
-            SELECT 1
-            FROM dbo.execucao_queue
-            WHERE execucao_id = ${execucaoId}
-              AND execucao_funcionario_base_id = ${row.execucao_funcionario_base_id}
-              AND tipo = 'VARIAVEIS'
-              AND status IN ('PENDENTE','PROCESSANDO')
-          )
-          BEGIN
-            INSERT INTO dbo.execucao_queue (
-              execucao_id,
-              execucao_funcionario_base_id,
-              session_id,
-              tipo,
-              status,
-              tentativas,
-              next_run_at,
-              created_at,
-              updated_at
-            ) VALUES (
-              ${execucaoId},
-              ${row.execucao_funcionario_base_id},
-              ${sessionId},
-              'VARIAVEIS',
-              'PENDENTE',
-              0,
-              NULL,
-              SYSDATETIME(),
-              SYSDATETIME()
-            )
-          END
-          `,
-        );
-      }
-
-      // Status global simples: há fila pendente/rodando
-      await this.prisma.execucao.update({
-        where: { execucao_id: execucaoId },
-        data: { status: 'EM_PROCESSAMENTO' },
-      });
-
-      return { status: true, message: 'Processo iniciado com sucesso' };
-    } catch (error) {
-      console.error(error);
-      return { status: false, message: 'Erro ao enfileirar variáveis' };
-    }
+  async enqueueVariaveisBatch(execucaoId: number, ids: number[], sessionId: string): Promise<{status: boolean; message: string}> {
+    return this.operacao.enqueueInitial(execucaoId, ids, 'VARIAVEIS', sessionId);
   }
 
-  async enqueueValoresBatch(
-    execucaoId: number,
-    ids: number[],
-    sessionId: string,
-  ): Promise<{ status: boolean; message: string }> {
-    try {
-      if (!ids || ids.length === 0) {
-        return { status: false, message: 'Nenhum funcionário selecionado' };
-      }
-
-      const bases = await this.prisma.execucao_funcionario_base.findMany({
-        where: {
-          execucao_id: execucaoId,
-          execucao_funcionario_base_id: { in: ids },
-        },
-        select: { execucao_funcionario_base_id: true },
-      });
-      if (bases.length === 0) {
-        return {
-          status: false,
-          message: 'Nenhum funcionário selecionado pertence a esta execução',
-        };
-      }
-
-      for (const row of bases) {
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          IF NOT EXISTS (
-            SELECT 1
-            FROM dbo.execucao_queue
-            WHERE execucao_id = ${execucaoId}
-              AND execucao_funcionario_base_id = ${row.execucao_funcionario_base_id}
-              AND tipo = 'VALORES'
-              AND status IN ('PENDENTE','PROCESSANDO')
-          )
-          BEGIN
-            INSERT INTO dbo.execucao_queue (
-              execucao_id,
-              execucao_funcionario_base_id,
-              session_id,
-              tipo,
-              status,
-              tentativas,
-              next_run_at,
-              created_at,
-              updated_at
-            ) VALUES (
-              ${execucaoId},
-              ${row.execucao_funcionario_base_id},
-              ${sessionId},
-              'VALORES',
-              'PENDENTE',
-              0,
-              NULL,
-              SYSDATETIME(),
-              SYSDATETIME()
-            )
-          END
-          `,
-        );
-      }
-
-      await this.prisma.execucao.update({
-        where: { execucao_id: execucaoId },
-        data: { status: 'EM_PROCESSAMENTO' },
-      });
-
-      return { status: true, message: 'Processo iniciado com sucesso' };
-    } catch (error) {
-      console.error(error);
-      return { status: false, message: 'Erro ao enfileirar valores' };
-    }
+  async enqueueValoresBatch(execucaoId: number, ids: number[], sessionId: string): Promise<{status: boolean; message: string}> {
+    return this.operacao.enqueueInitial(execucaoId, ids, 'VALORES', sessionId);
   }
 
-  async enqueueEnviarRmBatch(
-    execucaoId: number,
-    ids: number[],
-    sessionId: string,
-  ): Promise<{ status: boolean; message: string }> {
-    try {
-      if (!ids || ids.length === 0) {
-        return { status: false, message: 'Nenhum funcionário selecionado' };
-      }
-
-      // Só permite enfileirar quem é da execução e está pronto para envio (RESULTADOS_PROCESSADOS)
-      const bases = await this.prisma.execucao_funcionario_base.findMany({
-        where: {
-          execucao_id: execucaoId,
-          execucao_funcionario_base_id: { in: ids },
-          OR: [
-            { status: ExecucaoService.STATUS_FUNC_BASE.RESULTADOS_PROCESSADOS },
-            { status: ExecucaoService.STATUS_FUNC_BASE.ENVIADO_RM },
-            { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_RM },
-          ],
-        },
-        select: { execucao_funcionario_base_id: true },
-      });
-      if (bases.length === 0) {
-        return {
-          status: false,
-          message:
-            'Nenhum funcionário selecionado está apto para envio (precisa estar com RESULTADOS_PROCESSADOS)',
-        };
-      }
-
-      for (const row of bases) {
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          IF NOT EXISTS (
-            SELECT 1
-            FROM dbo.execucao_queue
-            WHERE execucao_id = ${execucaoId}
-              AND execucao_funcionario_base_id = ${row.execucao_funcionario_base_id}
-              AND tipo = 'ENVIAR_RM'
-              AND status IN ('PENDENTE','PROCESSANDO')
-          )
-          BEGIN
-            INSERT INTO dbo.execucao_queue (
-              execucao_id,
-              execucao_funcionario_base_id,
-              session_id,
-              tipo,
-              status,
-              tentativas,
-              next_run_at,
-              created_at,
-              updated_at
-            ) VALUES (
-              ${execucaoId},
-              ${row.execucao_funcionario_base_id},
-              ${sessionId},
-              'ENVIAR_RM',
-              'PENDENTE',
-              0,
-              NULL,
-              SYSDATETIME(),
-              SYSDATETIME()
-            )
-          END
-          `,
-        );
-      }
-
-      await this.prisma.execucao.update({
-        where: { execucao_id: execucaoId },
-        data: { status: 'EM_PROCESSAMENTO' },
-      });
-
-      return { status: true, message: 'Processo iniciado com sucesso' };
-    } catch (error) {
-      console.error(error);
-      return { status: false, message: 'Erro ao enfileirar envio para o RM' };
-    }
+  async enqueueEnviarRmBatch(_execucaoId: number, _ids: number[], _sessionId: string): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Abra a conferência e revise o lote antes de enviar ao RM.');
   }
 
-  async enqueueEnviarRmByExecucoes(params: {
-    execucaoIds: number[];
-    sessionId: string;
-  }): Promise<{ status: boolean; message: string; data?: unknown }> {
-    try {
-      const execucaoIds = (params.execucaoIds ?? [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && id > 0);
-      if (execucaoIds.length === 0) {
-        return { status: false, message: 'Nenhuma execução selecionada' };
-      }
-
-      const statusElegiveis = [
-        ExecucaoService.STATUS_FUNC_BASE.RESULTADOS_PROCESSADOS,
-        ExecucaoService.STATUS_FUNC_BASE.ENVIADO_RM,
-        ExecucaoService.STATUS_FUNC_BASE.ERRO_RM,
-      ];
-
-      let totalEnfileirados = 0;
-      for (const execucaoId of execucaoIds) {
-        const inserted = await this.prisma.$executeRaw(
-          Prisma.sql`
-          INSERT INTO dbo.execucao_queue (
-            execucao_id,
-            execucao_funcionario_base_id,
-            session_id,
-            tipo,
-            status,
-            tentativas,
-            next_run_at,
-            created_at,
-            updated_at
-          )
-          SELECT
-            b.execucao_id,
-            b.execucao_funcionario_base_id,
-            ${params.sessionId},
-            'ENVIAR_RM',
-            'PENDENTE',
-            0,
-            NULL,
-            SYSDATETIME(),
-            SYSDATETIME()
-          FROM dbo.execucao_funcionario_base b
-          WHERE b.execucao_id = ${execucaoId}
-            AND b.status IN (${Prisma.join(statusElegiveis)})
-            AND NOT EXISTS (
-              SELECT 1
-              FROM dbo.execucao_queue q
-              WHERE q.execucao_id = b.execucao_id
-                AND q.execucao_funcionario_base_id = b.execucao_funcionario_base_id
-                AND q.tipo = 'ENVIAR_RM'
-                AND q.status IN ('PENDENTE','PROCESSANDO')
-            );
-          `,
-        );
-        totalEnfileirados += Number(inserted ?? 0);
-      }
-
-      if (totalEnfileirados > 0) {
-        await this.prisma.execucao.updateMany({
-          where: { execucao_id: { in: execucaoIds } },
-          data: { status: 'EM_PROCESSAMENTO' },
-        });
-      }
-
-      return {
-        status: true,
-        message: 'Processo iniciado com sucesso',
-        data: {
-          execucoes: execucaoIds.length,
-          enfileirados: totalEnfileirados,
-        },
-      };
-    } catch (error) {
-      console.error(error);
-      return { status: false, message: 'Erro ao enfileirar envio para o RM' };
-    }
+  async enqueueEnviarRmByExecucoes(_params: {execucaoIds: number[]; sessionId: string}): Promise<{status: boolean; message: string}> {
+    throw new BadRequestException('Atualize a página e revise o lote antes de enviar ao RM.');
   }
 
   async processarEnviarRmBatch(
@@ -2079,7 +1741,10 @@ export class ExecucaoService {
         let teveErro = false;
         for (const execFunc of execFuncs) {
           try {
-            const formula = execFunc.formula as {
+            if (execFunc.status === 'ENVIADO_RM' && execFunc.enviado_revisao === execFunc.revisao) continue;
+            const approved = await this.operacao.approvedEvent(base.execucao_funcionario_base_id, execFunc.execucao_funcionario_id, execFunc.revisao);
+            if (execFunc.conferido_revisao !== execFunc.revisao) throw new Error('Versão não conferida');
+            const formula = (execFunc.formula_snapshot ? JSON.parse(execFunc.formula_snapshot) : execFunc.formula) as {
               codEvento?: string | null;
               tipo?: string | null;
             } | null;
@@ -2104,25 +1769,7 @@ export class ExecucaoService {
               );
             }
 
-            const record: {
-              CODCOLIGADA: number;
-              CODFILIAL: number;
-              CHAPA: string;
-              DATAINI: string;
-              DATAFIM: string;
-              CODEVENTO: string;
-              VALOR: number;
-              TIPO: string;
-            } = {
-              CODCOLIGADA: base.codcoligada,
-              CODFILIAL: base.codfilial,
-              CHAPA: base.funcionario_id_rm,
-              DATAINI: this.formatRmDateOnly(execucao.periodo.data_inicio),
-              DATAFIM: this.formatRmDateOnly(execucao.periodo.data_fim),
-              CODEVENTO: codevento,
-              VALOR: Number(valor),
-              TIPO: tipo,
-            };
+            const record = approved.record;
 
             if (!execFunc.metadados_rm_id) {
               this.logger.log(
@@ -2140,15 +1787,7 @@ export class ExecucaoService {
               const insertedId = this.extractRmInsertedId(resp.data);
               if (!insertedId) throw new Error('RM não retornou id no POST');
 
-              await this.prisma.execucao_funcionario.update({
-                where: {
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                },
-                data: {
-                  metadados_rm_id: insertedId,
-                  status: ExecucaoService.STATUS_FUNC_BASE.ENVIADO_RM,
-                },
-              });
+              await this.operacao.receipt(execFunc.execucao_funcionario_id, execFunc.revisao, insertedId, approved.usuarioId, record);
             } else {
               this.logger.log(
                 `processarEnviarRmBatch: atualizando metadados para funcionário ${base.funcionario_id_rm}`,
@@ -2160,12 +1799,7 @@ export class ExecucaoService {
                 record,
                 sessionId,
               );
-              await this.prisma.execucao_funcionario.update({
-                where: {
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                },
-                data: { status: ExecucaoService.STATUS_FUNC_BASE.ENVIADO_RM },
-              });
+              await this.operacao.receipt(execFunc.execucao_funcionario_id, execFunc.revisao, Number(execFunc.metadados_rm_id), approved.usuarioId, record);
             }
           } catch (e) {
             this.logger.error(
@@ -2721,46 +2355,7 @@ export class ExecucaoService {
     }));
   }
 
-  async editarResultado(
-    execucaoId: number,
-    execFuncId: number,
-    resultado: Partial<execucao_funcionario> & {
-      new_valor_final?: number;
-      motivo_ajuste: string;
-    },
-    usuarioId: number,
-  ): Promise<{ status: boolean; message: string }> {
-    try {
-      void execucaoId;
-
-      const oldExecFunc = await this.prisma.execucao_funcionario.findFirst({
-        where: { execucao_funcionario_id: execFuncId },
-        select: { valor_final: true },
-      });
-      if (!oldExecFunc) throw new NotFoundException('ExecFunc not found');
-
-      const updatedExecFunc = await this.prisma.execucao_funcionario.update({
-        where: { execucao_funcionario_id: execFuncId },
-        data: {
-          valor_final: resultado.new_valor_final,
-          ajuste_manual: true,
-        },
-      });
-      if (!updatedExecFunc) throw new NotFoundException('ExecFunc not found');
-
-      await this.prisma.ajuste_manual.create({
-        data: {
-          execucao_funcionario_id: execFuncId,
-          motivo: resultado.motivo_ajuste,
-          valor_anterior: oldExecFunc.valor_final,
-          valor_novo: resultado.new_valor_final,
-          usuario_id: usuarioId,
-        },
-      });
-      return { status: true, message: 'Resultado editado com sucesso' };
-    } catch (error) {
-      console.error(error);
-      return { status: false, message: 'Erro ao editar resultado' };
-    }
+  async editarResultado(execucaoId: number, execFuncId: number, resultado: Partial<execucao_funcionario> & {new_valor_final?: number; motivo_ajuste: string}, usuarioId: number): Promise<{status: boolean; message: string}> {
+    return this.operacao.adjust(execucaoId, execFuncId, resultado.new_valor_final, resultado.motivo_ajuste, resultado.revisao, usuarioId);
   }
 }

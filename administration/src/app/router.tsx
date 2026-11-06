@@ -1,4 +1,5 @@
-import { createBrowserRouter, redirect } from "react-router";
+import { createBrowserRouter, redirect, type LoaderFunctionArgs, Link } from "react-router";
+import { safeReturn } from '../utils/safeReturn';
 import { AdminLayout } from "../layouts/AdminLayout";
 import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -13,27 +14,29 @@ import { ProcessamentoDetalhesPage } from "../components/Processamento/Processam
 import { GestaoKmPage } from "../pages/GestaoKmPage";
 import { RelatoriosPage } from "../pages/RelatoriosPage";
 
-async function requireAuth() {
+async function requireAuth({ request }: LoaderFunctionArgs) {
   try {
     await authApi.me();
     return null;
   } catch {
-    throw redirect("/login");
+    const url = new URL(request.url);
+    throw redirect(`/login?${new URLSearchParams({ retorno: url.pathname + url.search })}`);
   }
 }
 
 async function requireAdmin() {
+  let me;
   try {
-    const me = await authApi.me();
-    if (me.perfil !== "admin") throw redirect("/dashboard");
-    return null;
+    me = await authApi.me();
   } catch {
     // se não conseguir carregar, deixa o loader principal lidar
     throw redirect("/login");
   }
+  if (me.perfil !== 'admin') throw redirect('/acesso-restrito');
+  return null;
 }
 
-async function redirectIfAuthed() {
+async function redirectIfAuthed({ request }: LoaderFunctionArgs) {
   try {
     await authApi.me();
   } catch {
@@ -42,7 +45,7 @@ async function redirectIfAuthed() {
   }
 
   // autenticado -> manda pra home
-  throw redirect("/");
+  throw redirect(safeReturn(new URL(request.url).searchParams.get('retorno')));
 }
 
 export const router = createBrowserRouter([
@@ -56,10 +59,11 @@ export const router = createBrowserRouter([
     loader: requireAuth,
     element: <AdminLayout />,
     children: [
+      { path: 'acesso-restrito', element: <section><h1>Acesso restrito</h1><p>Esta área exige perfil de administrador.</p><Link to="/processamento">Voltar à operação</Link></section> },
       {
         index: true,
         loader: () => {
-          throw redirect("/dashboard");
+          throw redirect("/processamento");
         },
       },
       {

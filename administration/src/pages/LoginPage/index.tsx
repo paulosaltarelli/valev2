@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@iconify/react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../../app/providers/authContext";
 
+import { isAxiosError } from "axios";
+import { safeReturn } from "../../utils/safeReturn";
 import logoFullNegativo from "../../assets/images/Logo-Full-Negativo-2.png";
 import { useBlockUi } from "../../app/providers/blockUiContext";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { document.title = "Entrar | Vale Expresso"; }, []);
   const { signIn } = useAuth();
 
   const [username, setUsername] = useState("");
@@ -42,23 +47,29 @@ export function LoginPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setError(null);
-              blockUiShow("Logando...");
+              setBusy(true);
+              blockUiShow("Entrando...");
               try {
                 await signIn(username, password);
-                navigate("/", { replace: true });
-              } catch {
-                setError("Usuário ou senha inválidos");
+                navigate(safeReturn(params.get("retorno")), { replace: true });
+              } catch (e) {
+                setError(isAxiosError(e) && !e.response ? 'Sem conexão com o servidor. Tente novamente.' : isAxiosError(e) && e.response?.status === 401 ? 'Usuário ou senha inválidos.' : 'Não foi possível autenticar no RM. Tente novamente em instantes.');
               } finally {
+                setBusy(false);
                 blockUiHide();
               }
             }}
           >
+            {params.get("motivo") === "sessao" && <p role="status">Sua sessão expirou. Entre novamente para retomar a tela anterior. As ações pendentes precisarão de nova revisão.</p>}
+            <label htmlFor="login-usuario" className="form-label">Usuário RM</label>
             <div className="icon-field mb-16">
               <span className="icon top-50 translate-middle-y">
                 <Icon icon="mage:email" />
               </span>
               <input
                 type="text"
+                id="login-usuario"
+                required
                 className="form-control h-56-px bg-neutral-50 radius-12"
                 placeholder="Usuário"
                 value={username}
@@ -67,6 +78,7 @@ export function LoginPage() {
               />
             </div>
 
+            <label htmlFor="your-password" className="form-label">Senha</label>
             <div className="position-relative mb-20">
               <div className="icon-field">
                 <span className="icon top-50 translate-middle-y">
@@ -74,6 +86,7 @@ export function LoginPage() {
                 </span>
                 <input
                   type="password"
+                  required
                   className="form-control h-56-px bg-neutral-50 radius-12"
                   id="your-password"
                   placeholder="Senha"
@@ -87,13 +100,13 @@ export function LoginPage() {
             <button
               type="submit"
               className="btn btn-primary text-sm btn-sm px-12 py-16 w-100 radius-12 mt-32"
-              disabled={!username || !password}
+              disabled={busy || !username || !password}
             >
               Entrar
             </button>
 
             {error ? (
-              <div className="mt-3 text-danger small">{error}</div>
+              <div role="alert" className="mt-3 text-danger small">{error}</div>
             ) : null}
           </form>
         </div>
