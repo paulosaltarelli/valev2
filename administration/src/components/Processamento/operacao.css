@@ -553,12 +553,6 @@ small {
   gap: 6px;
   margin-top: 6px;
 }
-.op-variable-formula {
-  margin-bottom: 12px;
-}
-.op-variable-formula select {
-  width: 100%;
-}
 .op-adjust {
   padding: 18px;
   background: var(--op-soft);

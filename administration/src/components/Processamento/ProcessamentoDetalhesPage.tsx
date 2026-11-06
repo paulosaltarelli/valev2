@@ -26,106 +26,128 @@ import {
   useOperationQuery,
 } from "./OperationCommon";
 
-function CalculationMemory({
-  result: r,
-  showFormula = true,
-}: {
-  result: ResultDetail;
-  showFormula?: boolean;
-}) {
+type MemoryEntry = ResultDetail["memoria_calculo"][number];
+type VariableRow = {
+  key: string;
+  entry: MemoryEntry;
+  formulas?: string[];
+  sources?: MemoryEntry[];
+};
+
+function CalculationMemory({ result: r }: { result: ResultDetail }) {
   const f = r.formulaUtilizada ?? r.formula;
   return (
     <>
-      {showFormula && (
-        <>
-          <p>
-            Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
-            fórmula v{f?.versao ?? "—"}
-          </p>
-          {(!r.formulaUtilizada ||
-            r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
-            <p className="op-notice op-warning">
-              Resultado legado: a fórmula histórica não foi armazenada. A regra
-              exibida é a configuração atual; verifique-a ao interpretar este resultado.
-            </p>
-          )}
-          <pre className="op-formula">
-            {f?.expressao || "Expressão indisponível"}
-          </pre>
-        </>
+      <p>
+        Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+        fórmula v{f?.versao ?? "—"}
+      </p>
+      {(!r.formulaUtilizada ||
+        r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
+        <p className="op-notice op-warning">
+          Resultado legado: a fórmula histórica não foi armazenada. A regra
+          exibida é a configuração atual; verifique-a ao interpretar este resultado.
+        </p>
       )}
-      <div className="op-scroll">
-        <table className="op-table">
-          <caption className="visually-hidden">
-            Entradas da fórmula deste resultado
-          </caption>
-          <thead>
-            <tr>
-              <th>Variável</th>
-              <th>Valor</th>
-              <th>Origem</th>
-            </tr>
-          </thead>
-          <tbody>
-            {r.memoria_calculo.map((m) => (
-              <tr key={m.memoria_id}>
-                <th scope="row">
-                  {m.variavel_nome}
-                  <small>{m.variavel_codigo}</small>
-                </th>
-                <td>
-                  {Number(m.valor).toLocaleString("pt-BR", {
-                    maximumFractionDigits: 4,
-                  })}
-                </td>
-                <td>
-                  {m.origem}
-                  <details>
-                    <summary>Ver origem e data</summary>
-                    <p>{m.detalhe || "Sem detalhe adicional"}</p>
-                    <small>{dateTime(m.data_registro)}</small>
-                  </details>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!r.memoria_calculo.length && (
-          <p className="op-notice">
-            Não há entradas armazenadas para este resultado. Confira a regra
-            e a origem antes de prosseguir.
-          </p>
-        )}
-      </div>
+      <pre className="op-formula">
+        {f?.expressao || "Expressão indisponível"}
+      </pre>
+      <VariableTable
+        rows={r.memoria_calculo.map((entry) => ({ key: String(entry.memoria_id), entry }))}
+      />
     </>
   );
 }
 
-function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person: BaseRow }) {
-  const formulas = person.execucao_funcionario;
-  const [resultId, setResultId] = useState(formulas[0].execucao_funcionario_id);
-  const fetcher = useCallback(
-    () => OperacaoApi.result(execucaoId, resultId),
-    [execucaoId, resultId],
+function VariableTable({ rows }: { rows: VariableRow[] }) {
+  if (!rows.length) {
+    return <p className="op-notice">Não há variáveis armazenadas neste recorte.</p>;
+  }
+  return (
+    <div className="op-scroll">
+      <table className="op-table">
+        <caption className="visually-hidden">
+          Variáveis, valores e origens
+        </caption>
+        <thead>
+          <tr>
+            <th>Variável</th>
+            <th>Valor</th>
+            <th>Origem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ key, entry: m, formulas, sources = [m] }) => (
+            <tr key={key}>
+              <th scope="row">
+                {m.variavel_nome}
+                <small>{m.variavel_codigo}</small>
+                {formulas?.length ? <small>{formulas.join(" · ")}</small> : null}
+              </th>
+              <td>
+                {Number(m.valor).toLocaleString("pt-BR", {
+                  maximumFractionDigits: 4,
+                })}
+              </td>
+              <td>
+                {[...new Set(sources.map((source) => source.origem))].join(" · ")}
+                <details>
+                  <summary>Ver origem e data</summary>
+                  {sources.map((source) => (
+                    <div key={source.memoria_id}>
+                      <p>{source.detalhe || "Sem detalhe adicional"}</p>
+                      <small>{dateTime(source.data_registro)}</small>
+                    </div>
+                  ))}
+                </details>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
+}
+
+function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person: BaseRow }) {
+  const fetcher = useCallback(async () => {
+    const results = await Promise.all(
+      person.execucao_funcionario.map((r) => OperacaoApi.result(execucaoId, r.execucao_funcionario_id)),
+    );
+    const grouped = new Map<string, Map<string, Required<VariableRow>>>();
+    for (const result of results) {
+      const formula = (result.formulaUtilizada ?? result.formula).nome;
+      for (const entry of result.memoria_calculo) {
+        const code = entry.variavel_codigo;
+        const value = String(entry.valor);
+        const variants = grouped.get(code) ?? new Map<string, Required<VariableRow>>();
+        grouped.set(code, variants);
+        const row = variants.get(value) ?? { key: JSON.stringify([code, value]), entry, formulas: [], sources: [] };
+        variants.set(value, row);
+        if (!row.formulas.includes(formula)) row.formulas.push(formula);
+        if (!row.sources.some((source) => source.origem === entry.origem && source.detalhe === entry.detalhe)) {
+          row.sources.push(entry);
+        }
+      }
+    }
+    return Array.from(grouped.values()).flatMap((variants) =>
+      Array.from(variants.values(), (row) => ({
+        ...row,
+        formulas: variants.size > 1 ? row.formulas : undefined,
+      })),
+    ).sort((a, b) => a.entry.variavel_nome.localeCompare(b.entry.variavel_nome, "pt-BR"));
+  }, [execucaoId, person]);
   const query = useOperationQuery(fetcher, 0);
   return (
     <>
       <p><strong>{person.nome_funcionario}</strong> · {person.funcionario_id_rm}</p>
-      <label className="op-variable-formula">
-        Fórmula
-        <select value={resultId} onChange={(event) => setResultId(Number(event.target.value))}>
-          {formulas.map((r) => (
-            <option key={r.execucao_funcionario_id} value={r.execucao_funcionario_id}>
-              {r.formula.nome}
-            </option>
-          ))}
-        </select>
-      </label>
       <QueryNotice {...query} />
-      {query.data?.execucao_funcionario_id === resultId && (
-        <CalculationMemory result={query.data} showFormula={false} />
+      {query.error && (
+        <button type="button" className="btn btn-outline-primary" onClick={query.refresh}>
+          Tentar novamente
+        </button>
       )}
+      {query.data && <VariableTable rows={query.data} />}
     </>
   );
 }
