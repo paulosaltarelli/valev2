@@ -1,11 +1,11 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   useState,
   type FormEvent,
 } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
+import { Modal } from "react-bootstrap";
 import {
   OperacaoApi,
   type Etapa,
@@ -103,13 +103,6 @@ function ResultPanel({
       setBusy(false);
     }
   };
-  const panelRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (query.data) {
-      panelRef.current?.focus({ preventScroll: true });
-      panelRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
-    }
-  }, [resultId, query.data?.execucao_funcionario_id]);
   const r = query.data;
   const f = r?.formulaUtilizada ?? r?.formula;
   const valid =
@@ -120,8 +113,6 @@ function ResultPanel({
     );
   return (
     <section
-      ref={panelRef}
-      tabIndex={-1}
       className="op-result"
       aria-label="Resultado selecionado"
       aria-busy={query.loading}
@@ -169,64 +160,66 @@ function ResultPanel({
               </small>
             </div>
           </div>
-          <h3>Regra e memória deste resultado</h3>
-          <p>
-            Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
-            fórmula v{f?.versao ?? "—"}
-          </p>
-          {(!r.formulaUtilizada ||
-            r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
-            <p className="op-notice op-warning">
-              Resultado legado: a fórmula histórica não foi armazenada. A regra
-              exibida é a configuração atual; verifique-a ao interpretar este resultado.
+          <details className="op-result-memory">
+            <summary>Memória de cálculo · {r.memoria_calculo.length} variáveis</summary>
+            <p>
+              Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+              fórmula v{f?.versao ?? "—"}
             </p>
-          )}
-          <pre className="op-formula">
-            {f?.expressao || "Expressão indisponível"}
-          </pre>
-          <div className="op-scroll">
-            <table className="op-table">
-              <caption className="visually-hidden">
-                Entradas da fórmula deste resultado
-              </caption>
-              <thead>
-                <tr>
-                  <th>Variável</th>
-                  <th>Valor</th>
-                  <th>Origem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.memoria_calculo.map((m) => (
-                  <tr key={m.memoria_id}>
-                    <th scope="row">
-                      {m.variavel_nome}
-                      <small>{m.variavel_codigo}</small>
-                    </th>
-                    <td>
-                      {Number(m.valor).toLocaleString("pt-BR", {
-                        maximumFractionDigits: 4,
-                      })}
-                    </td>
-                    <td>
-                      {m.origem}
-                      <details>
-                        <summary>Ver origem e data</summary>
-                        <p>{m.detalhe || "Sem detalhe adicional"}</p>
-                        <small>{dateTime(m.data_registro)}</small>
-                      </details>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!r.memoria_calculo.length && (
-              <p className="op-notice">
-                Não há entradas armazenadas para este resultado. Confira a regra
-                e a origem antes de prosseguir.
+            {(!r.formulaUtilizada ||
+              r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
+              <p className="op-notice op-warning">
+                Resultado legado: a fórmula histórica não foi armazenada. A regra
+                exibida é a configuração atual; verifique-a ao interpretar este resultado.
               </p>
             )}
-          </div>
+            <pre className="op-formula">
+              {f?.expressao || "Expressão indisponível"}
+            </pre>
+            <div className="op-scroll">
+              <table className="op-table">
+                <caption className="visually-hidden">
+                  Entradas da fórmula deste resultado
+                </caption>
+                <thead>
+                  <tr>
+                    <th>Variável</th>
+                    <th>Valor</th>
+                    <th>Origem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.memoria_calculo.map((m) => (
+                    <tr key={m.memoria_id}>
+                      <th scope="row">
+                        {m.variavel_nome}
+                        <small>{m.variavel_codigo}</small>
+                      </th>
+                      <td>
+                        {Number(m.valor).toLocaleString("pt-BR", {
+                          maximumFractionDigits: 4,
+                        })}
+                      </td>
+                      <td>
+                        {m.origem}
+                        <details>
+                          <summary>Ver origem e data</summary>
+                          <p>{m.detalhe || "Sem detalhe adicional"}</p>
+                          <small>{dateTime(m.data_registro)}</small>
+                        </details>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!r.memoria_calculo.length && (
+                <p className="op-notice">
+                  Não há entradas armazenadas para este resultado. Confira a regra
+                  e a origem antes de prosseguir.
+                </p>
+              )}
+            </div>
+          </details>
           <div className="op-actions">
             <button
               className="btn btn-outline-secondary"
@@ -732,165 +725,131 @@ export function ProcessamentoDetalhesPage() {
               </details>
             </section>
           )}
-          <div
-            className={
-              tab === "resultados" || tab === "envios" || tab === "historico"
-                ? "op-conference-layout"
-                : ""
-            }
-          >
-            <div>
-              <div className="op-scroll">
-                <table className="op-table op-people">
-                  <caption className="visually-hidden">
-                    Funcionários e resultados da execução
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th>
-                        {selecting && (
-                          <input type="checkbox" className="me-2" aria-label="Selecionar todas as pessoas desta página"
-                            checked={Boolean(query.data?.bases.length) && query.data!.bases.every(b => selected.includes(b.execucao_funcionario_base_id))}
-                            onChange={e => setSelected(e.target.checked ? (query.data?.bases.map(b => b.execucao_funcionario_base_id) ?? []) : [])} />
-                        )}
-                        Pessoa
-                      </th>
-                      <th>Situação e resultados</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {query.data?.bases.map((b) => (
-                      <tr key={b.execucao_funcionario_base_id}>
-                        <th scope="row">
-                          <div className="op-branch-name">
-                            {selecting && (
-                              <input
-                                type="checkbox"
-                                aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
-                                checked={selected.includes(
-                                  b.execucao_funcionario_base_id,
-                                )}
-                                onChange={(e) =>
-                                  setSelected((prev) =>
-                                    e.target.checked
-                                      ? [
-                                          ...prev,
+          <div>
+            <div className="op-scroll">
+              <table className="op-table op-people">
+                <caption className="visually-hidden">
+                  Funcionários e resultados da execução
+                </caption>
+                <thead>
+                  <tr>
+                    <th>
+                      {selecting && (
+                        <input type="checkbox" className="me-2" aria-label="Selecionar todas as pessoas desta página"
+                          checked={Boolean(query.data?.bases.length) && query.data!.bases.every(b => selected.includes(b.execucao_funcionario_base_id))}
+                          onChange={e => setSelected(e.target.checked ? (query.data?.bases.map(b => b.execucao_funcionario_base_id) ?? []) : [])} />
+                      )}
+                      Pessoa
+                    </th>
+                    <th>Situação e resultados</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {query.data?.bases.map((b) => (
+                    <tr key={b.execucao_funcionario_base_id}>
+                      <th scope="row">
+                        <div className="op-branch-name">
+                          {selecting && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
+                              checked={selected.includes(
+                                b.execucao_funcionario_base_id,
+                              )}
+                              onChange={(e) =>
+                                setSelected((prev) =>
+                                  e.target.checked
+                                    ? [
+                                        ...prev,
+                                        b.execucao_funcionario_base_id,
+                                      ]
+                                    : prev.filter(
+                                        (x) =>
+                                          x !==
                                           b.execucao_funcionario_base_id,
-                                        ]
-                                      : prev.filter(
-                                          (x) =>
-                                            x !==
-                                            b.execucao_funcionario_base_id,
-                                        ),
-                                  )
-                                }
-                              />
-                            )}
-                            <span>{b.nome_funcionario}</span>
-                          </div>
-                          <small>
-                            {b.funcionario_id_rm} · {b.cargo}
-                          </small>
-                          <small>KM: {b.km ?? "não informado"}</small>
-                        </th>
-                        <td>
-                          <span
-                            className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}
-                          >
-                            {statusLabel(b.status)}
-                          </span>
-                          {b.execucao_funcionario.map((r) => (
-                            <button
-                              key={r.execucao_funcionario_id}
-                              className="op-result-link"
-                              aria-pressed={
-                                resultId === r.execucao_funcionario_id
-                              }
-                              onClick={() =>
-                                setContext(
-                                  {
-                                    aba:
-                                      tab === "envios"
-                                        ? "envios"
-                                        : tab === "historico"
-                                          ? "historico"
-                                          : "resultados",
-                                    resultado: String(
-                                      r.execucao_funcionario_id,
-                                    ),
-                                  },
-                                  false,
+                                      ),
                                 )
                               }
-                            >
-                              <strong>{r.formula.nome}</strong>
-                              <span>
-                                {money(r.valor_final)} · v{r.revisao} ·{" "}
-                                {r.status === "ENVIADO_RM" &&
-                                r.enviado_revisao === r.revisao
-                                  ? "Enviado"
-                                  : "Ver resultado"}
-                                {r.ajuste_manual ? " · ajustado" : ""}
-                              </span>
-                            </button>
-                          ))}
-                          {!b.execucao_funcionario.length && (
-                            <small>Resultados ainda não disponíveis</small>
+                            />
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {query.data && !query.data.bases.length && (
-                <div className="op-empty">
-                  Nenhuma pessoa neste recorte. Ajuste os filtros.
-                </div>
-              )}
-              <div className="op-pagination">
-                <span>
-                  {query.data?.total ?? "—"} pessoas no recorte · página {page}{" "}
-                  de {Math.max(1, Math.ceil((query.data?.total ?? 0) / 25))}
-                </span>
-                <button
-                  className="btn btn-outline-secondary"
-                  disabled={page <= 1}
-                  onClick={() =>
-                    setContext({ pagina: String(page - 1), resultado: "" })
-                  }
-                >
-                  Anterior
-                </button>
-                <button
-                  className="btn btn-outline-secondary"
-                  disabled={page * 25 >= (query.data?.total ?? 0)}
-                  onClick={() =>
-                    setContext({ pagina: String(page + 1), resultado: "" })
-                  }
-                >
-                  Próxima
-                </button>
-              </div>
+                          <span>{b.nome_funcionario}</span>
+                        </div>
+                        <small>
+                          {b.funcionario_id_rm} · {b.cargo}
+                        </small>
+                        <small>KM: {b.km ?? "não informado"}</small>
+                      </th>
+                      <td>
+                        <span
+                          className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}
+                        >
+                          {statusLabel(b.status)}
+                        </span>
+                        {b.execucao_funcionario.map((r) => (
+                          <button
+                            key={r.execucao_funcionario_id}
+                            className="op-result-link"
+                            aria-haspopup="dialog"
+                            onClick={() =>
+                              setContext(
+                                {
+                                  resultado: String(
+                                    r.execucao_funcionario_id,
+                                  ),
+                                },
+                                false,
+                              )
+                            }
+                          >
+                            <strong>{r.formula.nome}</strong>
+                            <span>
+                              {money(r.valor_final)} · v{r.revisao} ·{" "}
+                              {r.status === "ENVIADO_RM" &&
+                              r.enviado_revisao === r.revisao
+                                ? "Enviado"
+                                : "Ver resultado"}
+                              {r.ajuste_manual ? " · ajustado" : ""}
+                            </span>
+                          </button>
+                        ))}
+                        {!b.execucao_funcionario.length && (
+                          <small>Resultados ainda não disponíveis</small>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {(tab === "resultados" ||
-              tab === "envios" ||
-              tab === "historico") &&
-              (resultId ? (
-                <ResultPanel
-                  execucaoId={id}
-                  resultId={resultId}
-                  onChanged={refresh}
-                />
-              ) : (
-                <div className="op-empty">
-                  <h2>Selecione um resultado</h2>
-                  <p>
-                    Veja valor, regra, memória de cálculo, ajustes e confirmação
-                    do RM no mesmo contexto.
-                  </p>
-                </div>
-              ))}
+            {query.data && !query.data.bases.length && (
+              <div className="op-empty">
+                Nenhuma pessoa neste recorte. Ajuste os filtros.
+              </div>
+            )}
+            <div className="op-pagination">
+              <span>
+                {query.data?.total ?? "—"} pessoas no recorte · página {page}{" "}
+                de {Math.max(1, Math.ceil((query.data?.total ?? 0) / 25))}
+              </span>
+              <button
+                className="btn btn-outline-secondary"
+                disabled={page <= 1}
+                onClick={() =>
+                  setContext({ pagina: String(page - 1), resultado: "" })
+                }
+              >
+                Anterior
+              </button>
+              <button
+                className="btn btn-outline-secondary"
+                disabled={page * 25 >= (query.data?.total ?? 0)}
+                onClick={() =>
+                  setContext({ pagina: String(page + 1), resultado: "" })
+                }
+              >
+                Próxima
+              </button>
+            </div>
           </div>
           <p className="op-muted">
             Última consulta: {dateTime(query.at)} · atualização automática a
@@ -898,6 +857,29 @@ export function ProcessamentoDetalhesPage() {
           </p>
         </>
       )}
+      <Modal
+        show={Boolean(resultId)}
+        onHide={() => setContext({ resultado: "" }, false)}
+        aria-labelledby="op-result-title"
+        className="op-modal"
+        size="lg"
+        centered
+        scrollable
+      >
+        <Modal.Header closeButton closeLabel="Fechar resultado">
+          <Modal.Title id="op-result-title">Detalhes do resultado</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {resultId > 0 && (
+            <ResultPanel
+              key={resultId}
+              execucaoId={id}
+              resultId={resultId}
+              onChanged={refresh}
+            />
+          )}
+        </Modal.Body>
+      </Modal>
     </div>
   );
 }
