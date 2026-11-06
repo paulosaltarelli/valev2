@@ -26,24 +26,34 @@ import {
   useOperationQuery,
 } from "./OperationCommon";
 
-function CalculationMemory({ result: r }: { result: ResultDetail }) {
+function CalculationMemory({
+  result: r,
+  showFormula = true,
+}: {
+  result: ResultDetail;
+  showFormula?: boolean;
+}) {
   const f = r.formulaUtilizada ?? r.formula;
   return (
     <>
-      <p>
-        Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
-        fórmula v{f?.versao ?? "—"}
-      </p>
-      {(!r.formulaUtilizada ||
-        r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
-        <p className="op-notice op-warning">
-          Resultado legado: a fórmula histórica não foi armazenada. A regra
-          exibida é a configuração atual; verifique-a ao interpretar este resultado.
-        </p>
+      {showFormula && (
+        <>
+          <p>
+            Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+            fórmula v{f?.versao ?? "—"}
+          </p>
+          {(!r.formulaUtilizada ||
+            r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
+            <p className="op-notice op-warning">
+              Resultado legado: a fórmula histórica não foi armazenada. A regra
+              exibida é a configuração atual; verifique-a ao interpretar este resultado.
+            </p>
+          )}
+          <pre className="op-formula">
+            {f?.expressao || "Expressão indisponível"}
+          </pre>
+        </>
       )}
-      <pre className="op-formula">
-        {f?.expressao || "Expressão indisponível"}
-      </pre>
       <div className="op-scroll">
         <table className="op-table">
           <caption className="visually-hidden">
@@ -113,7 +123,9 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
         </select>
       </label>
       <QueryNotice {...query} />
-      {query.data?.execucao_funcionario_id === resultId && <CalculationMemory result={query.data} />}
+      {query.data?.execucao_funcionario_id === resultId && (
+        <CalculationMemory result={query.data} showFormula={false} />
+      )}
     </>
   );
 }
