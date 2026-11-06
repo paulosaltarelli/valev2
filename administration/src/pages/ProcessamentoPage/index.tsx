@@ -35,7 +35,6 @@ import Select, {
   type SingleValue,
 } from "../../shared/components/Select";
 import { SwalHelper } from "../../utils/swalHelper";
-import type { Usuario } from "../../models/UsuariosModel";
 import { Tooltip } from "../../components/Tooltip";
 import { useBlockUi } from "../../app/providers/blockUiContext";
 import { Limited } from "../../components/utils/Limited";
@@ -46,6 +45,7 @@ DataTable.use(DataTablesCore);
 
 export function ProcessamentoPage() {
   const navigate = useNavigate();
+  const [statusFilter, setStatusFilter] = useState("");
   const [execucoes, setExecucoes] = useState<Execucao[]>([]);
   const [allExecucoes, setAllExecucoes] = useState<Execucao[]>([]);
   const allExecucoesLoadedRef = useRef<boolean>(false);
@@ -412,11 +412,8 @@ export function ProcessamentoPage() {
     },
     { data: "filial.nome", name: "filial" },
     { data: "periodo.competencia", name: "competencia" },
-    { data: "periodo.data_inicio", name: "data_inicio" },
-    { data: "periodo.data_fim", name: "data_fim" },
     { data: "status", name: "status" },
     { data: "data_execucao", name: "data_execucao" },
-    { data: "usuario.nome", name: "usuario" },
     { data: null, name: "actions", orderable: false, searchable: false },
   ];
 
@@ -442,58 +439,31 @@ export function ProcessamentoPage() {
     }
     return set;
   }, [allExecucoes, periodoIdToCreate]);
-  const filteredExecucoes = periodosFilter
-    ? execucoes.filter(
-        (execucao) =>
-          execucao.periodo?.periodo_id === periodosFilter.periodo_id,
-      )
-    : execucoes;
+  const filteredExecucoes = useMemo(
+    () => execucoes.filter((execucao) =>
+      (!periodosFilter || execucao.periodo?.periodo_id === periodosFilter.periodo_id) &&
+      (!statusFilter || execucao.status === statusFilter)
+    ),
+    [execucoes, periodosFilter, statusFilter],
+  );
 
   return (
     <>
       <div className="card">
-        <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <h1 className="h4 m-0 p-0">Processamentos</h1>
+        <div className="card-body vale-workspace">
+          <header className="vale-page-header">
+            <div>
+              <h1>Processamentos</h1>
+              <p>Acompanhe as execuções por filial e competência.</p>
             </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button variant="primary" onClick={openCreateModal}>
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Novo Processamento</span>
-              </Button>
-              <Button
-                variant="link"
-                onClick={async () => {
-                  await fetchCreateQueueErrors();
-                  setShowCreateQueueErrorsModal(true);
-                }}
-                tooltip="Ver erros/logs recentes da fila de criação"
-                className="text-danger"
-              >
-                <Icon
-                  icon="solar:danger-circle-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-                {/* <span className="ms-1">Erros</span> */}
-              </Button>
-            </div>
-          </div>
-          <div className="row mb-3">
-            <div className="col-md-4 col-12">
-              <Form.Label>Filial</Form.Label>
+            <Button variant="primary" onClick={openCreateModal}>
+              <Icon icon="tabler:plus" width={20} height={20} aria-hidden="true" />
+              <span className="ms-1">Novo processamento</span>
+            </Button>
+          </header>
+          <div className="row g-3 align-items-end vale-filter-bar" role="group" aria-label="Filtros de processamento">
+            <div className="col-12 col-sm-6 col-xl">
+              <Form.Label htmlFor="filialIdFilter">Filial</Form.Label>
               {(() => {
                 type FilialOption = { value: number; label: string };
 
@@ -529,13 +499,13 @@ export function ProcessamentoPage() {
                 );
               })()}
             </div>
-            <div className="col-md-4 col-12">
-              <Form.Label>Período</Form.Label>
+            <div className="col-12 col-sm-6 col-xl">
+              <Form.Label htmlFor="periodoIdFilter">Competência</Form.Label>
               {(() => {
                 type PeriodoOption = { value: number; label: string };
 
                 const options: PeriodoOption[] = [
-                  { value: 0, label: "Todos os períodos" },
+                  { value: 0, label: "Todas as competências" },
                   ...periodos.map((periodo) => ({
                     value: periodo.periodo_id,
                     label: periodo.competencia,
@@ -571,27 +541,47 @@ export function ProcessamentoPage() {
                 );
               })()}
             </div>
+            <div className="col-12 col-sm-6 col-xl">
+              <Form.Label htmlFor="statusFilter">Status</Form.Label>
+              <Form.Select id="statusFilter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="">Todos os status</option>
+                <option value="AGUARDANDO">Aguardando</option>
+                <option value="EM_PROCESSAMENTO">Em processamento</option>
+                <option value="EM_VALIDACAO">Em validação</option>
+                <option value="FINALIZADA">Finalizada</option>
+                <option value="CANCELADA">Cancelada</option>
+              </Form.Select>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-auto">
+              <Button variant="link" disabled={!filialId && !periodosFilter && !statusFilter} onClick={() => {
+                setFilialId(0);
+                setPeriodosFilter(null);
+                setStatusFilter("");
+              }}>Limpar filtros</Button>
+            </div>
           </div>
-          <div className="row">
-            <div className="col-6">
-              {createQueueStatus?.hasRunning && (
-                <div className="alert alert-info py-2 px-3 mb-2">
-                  <div className="d-flex align-items-center justify-content-between gap-2">
-                    <span>
-                      Criando processamentos... Pendentes:{" "}
-                      {createQueueStatus.pending} / Processando:{" "}
-                      {createQueueStatus.processing}
-                    </span>
-                    <Button
-                      variant="link"
-                      className="p-0 m-0 fs-12"
-                      onClick={toggleCreateQueueDetails}
-                    >
-                      {showCreateQueueDetails ? "Ocultar fila" : "Ver fila"}
-                    </Button>
-                  </div>
-                </div>
-              )}
+          <section className="vale-queue" aria-label="Fila de criação">
+            <div className="vale-page-header">
+              <div>
+                <h2>Fila de criação</h2>
+                <p role="status">
+                  {createQueueStatus?.hasRunning
+                    ? `${createQueueStatus.pending} aguardando · ${createQueueStatus.processing} em andamento`
+                    : createQueueStatus ? "Nenhuma criação em andamento" : "Status da fila indisponível"}
+                </p>
+              </div>
+              <div className="d-flex flex-wrap gap-2">
+                {createQueueStatus?.hasRunning && (
+                  <Button variant="outline-primary" aria-expanded={showCreateQueueDetails} onClick={toggleCreateQueueDetails}>
+                    {showCreateQueueDetails ? "Ocultar fila" : "Ver fila"}
+                  </Button>
+                )}
+                <Button variant="outline-secondary" onClick={() => {
+                  setShowCreateQueueErrorsModal(true);
+                  void fetchCreateQueueErrors();
+                }}>Ver falhas</Button>
+              </div>
+            </div>
               {createQueueStatus?.hasRunning && showCreateQueueDetails && (
                 <div className="border rounded bg-neutral p-2 mb-2">
                   <div className="d-flex align-items-center justify-content-between mb-2">
@@ -644,13 +634,15 @@ export function ProcessamentoPage() {
                   )}
                 </div>
               )}
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          </section>
+          <section className="vale-table" aria-label="Histórico de processamentos">
+            <h2>Histórico de execuções</h2>
             <DataTable
               className="table striped-table mb-0"
               options={{
                 pageLength: 10,
+                order: [[4, "desc"]],
+                scrollX: true,
                 layout: {
                   topStart: "buttons",
                 },
@@ -680,6 +672,7 @@ export function ProcessamentoPage() {
                   },
                 ],
                 ...defaultConfig,
+                responsive: false,
               }}
               data={filteredExecucoes}
               columns={columns}
@@ -691,35 +684,20 @@ export function ProcessamentoPage() {
                   <div>
                     <Button
                       variant="outline-primary"
-                      tooltip="Visualizar"
-                      className="m-0 px-1 py-1 border-0"
+                      className="px-2"
+                      aria-label={`Ver detalhes de ${row.filial?.nome ?? "filial"}, ${row.periodo?.competencia ?? "competência"}`}
                       onClick={() => {
                         navigate(`/processamento/${row.execucao_id}`);
                       }}
                     >
-                      <Icon
-                        icon="solar:eye-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
+                      Ver detalhes
                     </Button>
                   </div>
-                ),
-                data_inicio: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
-                data_fim: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
                 ),
                 status: (status: string) =>
                   FunctionsHelper.formatStatusExecucao(status),
                 data_execucao: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
-                usuario: (usuario: Usuario) => (
-                  <Tooltip title={usuario.login}>
-                    <span>{usuario.nome}</span>
-                  </Tooltip>
+                  <span>{FunctionsHelper.formatDateTimePtBr(data)}</span>
                 ),
               }}
               onSelect={() => syncDataTableButtonsState()}
@@ -731,16 +709,13 @@ export function ProcessamentoPage() {
                   <th scope="col"></th>
                   <th scope="col">Filial</th>
                   <th scope="col">Competência</th>
-                  <th scope="col">Data Início</th>
-                  <th scope="col">Data Fim</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Data Execução</th>
-                  <th scope="col">Usuário</th>
+                  <th scope="col">Criado em</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
             </DataTable>
-          </div>
+          </section>
         </div>
       </div>
       {/* <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
@@ -829,14 +804,14 @@ export function ProcessamentoPage() {
         size="lg"
       >
         <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Começar processamento</Modal.Title>
+          <Modal.Title>Novo processamento</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveCreateExecucao} id="createExecucaoForm">
             <div className="row mb-3">
-              <div className="col-6 mb-2">
-                <Form.Group controlId="filialId">
-                  <Form.Label>Filial</Form.Label>
+              <div className="col-12 col-md-6 mb-2">
+                <Form.Group controlId="filialIdCreate">
+                  <Form.Label>Filiais</Form.Label>
                   {(() => {
                     type FilialOption = {
                       value: number;
@@ -863,7 +838,7 @@ export function ProcessamentoPage() {
                     return (
                       <Select<FilialOption, true>
                         inputId="filialIdCreate"
-                        placeholder="Selec. uma ou mais filiais"
+                        placeholder="Selecione uma ou mais filiais"
                         isClearable
                         isMulti
                         options={options}
@@ -903,9 +878,9 @@ export function ProcessamentoPage() {
                   })()}
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-md-6 mb-2">
                 <Form.Group controlId="periodoId">
-                  <Form.Label>Período</Form.Label>
+                  <Form.Label>Competência</Form.Label>
                   {(() => {
                     type PeriodoOption = { value: number; label: string };
 
@@ -927,7 +902,7 @@ export function ProcessamentoPage() {
                     return (
                       <Select<PeriodoOption, false>
                         inputId="periodoId"
-                        placeholder="Selec. um período"
+                        placeholder="Selecione a competência"
                         isClearable
                         options={options}
                         value={value}
@@ -1135,7 +1110,7 @@ export function ProcessamentoPage() {
               onChange={(e) => setProcessarVariaveisEValores(e.target.checked)}
             />
             <Form.Label htmlFor="processarVariaveisEValores">
-              Processar Variaveis e Valores
+              Calcular variáveis e valores após criar
             </Form.Label>
           </div>
           <div className="row px-2">

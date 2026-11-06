@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react";
 import { Button } from "../utils/Button";
-import { useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 import DataTable, { type DataTableRef } from "datatables.net-react";
@@ -47,10 +47,9 @@ type EditResultFunc = ExecFunc & {
   motivo_ajuste?: string;
 };
 export function ProcessamentoDetalhesPage() {
-  const navigate = useNavigate();
   const { execucaoId } = useParams<{ execucaoId: string }>();
   const [execucao, setExecucao] = useState<Execucao>({} as Execucao);
-  const execucaoStatusRef = useRef<string | undefined>(undefined);
+  const execucaoRef = useRef<Execucao | null>(null);
   const execucaoFilialIdRef = useRef<number>(0);
   const kmMaxFilialRef = useRef<number>(0);
   const [viewResultsFuncBase, setViewResultsFuncBase] = useState<ExecFuncBase>(
@@ -301,7 +300,7 @@ export function ProcessamentoDetalhesPage() {
       .data()
       .toArray() as ExecFuncBase[];
 
-    const currentStatus = execucaoStatusRef.current;
+    const currentStatus = execucaoRef.current?.status;
     const canRun =
       Boolean(currentStatus) && currentStatus !== "EM_PROCESSAMENTO";
     const hasSelection = selectedRows.length > 0;
@@ -347,8 +346,8 @@ export function ProcessamentoDetalhesPage() {
 
   // Mantém o status mais recente em ref (evita callback "stale" preso no DataTables)
   useEffect(() => {
-    execucaoStatusRef.current = execucao?.status;
-  }, [execucao?.status]);
+    execucaoRef.current = execucao;
+  }, [execucao]);
 
   const fetchQueueStatus = useCallback(async () => {
     if (!execucaoId) return;
@@ -356,7 +355,7 @@ export function ProcessamentoDetalhesPage() {
     setQueueStatus(status);
     if (
       !status.hasRunning &&
-      execucaoStatusRef.current === "EM_PROCESSAMENTO"
+      execucaoRef.current?.status === "EM_PROCESSAMENTO"
     ) {
       void atualizaTabelaFuncionarios();
     }
@@ -607,6 +606,7 @@ export function ProcessamentoDetalhesPage() {
   };
 
   const handleEnviarRmSelecionados = async (rows: ExecFuncBase[]) => {
+    const current = execucaoRef.current;
     const hasInvalid = rows.some(
       (r) =>
         r.status !== "RESULTADOS_PROCESSADOS" &&
@@ -615,14 +615,14 @@ export function ProcessamentoDetalhesPage() {
     );
     if (hasInvalid) {
       SwalHelper.errorToast(
-        "Apenas funcionários com RESULTADOS_PROCESSADOS ou ENVIADO_RM podem ser enviados ao RM.",
+        "Selecione funcionários com valores calculados, já enviados ou com erro de envio.",
       );
       return;
     }
 
     const confirm = await SwalHelper.confirm(
       "Enviar para o RM?",
-      "Esta ação irá enviar os resultados (por fórmula) ao RM para todos os funcionários selecionados.",
+      `${current?.filial?.nome ?? "Filial"} · ${current?.periodo?.competencia ?? "Competência"} — ${rows.length} funcionário(s) selecionado(s), incluindo ${rows.filter((row) => row.status === "ENVIADO_RM").length} já enviado(s).`,
       "question",
       "Sim, enviar",
       "Não, cancelar",
@@ -630,7 +630,7 @@ export function ProcessamentoDetalhesPage() {
     if (!confirm.isConfirmed) return;
 
     try {
-      if (execucao.status === "EM_PROCESSAMENTO") {
+      if (execucaoRef.current?.status === "EM_PROCESSAMENTO") {
         SwalHelper.errorToast("Já existe um processamento em andamento.");
         return;
       }
@@ -651,41 +651,28 @@ export function ProcessamentoDetalhesPage() {
   };
 
   const handleEnviarRmTodos = async () => {
-    const confirm = await Swal.fire({
-      title: "Enviar todos para o RM?",
-      text: "Esta ação irá enviar para o RM todos os funcionários com RESULTADOS_PROCESSADOS.",
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonText: "Sim, enviar",
-      confirmButtonColor: "#28a745",
-      cancelButtonText: "Cancelar",
-      cancelButtonColor: "#dc3545",
-    });
+    const eligibleRows = (execucao.execucao_funcionario_base ?? []).filter(
+      (row) => row.status === "RESULTADOS_PROCESSADOS" || row.status === "ENVIADO_RM" || row.status === "ERRO_RM",
+    );
+    if (!eligibleRows.length) return;
+    const alreadySent = eligibleRows.filter((row) => row.status === "ENVIADO_RM").length;
+    const confirm = await SwalHelper.confirm(
+      "Confirmar envio ao RM",
+      `${execucao.filial?.nome ?? "Filial"} · ${execucao.periodo?.competencia ?? "Competência"} — ${eligibleRows.length} funcionário(s), incluindo ${alreadySent} já enviado(s).`,
+      "question",
+      "Enviar ao RM",
+      "Cancelar",
+    );
+    if (!confirm.isConfirmed) return;
 
     try {
-      if (!confirm.isConfirmed) return;
-      if (execucao.status === "EM_PROCESSAMENTO") {
+      if (execucaoRef.current?.status === "EM_PROCESSAMENTO") {
         SwalHelper.errorToast("Já existe um processamento em andamento.");
         return;
       }
-
-      const allRows = execucao.execucao_funcionario_base ?? [];
-      const ready = allRows.filter(
-        (r) =>
-          r.status === "RESULTADOS_PROCESSADOS" ||
-          r.status === "ENVIADO_RM" ||
-          r.status === "ERRO_RM",
-      );
-      if (ready.length === 0) {
-        SwalHelper.errorToast(
-          "Nenhum funcionário com RESULTADOS_PROCESSADOS, ENVIADO_RM ou ERRO_RM para enviar.",
-        );
-        return;
-      }
-
       const response = await ExecucaoApi.enqueueEnviarRmBatch(
         Number(execucaoId),
-        ready.map((r) => r.execucao_funcionario_base_id),
+        eligibleRows.map((row) => row.execucao_funcionario_base_id),
       );
       if (response.status) {
         SwalHelper.successToast(response.message);
@@ -743,153 +730,82 @@ export function ProcessamentoDetalhesPage() {
       return true;
     });
   })();
-  return (
-    <div className="card card-body">
-      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-        <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="outline-secondary"
-            className="m-0 px-1 py-1 border-0"
-            onClick={() => navigate(`/processamento`)}
-          >
-            <Icon icon="solar:alt-arrow-left-linear" width={20} height={20} />
-          </Button>
-          <h1 className="h4 m-0 p-0">Processamento</h1>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="link"
-            onClick={async () => {
-              await fetchErrors();
-              setShowErrorsModal(true);
-            }}
-            tooltip="Ver erros (fila + logs)"
-            className="btn btn-link p-0 m-0 text-danger border-0"
-          >
-            <Icon
-              icon="solar:danger-circle-bold-duotone"
-              width={20}
-              height={20}
-            />
-          </Button>
-          {/* <Button variant="primary">
-            <Icon icon="tabler:plus" width={20} height={20} />
-            <span className="ms-1">Nova formula</span>
-          </Button> */}
-        </div>
-      </div>
-      <div>
-        {/* <h5 className="mb-3">Detalhes do processamento</h5> */}
-        <div className="card card-body bg-info bg-opacity-10 border-1 border-info">
-          <div className="row">
-            <div className="col-md-6">
-              <ul>
-                <li>
-                  <span className="fw-bold">•Filial:</span>{" "}
-                  {execucao.filial?.nome}
-                </li>
-                <li>
-                  <span className="fw-bold">•Competência:</span>{" "}
-                  {execucao.periodo?.competencia}
-                </li>
-                <li>
-                  <span className="fw-bold">•Formulas:</span>{" "}
-                  <Button
-                    variant="link"
-                    onClick={handleVerFormulas}
-                    tooltip="Ver Formulas"
-                    className="p-0 m-0 border-0"
-                  >
-                    <Icon
-                      icon="solar:square-share-line-line-duotone"
-                      width={16}
-                      height={16}
-                    />
-                  </Button>
-                </li>
-              </ul>
-            </div>
-            <div className="col-md-6">
-              <ul>
-                <li>
-                  <span className="fw-bold">•Criado por:</span>{" "}
-                  {execucao.usuario?.nome}
-                </li>
-                <li>
-                  <span className="fw-bold">•Criado em:</span>{" "}
-                  {new Date(execucao.data_execucao).toLocaleDateString()}
-                </li>
-                <li>
-                  <span className="fw-bold">•Status:</span>{" "}
-                  {FunctionsHelper.formatStatusExecucao(execucao.status)}
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="row mt-3">
-            <div className="d-flex justify-content-end gap-2">
-              <Button
-                variant="outline-success"
-                onClick={handleProcessarVariaveis}
-                tooltip={
-                  !execucao.status
-                    ? "Carregando execução..."
-                    : execucao.status === "EM_PROCESSAMENTO"
-                      ? "Aguarde o processamento em andamento"
-                      : "Enfileirar processamento de variáveis (todos)"
-                }
-                disabled={
-                  !execucao.status || execucao.status === "EM_PROCESSAMENTO"
-                }
-              >
-                <Icon icon="hugeicons:variable" width={20} height={20} />
-                <span className="ms-1">Processar Variaveis</span>
-              </Button>
+  const employees = execucao.execucao_funcionario_base ?? [];
+  const pendingVariables = employees.filter((row) => !row.status || row.status === "PREVIA" || row.status === "ERRO_VARIAVEIS").length;
+  const readyForRm = employees.filter((row) => row.status === "RESULTADOS_PROCESSADOS" || row.status === "ERRO_RM").length;
+  const sentToRm = employees.filter((row) => row.status === "ENVIADO_RM").length;
+  const running = execucao.status === "EM_PROCESSAMENTO";
+  const nextAction = pendingVariables ? "variables" : readyForRm ? "send" : sentToRm < employees.length ? "values" : null;
+  const hasUnprocessed = employees.some((row) => !row.status || row.status === "PREVIA");
 
-              <Button
-                variant="outline-primary"
-                onClick={handleProcessarValores}
-                tooltip={
-                  !execucao.status
-                    ? "Carregando execução..."
-                    : execucao.status === "EM_PROCESSAMENTO"
-                      ? "Aguarde o processamento em andamento"
-                      : "Enfileirar processamento de valores (todos)"
-                }
-                disabled={
-                  !execucao.status || execucao.status === "EM_PROCESSAMENTO"
-                }
-              >
-                <Icon
-                  icon="solar:calculator-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-                <span className="ms-1">Processar Valores</span>
-              </Button>
-              <Button
-                variant="outline-info"
-                onClick={handleEnviarRmTodos}
-                tooltip={
-                  !execucao.status
-                    ? "Carregando execução..."
-                    : execucao.status === "EM_PROCESSAMENTO"
-                      ? "Aguarde o processamento em andamento"
-                      : "Enfileirar envio ao RM (valores processados)"
-                }
-                disabled={
-                  !execucao.status || execucao.status === "EM_PROCESSAMENTO"
-                }
-              >
-                <Icon icon="ri:upload-2-line" width={20} height={20} />
-                <span className="ms-1">Enviar para RM</span>
-              </Button>
-            </div>
+  return (
+    <div className="card card-body vale-workspace">
+      <nav aria-label="Localização">
+        <Link to="/processamento" className="vale-back-link">
+          <Icon icon="mdi:arrow-left" aria-hidden="true" />
+          Voltar a Processamentos
+        </Link>
+      </nav>
+      <header className="vale-page-header">
+        <div>
+          <h1>{execucao.filial?.nome ?? "Processamento"}</h1>
+          <p>
+            {execucao.periodo?.competencia && <>Competência {execucao.periodo.competencia} · </>}
+            {execucao.status ? FunctionsHelper.formatStatusExecucao(execucao.status) : "Carregando execução…"}
+          </p>
+        </div>
+        <div className="d-flex flex-wrap gap-2">
+          <Button variant="outline-secondary" onClick={handleVerFormulas}>Ver fórmulas</Button>
+          <Button variant="outline-secondary" onClick={() => {
+            setShowErrorsModal(true);
+            void fetchErrors();
+          }}>Ver falhas</Button>
+        </div>
+      </header>
+      <div className="vale-queue">
+        <div className="vale-page-header">
+          <div>
+            <h2>Etapas da execução</h2>
+            <p>As ações abaixo se aplicam à filial e à competência desta execução.</p>
           </div>
         </div>
-        <h6 className="h6 mt-3">Funcionários</h6>
+        <ol className="vale-steps">
+          <li>
+            <h3>1. Variáveis</h3>
+            <p>{pendingVariables} pendentes ou com erro</p>
+            <Button variant={nextAction === "variables" ? "primary" : "outline-primary"} disabled={running || !employees.length || !execucao.status} onClick={handleProcessarVariaveis}>
+              Calcular variáveis
+            </Button>
+          </li>
+          <li>
+            <h3>2. Valores</h3>
+            <p>{hasUnprocessed ? "Aguarda cálculo das variáveis" : "Calcula os valores da execução"}</p>
+            <Button variant={nextAction === "values" ? "primary" : "outline-primary"} disabled={running || !employees.length || !execucao.status || hasUnprocessed} onClick={handleProcessarValores}>
+              Calcular valores
+            </Button>
+          </li>
+          <li>
+            <h3>3. Envio ao RM</h3>
+            <p>{readyForRm} para enviar ou tentar novamente · {sentToRm} enviados</p>
+            <Button variant={nextAction === "send" ? "primary" : "outline-primary"} disabled={running || !execucao.status || readyForRm + sentToRm === 0} onClick={handleEnviarRmTodos}>
+              Revisar envio ao RM
+            </Button>
+          </li>
+        </ol>
+      </div>
+      <details className="vale-run-meta">
+        <summary>Dados da execução</summary>
+        <dl>
+          <div><dt>Período de referência</dt><dd>{FunctionsHelper.formatDateOnlyPtBr(execucao.periodo?.data_inicio)} a {FunctionsHelper.formatDateOnlyPtBr(execucao.periodo?.data_fim)}</dd></div>
+          <div><dt>Criado por</dt><dd>{execucao.usuario?.nome ?? "—"}</dd></div>
+          <div><dt>Criado em</dt><dd>{FunctionsHelper.formatDateTimePtBr(execucao.data_execucao)}</dd></div>
+        </dl>
+      </details>
+      <section className="vale-table" aria-label="Funcionários do processamento">
+        <h2>Funcionários <span className="vale-count">{employees.length}</span></h2>
+        <p>Selecione as linhas para executar ações em funcionários específicos.</p>
         <div className="row">
-          <div className="col-6">
+          <div className="col-12">
             {execucao.status === "EM_PROCESSAMENTO" &&
               queueStatus?.hasRunning && (
                 <div className="alert alert-info py-2 px-3 mb-2">
@@ -1072,14 +988,14 @@ export function ProcessamentoDetalhesPage() {
               paging: true,
               scrollCollapse: true,
               scrollX: true,
-              scrollY: "30vh",
+              scrollY: "52vh",
               select: {
                 style: "multi+shift",
                 selector: "td:first-child",
               },
               buttons: [
                 {
-                  text: "<i class='ri-calculator-line me-1'></i>Processar Variaveis",
+                  text: "<i class='ri-calculator-line me-1'></i>Variáveis dos selecionados",
                   enabled: false,
                   titleAttr: "Processar Variaveis dos selecionados",
                   title: "Processar Variaveis dos selecionados",
@@ -1096,7 +1012,7 @@ export function ProcessamentoDetalhesPage() {
                   },
                 },
                 {
-                  text: "<i class='ri-calculator-line me-1'></i>Processar Valores",
+                  text: "<i class='ri-calculator-line me-1'></i>Valores dos selecionados",
                   enabled: false,
                   titleAttr: "Processar Valores dos selecionados",
                   title: "Processar Valores dos selecionados",
@@ -1115,7 +1031,7 @@ export function ProcessamentoDetalhesPage() {
                 },
 
                 {
-                  text: "<i class='ri-upload-2-line me-1'></i>Enviar para RM",
+                  text: "<i class='ri-upload-2-line me-1'></i>Enviar selecionados ao RM",
                   enabled: false,
                   titleAttr: "Enviar para RM (selecionados)",
                   title: "Enviar para RM (selecionados)",
@@ -1363,7 +1279,7 @@ export function ProcessamentoDetalhesPage() {
             </thead>
           </DataTable>
         </div>
-      </div>
+      </section>
 
       <Modal
         show={showVerFormulasModal}
