@@ -20,7 +20,7 @@ import type { DataTableRef } from "datatables.net-react";
 
 import { Alert, Modal, Table } from "react-bootstrap";
 import { Button } from "../../components/utils/Button";
-import { defaultConfig } from "../../utils/datatables/defaultConfig";
+import { processamentoTableConfig } from "../../utils/datatables/defaultConfig";
 import { useNavigate } from "react-router";
 import { Form } from "react-bootstrap";
 
@@ -671,7 +671,7 @@ export function ProcessamentoPage() {
                     },
                   },
                 ],
-                ...defaultConfig,
+                ...processamentoTableConfig,
                 responsive: false,
               }}
               data={filteredExecucoes}

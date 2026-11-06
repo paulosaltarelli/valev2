@@ -18,7 +18,7 @@ import "datatables.net-buttons-bs5";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import type { Execucao } from "../../models/ExecucaoModel";
 import { FunctionsHelper } from "../../utils/functionsHelper";
-import { defaultConfig } from "../../utils/datatables/defaultConfig";
+import { processamentoTableConfig } from "../../utils/datatables/defaultConfig";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { SwalHelper } from "../../utils/swalHelper";
@@ -949,7 +949,7 @@ export function ProcessamentoDetalhesPage() {
           <DataTable
             className="table striped-table mb-0 fs-12"
             options={{
-              ...defaultConfig,
+              ...processamentoTableConfig,
               pageLength: 50,
               // `responsive` e `scrollY/scrollX` tendem a conflitar (wrappers com largura calculada menor que o container)
               responsive: false,
