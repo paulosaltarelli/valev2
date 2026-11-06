@@ -161,9 +161,7 @@ export class OperacaoService {
                 : total > 0 && rm === total
                   ? 'enviado'
                   : valores > rm
-                    ? conferidos === total
-                      ? 'envio'
-                      : 'conferencia'
+                    ? 'envio'
                     : 'inicio';
         return {
           id: e.execucao_id,
@@ -214,7 +212,7 @@ export class OperacaoService {
           'ERRO_RM',
         ],
       };
-    if (filter === 'conferencia')
+    if (filter === 'conferencia' || filter === 'resultados')
       where.status = { in: ['RESULTADOS_PROCESSADOS', 'ERRO_RM'] };
     if (filter === 'enviados') where.status = 'ENVIADO_RM';
     const safePage = Math.max(1, Math.floor(page) || 1);
@@ -452,7 +450,7 @@ export class OperacaoService {
       return {
         status: true,
         message:
-          'Ajuste registrado. Confira a nova versão antes de enviar ao RM.',
+          'Ajuste registrado. A nova versão está disponível para envio ao RM.',
       };
     });
   }
@@ -619,8 +617,6 @@ export class OperacaoService {
           )
         )
           reason = 'Versão atual já enviada';
-        else if (results.some((r) => r.conferido_revisao !== r.revisao))
-          reason = 'Conferência da versão atual pendente';
         else if (
           results.some((r) => {
             const f = r.formula_snapshot
@@ -699,6 +695,35 @@ export class OperacaoService {
       elegiveis: items.filter((i) => !i.reason).length,
       excluidos: items.filter((i) => i.reason).length,
     };
+  }
+
+  // Ação direta do operador. Não exige conferência, prévia nem aprovação separada.
+  async execute(pedido: PedidoOperacao, usuarioId: number, sessionId: string) {
+    const p = this.normalize(pedido);
+    if (p.etapa === 'CONFERIR') throw new BadRequestException('A conferência não é uma etapa de processamento.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.lock(tx, p.execucaoIds);
+      const items = await this.candidates(tx, p);
+      const eligible = items.filter(i => !i.reason);
+      if (!eligible.length) throw new BadRequestException(items[0]?.reason || 'Nenhuma pessoa disponível para esta etapa.');
+      for (const item of eligible) {
+        if (p.etapa !== 'ENVIAR_RM') {
+          await tx.execucao_funcionario.updateMany({
+            where: { execucao_funcionario_base_id: item.baseId },
+            data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
+          });
+        }
+        await tx.execucao_queue.create({ data: {
+          execucao_id: item.execucaoId,
+          execucao_funcionario_base_id: item.baseId,
+          tipo: p.etapa,
+          session_id: sessionId,
+          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos }),
+        } });
+      }
+      await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO' } });
+      return { status: true, message: `${eligible.length} pessoa(s) na fila de ${p.etapa === 'VARIAVEIS' ? 'variáveis' : p.etapa === 'VALORES' ? 'valores' : 'envio ao RM'}.${items.length > eligible.length ? ` ${items.length - eligible.length} fora da fila por etapa concluída, incompleta ou já agendada.` : ''}` };
+    }, { timeout: 60000 });
   }
 
   async confirm(id: string, usuarioId: number, sessionId: string) {
@@ -853,9 +878,9 @@ export class OperacaoService {
       }>;
     };
     const event = payload.eventos.find((e) => e.id === resultId);
-    if (!event || event.revisao !== revision || event.conferencia !== revision)
+    if (!event || event.revisao !== revision)
       throw new ConflictException(
-        'A versão do resultado difere do lote revisado.',
+        'A versão do resultado difere da versão agendada.',
       );
     return { record: event.record, usuarioId: payload.usuarioId };
   }

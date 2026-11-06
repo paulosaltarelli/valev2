@@ -1743,13 +1743,8 @@ export class ExecucaoService {
           try {
             if (execFunc.status === 'ENVIADO_RM' && execFunc.enviado_revisao === execFunc.revisao) continue;
             const approved = await this.operacao.approvedEvent(base.execucao_funcionario_base_id, execFunc.execucao_funcionario_id, execFunc.revisao);
-            if (execFunc.conferido_revisao !== execFunc.revisao) throw new Error('Versão não conferida');
-            const formula = (execFunc.formula_snapshot ? JSON.parse(execFunc.formula_snapshot) : execFunc.formula) as {
-              codEvento?: string | null;
-              tipo?: string | null;
-            } | null;
-            const codevento = formula?.codEvento ?? null;
-            const tipo = formula?.tipo ?? null;
+            const codevento = approved.record.CODEVENTO;
+            const tipo = approved.record.TIPO;
             const valor = execFunc.valor_final;
 
             if (!codevento || !tipo) {

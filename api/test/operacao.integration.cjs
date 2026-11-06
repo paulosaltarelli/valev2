@@ -22,7 +22,7 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
   const request={etapa:'ENVIAR_RM',execucaoIds:[eid]};
   await check('vínculo obrigatório no ajuste',async()=>{await rejects(()=>service.adjust(other.execucao_id,rid,120,'Teste de vínculo',1,uid),404);assert.equal((await prisma.execucao_funcionario.findUnique({where:{execucao_funcionario_id:rid}})).valor_final.toString(),'100');});
   await check('valor e motivo validados',async()=>{await rejects(()=>service.adjust(eid,rid,NaN,'Teste válido',1,uid),400);await rejects(()=>service.adjust(eid,rid,120,'x',1,uid),400);});
-  await check('envio sem conferência excluído',async()=>{const p=await service.preview(request,uid);assert.equal(p.elegiveis,0);assert.match(p.items[0].reason,/Conferência/);});
+  await check('resultado calculado pode ser enviado sem conferência',async()=>{const p=await service.preview(request,uid);assert.equal(p.elegiveis,1);});
   await check('conferência registra versão e memória',async()=>{await service.review(eid,rid,1,uid);assert.equal(await prisma.resultado_historico.count({where:{tipo:'CONFERENCIA',resultado_id:rid}}),1);});
   const stale=await service.preview(request,uid);
   await check('ajuste atômico invalida conferência',async()=>{await service.adjust(eid,rid,120,'Correção fictícia',1,uid);result=await prisma.execucao_funcionario.findUnique({where:{execucao_funcionario_id:rid}});assert.equal(result.revisao,2);assert.equal(result.conferido_revisao,null);assert.equal(await prisma.ajuste_manual.count({where:{execucao_funcionario_id:rid}}),1);assert.equal(await prisma.resultado_historico.count({where:{tipo:'AJUSTE',resultado_id:rid}}),1);});
@@ -52,8 +52,7 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
   const fakeRm={saveRecordMetaData:async(_ds,_table,record)=>{calls.push({method:'POST',record});return {data:{id:23456}};},putRecordMetaData:async(_ds,_table,rmId,record)=>{calls.push({method:'PUT',rmId,record});if(fail)throw Error('Falha transitória simulada');return {data:{id:rmId}};}};
   const worker=new ExecucaoService(prisma,{}, {},fakeRm,service);
   worker.logger={log:()=>{},error:()=>{},warn:()=>{}};
-  await service.review(eid,rid,4,uid);
-  const send=await service.preview(request,uid);await service.confirm(send.id,uid,'sessao-ficticia');
+  await service.execute(request,uid,'sessao-ficticia');
   let job=await prisma.execucao_queue.findFirst({where:{status:'PENDENTE',tipo:'ENVIAR_RM'}});
   await prisma.execucao_queue.update({where:{queue_id:job.queue_id},data:{status:'PROCESSANDO'}});
   await check('falha do worker não cria recibo de sucesso',async()=>{await worker.processarEnviarRmBatch(eid,[base],'sessao-ficticia');const b=await prisma.execucao_funcionario_base.findUnique({where:{execucao_funcionario_base_id:base.execucao_funcionario_base_id}});assert.equal(b.status,'ERRO_RM');assert.equal(await prisma.resultado_historico.count({where:{resultado_id:rid,tipo:'ENVIO_RM',revisao:4}}),0);});
@@ -63,7 +62,12 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
   await prisma.execucao_queue.update({where:{queue_id:job.queue_id},data:{status:'CONCLUIDO'}});
   const freshBase=await prisma.execucao_funcionario_base.create({data:{execucao_id:eid,funcionario_id_rm:'FICTICIO2',nome_funcionario:'Outra pessoa fictícia',codcoligada:1,codfilial:1,status:'RESULTADOS_PROCESSADOS'}});
   const fresh=await prisma.execucao_funcionario.create({data:{execucao_id:eid,execucao_funcionario_base_id:freshBase.execucao_funcionario_base_id,formula_id:formula.formula_id,funcionario_id_rm:'FICTICIO2',valor_calculado:100,valor_final:100,status:'PROCESSADO'}});
-  await service.review(eid,fresh.execucao_funcionario_id,1,uid);const initial=await service.preview({etapa:'ENVIAR_RM',execucaoIds:[eid],baseIds:[freshBase.execucao_funcionario_base_id]},uid);await service.confirm(initial.id,uid,'sessao-ficticia');
+  await check('ações diretas concorrentes agendam apenas um envio',async()=>{
+    const pedido={etapa:'ENVIAR_RM',execucaoIds:[eid],baseIds:[freshBase.execucao_funcionario_base_id]};
+    const outcomes=await Promise.allSettled([service.execute(pedido,uid,'sessao-ficticia'),service.execute(pedido,uid,'sessao-ficticia')]);
+    assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
+    assert.equal(await prisma.execucao_queue.count({where:{execucao_funcionario_base_id:freshBase.execucao_funcionario_base_id,tipo:'ENVIAR_RM'}}),1);
+  });
   job=await prisma.execucao_queue.findFirst({where:{status:'PENDENTE',tipo:'ENVIAR_RM'}});await prisma.execucao_queue.update({where:{queue_id:job.queue_id},data:{status:'PROCESSANDO'}});
   await check('worker cria evento novo e persiste o identificador retornado',async()=>{await worker.processarEnviarRmBatch(eid,[freshBase],'sessao-ficticia');const r=await prisma.execucao_funcionario.findUnique({where:{execucao_funcionario_id:fresh.execucao_funcionario_id}});assert.equal(r.metadados_rm_id,23456);assert.equal(r.enviado_revisao,1);assert.equal(calls.at(-1).method,'POST');});
   await prisma.execucao_queue.update({where:{queue_id:job.queue_id},data:{status:'CONCLUIDO'}});

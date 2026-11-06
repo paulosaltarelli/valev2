@@ -9,7 +9,6 @@ import { Link, useSearchParams } from "react-router";
 import { Modal } from "react-bootstrap";
 import {
   OperacaoApi,
-  type OperationRequest,
 } from "../../utils/api/operacaoApi";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import { filialApi } from "../../utils/api/filialApi";
@@ -17,7 +16,7 @@ import type { Filial } from "../../models/FilialModel";
 import {
   dateTime,
   errorMessage,
-  OperationReview,
+  useOperationAction,
   QueryNotice,
   situacoes,
   StageCount,
@@ -28,7 +27,8 @@ export function ProcessamentoPage() {
   const [params, setParams] = useSearchParams();
   const periodo = params.get("periodo") ?? "";
   const filial = params.get("filial") ?? "";
-  const filter = params.get("situacao") ?? "todas";
+  const situation = params.get("situacao");
+  const filter = situation === "conferencia" ? "envio" : situation ?? "todas";
   const history = params.get("visao") === "historico";
   const fetcher = useCallback(() => OperacaoApi.summary(periodo), [periodo]);
   const query = useOperationQuery(fetcher);
@@ -36,8 +36,12 @@ export function ProcessamentoPage() {
   const creation = useOperationQuery(queueFetcher);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
-  const [request, setRequest] = useState<OperationRequest | null>(null);
   const [notice, setNotice] = useState("");
+  const command = useOperationAction(setNotice, () => {
+    setSelected([]);
+    setSelecting(false);
+    query.refresh();
+  });
   const [create, setCreate] = useState(false);
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [createIds, setCreateIds] = useState<number[]>([]);
@@ -52,7 +56,6 @@ export function ProcessamentoPage() {
   useEffect(() => {
     setSelected([]);
     setSelecting(false);
-    setRequest(null);
   }, [periodo, filial, filter, history]);
   const change = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -277,7 +280,6 @@ export function ProcessamentoPage() {
                 <option value="pendencias">Pendências e andamento</option>
                 <option value="acao">Exige ação</option>
                 <option value="tentativa">Aguardando tentativa</option>
-                <option value="conferencia">Pronto para conferência</option>
                 <option value="envio">Pronto para envio</option>
                 <option value="enviado">Enviado ao RM</option>
               </select>
@@ -300,12 +302,12 @@ export function ProcessamentoPage() {
               </strong>
               <button
                 className="btn btn-primary"
-                disabled={!selected.length || Boolean(query.error)}
+                disabled={command.busy || !selected.length || Boolean(query.error)}
                 onClick={() =>
-                  setRequest({ etapa: "ENVIAR_RM", execucaoIds: selected })
+                  void command.run({ etapa: "ENVIAR_RM", execucaoIds: selected })
                 }
               >
-                Revisar envio ao RM
+                Enviar seleção ao RM
               </button>
               <button
                 className="btn btn-outline-secondary"
@@ -412,7 +414,7 @@ export function ProcessamentoPage() {
                         </td>
                         <td>
                           <Link
-                            className={`btn ${r.situacao === "conferencia" ? "btn-primary" : "btn-outline-primary"}`}
+                            className={`btn ${r.situacao === "envio" ? "btn-primary" : "btn-outline-primary"}`}
                             to={href}
                           >
                             {s.action}
@@ -526,7 +528,7 @@ export function ProcessamentoPage() {
               <span>
                 Processar Variáveis e Valores após a criação
                 <small>
-                  O envio ao RM exige conferência e revisão próprias.
+                  O envio ao RM é feito pelo botão Enviar ao RM após o cálculo dos valores.
                 </small>
               </span>
             </label>
@@ -576,16 +578,6 @@ export function ProcessamentoPage() {
           )}
         </Modal.Body>
       </Modal>
-      <OperationReview
-        request={request}
-        onClose={() => setRequest(null)}
-        onDone={(message) => {
-          setNotice(message);
-          setSelected([]);
-          setSelecting(false);
-          query.refresh();
-        }}
-      />
     </div>
   );
 }

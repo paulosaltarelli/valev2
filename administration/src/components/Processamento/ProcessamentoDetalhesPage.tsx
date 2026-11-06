@@ -9,7 +9,6 @@ import { Link, useParams, useSearchParams } from "react-router";
 import {
   OperacaoApi,
   type Etapa,
-  type OperationRequest,
   type ResultDetail,
 } from "../../utils/api/operacaoApi";
 import api from "../../utils/api/Api";
@@ -19,7 +18,7 @@ import {
   errorMessage,
   etapaLabel,
   money,
-  OperationReview,
+  useOperationAction,
   QueryNotice,
   StageCount,
   statusLabel,
@@ -57,21 +56,6 @@ function ResultPanel({
     query.refresh();
     onChanged();
   };
-  const review = async () => {
-    const r = query.data;
-    if (!r) return;
-    setBusy(true);
-    setNotice("");
-    try {
-      await OperacaoApi.review(execucaoId, resultId, r.revisao);
-      setNotice("Conferência registrada para a versão atual.");
-      changed();
-    } catch (e) {
-      setNotice(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
   const adjust = async (e: FormEvent) => {
     e.preventDefault();
     const r = query.data;
@@ -87,7 +71,7 @@ function ResultPanel({
         reason,
       );
       setEditing(false);
-      setNotice("Ajuste registrado. A nova versão precisa de conferência.");
+      setNotice("Ajuste registrado. A nova versão está disponível para envio.");
       changed();
     } catch (error) {
       setNotice(errorMessage(error));
@@ -160,13 +144,6 @@ function ResultPanel({
             </p>
           </header>
           <div className="op-result-status">
-            <span
-              className={`op-status op-${r.conferido_revisao === r.revisao ? "success" : "warning"}`}
-            >
-              {r.conferido_revisao === r.revisao
-                ? "Versão conferida"
-                : "Conferência pendente"}
-            </span>
             <span className="op-status op-neutral">
               {r.enviado_revisao === r.revisao && r.status === "ENVIADO_RM"
                 ? "Versão enviada"
@@ -178,8 +155,7 @@ function ResultPanel({
           {r.enviado_revisao && r.enviado_revisao !== r.revisao && (
             <div className="op-notice op-warning">
               O RM recebeu a versão {r.enviado_revisao}. A versão atual é{" "}
-              {r.revisao}; confira e revise a atualização antes do próximo
-              envio.
+              {r.revisao}. O próximo envio atualizará o evento com o valor atual.
             </div>
           )}
           <div className="op-value-pair">
@@ -202,8 +178,7 @@ function ResultPanel({
             r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
             <p className="op-notice op-warning">
               Resultado legado: a fórmula histórica não foi armazenada. A regra
-              exibida é a configuração atual; verifique-a antes de registrar a
-              conferência.
+              exibida é a configuração atual; verifique-a ao interpretar este resultado.
             </p>
           )}
           <pre className="op-formula">
@@ -254,22 +229,6 @@ function ResultPanel({
           </div>
           <div className="op-actions">
             <button
-              className="btn btn-primary"
-              disabled={
-                busy ||
-                !valid ||
-                Boolean(query.error) ||
-                r.conferido_revisao === r.revisao
-              }
-              onClick={() => void review()}
-            >
-              {busy
-                ? "Salvando…"
-                : r.conferido_revisao === r.revisao
-                  ? "Conferência registrada"
-                  : "Registrar conferência desta versão"}
-            </button>
-            <button
               className="btn btn-outline-secondary"
               disabled={busy || !valid || Boolean(query.error)}
               onClick={() => {
@@ -293,8 +252,7 @@ function ResultPanel({
               <h3>Ajustar valor final</h3>
               <p>
                 Calculado: {money(r.valor_calculado)} · atual:{" "}
-                {money(r.valor_final)}. O ajuste invalida a conferência
-                anterior.
+                {money(r.valor_final)}. O histórico preserva o valor anterior e a nova versão.
               </p>
               <label>
                 Novo valor final
@@ -420,12 +378,13 @@ export function ProcessamentoDetalhesPage() {
   const tabs = [
     ["acompanhamento", "Acompanhamento"],
     ["pendencias", "Pendências"],
-    ["conferencia", "Conferência"],
+    ["resultados", "Resultados"],
     ["envios", "Envio ao RM"],
     ["historico", "Histórico"],
   ];
-  const tab = tabs.some(([key]) => key === params.get("aba"))
-    ? params.get("aba")!
+  const requestedTab = params.get("aba") === "conferencia" ? "resultados" : params.get("aba");
+  const tab = tabs.some(([key]) => key === requestedTab)
+    ? requestedTab!
     : "acompanhamento";
   const page = Math.max(1, Number(params.get("pagina")) || 1);
   const search = params.get("busca") ?? "";
@@ -447,14 +406,12 @@ export function ProcessamentoDetalhesPage() {
   const errors = useOperationQuery(errorsFetcher, 60000);
   const [selected, setSelected] = useState<number[]>([]);
   const [selecting, setSelecting] = useState(false);
-  const [request, setRequest] = useState<OperationRequest | null>(null);
   const [notice, setNotice] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
   const [recalculate, setRecalculate] = useState(false);
   useEffect(() => {
     setSelected([]);
     setSelecting(false);
-    setRequest(null);
     setRecalculate(false);
   }, [id, page, search, filter]);
   const setContext = (
@@ -482,8 +439,14 @@ export function ProcessamentoDetalhesPage() {
   const returnTo = rawReturn?.startsWith("/processamento?")
     ? rawReturn
     : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;
-  const review = (etapa: Etapa) =>
-    setRequest({
+  const command = useOperationAction(setNotice, () => {
+    setSelected([]);
+    setSelecting(false);
+    setRecalculate(false);
+    refresh();
+  });
+  const process = (etapa: Etapa) =>
+    void command.run({
       etapa,
       execucaoIds: [id],
       ...(selecting ? { baseIds: selected } : {}),
@@ -494,6 +457,7 @@ export function ProcessamentoDetalhesPage() {
     summary.refresh();
   };
   const commandDisabled =
+    command.busy ||
     query.loading ||
     Boolean(query.error) ||
     Boolean(summary.error) ||
@@ -638,20 +602,25 @@ export function ProcessamentoDetalhesPage() {
           </details>
         </section>
       )}
+      {row && (row.processing > 0 || row.pending > 0) && (
+        <div className="op-notice" role="status">
+          {row.processing > 0 ? `${row.processing} itens em processamento` : "Aguardando execução da fila"} · {row.pending} etapas agendadas.
+          {row.etapas.includes("VARIAVEIS") && " As variáveis consultam o RM em lotes de até 25 pessoas; as contagens avançam quando cada lote termina."}
+        </div>
+      )}
       {tab === "envios" && (
         <section className="op-panel">
-          <h2>Revisão e confirmação de envio</h2>
+          <h2>Enviar valores ao RM</h2>
           <p>
-            Confira cada resultado antes de revisar o lote. A prévia separa
-            novos eventos, atualizações e exclusões. Resultados já confirmados
-            na mesma versão não são reenviados.
+            Envie os valores calculados diretamente. Eventos existentes são atualizados;
+            versões já enviadas e pessoas com cálculo incompleto ou etapa em andamento ficam fora da fila.
           </p>
           <button
             className="btn btn-primary"
             disabled={commandDisabled}
-            onClick={() => review("ENVIAR_RM")}
+            onClick={() => process("ENVIAR_RM")}
           >
-            Revisar envio {selecting ? "da seleção" : "da execução"}
+            {command.busy ? "Agendando…" : `Enviar ${selecting ? "seleção" : "execução"} ao RM`}
           </button>
           <p className="op-muted">
             Abra um resultado abaixo para consultar a versão e a confirmação por
@@ -695,8 +664,8 @@ export function ProcessamentoDetalhesPage() {
                 <option value="pendencias">
                   Com falha ou resultado parcial
                 </option>
-                <option value="conferencia">
-                  Prontas para conferência / envio pendente
+                <option value="resultados">
+                  Com valores calculados / envio pendente
                 </option>
                 <option value="enviados">Enviadas ao RM</option>
               </select>
@@ -711,17 +680,6 @@ export function ProcessamentoDetalhesPage() {
               {selecting ? "Encerrar seleção" : "Selecionar pessoas"}
             </button>
           </section>
-          {tab === "conferencia" && (
-            <section className="op-step-actions" aria-label="Conferir seleção">
-              <div>
-                <strong>{selected.length} pessoas selecionadas nesta página</strong>
-                <p>Selecione pessoas para revisar os valores juntos. Abra um resultado para consultar sua memória ou registrar um ajuste.</p>
-              </div>
-              <button className="btn btn-outline-primary" disabled={!selecting || commandDisabled} onClick={() => review("CONFERIR")}>
-                Revisar conferência da seleção
-              </button>
-            </section>
-          )}
           {(tab === "acompanhamento" || tab === "pendencias") && (
             <section className="op-step-actions" aria-label="Processar etapas">
               <div>
@@ -739,16 +697,16 @@ export function ProcessamentoDetalhesPage() {
                 <button
                   className="btn btn-outline-primary"
                   disabled={commandDisabled}
-                  onClick={() => review("VARIAVEIS")}
+                  onClick={() => process("VARIAVEIS")}
                 >
-                  Revisar Variáveis
+                  Processar Variáveis
                 </button>
                 <button
                   className="btn btn-outline-primary"
                   disabled={commandDisabled}
-                  onClick={() => review("VALORES")}
+                  onClick={() => process("VALORES")}
                 >
-                  Revisar Valores
+                  Calcular Valores
                 </button>
                 {exec && (
                   <Link
@@ -768,9 +726,7 @@ export function ProcessamentoDetalhesPage() {
                     onChange={(e) => setRecalculate(e.target.checked)}
                   />
                   <span>
-                    Incluir concluídos na revisão de recálculo. As conferências
-                    serão invalidadas e envios anteriores permanecerão no
-                    histórico.
+                    Incluir etapas já concluídas no recálculo. Ajustes manuais e envios anteriores serão preservados no histórico.
                   </span>
                 </label>
               </details>
@@ -778,7 +734,7 @@ export function ProcessamentoDetalhesPage() {
           )}
           <div
             className={
-              tab === "conferencia" || tab === "envios" || tab === "historico"
+              tab === "resultados" || tab === "envios" || tab === "historico"
                 ? "op-conference-layout"
                 : ""
             }
@@ -858,7 +814,7 @@ export function ProcessamentoDetalhesPage() {
                                         ? "envios"
                                         : tab === "historico"
                                           ? "historico"
-                                          : "conferencia",
+                                          : "resultados",
                                     resultado: String(
                                       r.execucao_funcionario_id,
                                     ),
@@ -873,9 +829,7 @@ export function ProcessamentoDetalhesPage() {
                                 {r.status === "ENVIADO_RM" &&
                                 r.enviado_revisao === r.revisao
                                   ? "Enviado"
-                                  : r.conferido_revisao === r.revisao
-                                    ? "Conferido"
-                                    : "Conferir"}
+                                  : "Ver resultado"}
                                 {r.ajuste_manual ? " · ajustado" : ""}
                               </span>
                             </button>
@@ -919,7 +873,7 @@ export function ProcessamentoDetalhesPage() {
                 </button>
               </div>
             </div>
-            {(tab === "conferencia" ||
+            {(tab === "resultados" ||
               tab === "envios" ||
               tab === "historico") &&
               (resultId ? (
@@ -944,17 +898,6 @@ export function ProcessamentoDetalhesPage() {
           </p>
         </>
       )}
-      <OperationReview
-        request={request}
-        onClose={() => setRequest(null)}
-        onDone={(message) => {
-          setNotice(message);
-          setSelected([]);
-          setSelecting(false);
-          setRecalculate(false);
-          refresh();
-        }}
-      />
     </div>
   );
 }

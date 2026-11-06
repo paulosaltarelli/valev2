@@ -88,6 +88,11 @@ export class OperacaoController {
   preview(@Body() body: PedidoOperacao) {
     return this.service.preview(body, this.user.getJwtPayload().usuarioId);
   }
+  @Post('executar')
+  execute(@Body() body: PedidoOperacao) {
+    const u = this.user.getJwtPayload();
+    return this.service.execute(body, u.usuarioId, u.sessionId);
+  }
   @Post('confirmar')
   confirm(@Body() body: { id: string }) {
     const u = this.user.getJwtPayload();

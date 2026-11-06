@@ -1,5 +1,5 @@
 import api from "./Api";
-export type Etapa = "VARIAVEIS" | "VALORES" | "CONFERIR" | "ENVIAR_RM";
+export type Etapa = "VARIAVEIS" | "VALORES" | "ENVIAR_RM";
 export type PeriodoOperacao = {
   periodo_id: number;
   competencia: string;
@@ -151,6 +151,7 @@ export type OperationPreview = {
   }>;
 };
 export const OperacaoApi = {
+  execute: (pedido: OperationRequest) => api.post("/operacao/executar", pedido) as Promise<{ status: boolean; message: string }>,
   summary: (periodo?: string) =>
     api.get(
       `/operacao${periodo ? `?periodo=${encodeURIComponent(periodo)}` : ""}`,

@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
-import { Modal } from "react-bootstrap";
+import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   OperacaoApi,
-  type OperationPreview,
   type OperationRequest,
 } from "../../utils/api/operacaoApi";
 import "./operacao.css";
@@ -24,7 +22,7 @@ export const dateTime = (value?: string | null) =>
       })
     : "—";
 export const etapaLabel = (value: string) =>
-  ({ VARIAVEIS: "Variáveis", VALORES: "Valores", CONFERIR: "Conferência", ENVIAR_RM: "Envio ao RM" })[
+  ({ VARIAVEIS: "Variáveis", VALORES: "Valores", ENVIAR_RM: "Envio ao RM" })[
     value
   ] ?? value;
 export const errorMessage = (error: unknown) =>
@@ -40,7 +38,7 @@ export const statusLabel = (value: string) =>
     PREVIA: "Aguardando variáveis",
     VARIAVEIS_PROCESSADAS: "Pronto para calcular valores",
     ERRO_VARIAVEIS: "Falha em variáveis",
-    RESULTADOS_PROCESSADOS: "Pronto para conferência",
+    RESULTADOS_PROCESSADOS: "Valores calculados",
     RESULTADOS_PARCIAL: "Valores parciais",
     ERRO_RESULTADOS: "Falha em valores",
     ENVIADO_RM: "Enviado ao RM",
@@ -75,14 +73,14 @@ export const situacoes: Record<
     tab: "acompanhamento",
   },
   conferencia: {
-    label: "Pronto para conferência",
-    action: "Conferir resultados",
+    label: "Valores calculados",
+    action: "Ver resultados",
     tone: "primary",
-    tab: "conferencia",
+    tab: "resultados",
   },
   envio: {
     label: "Pronto para envio",
-    action: "Revisar envio",
+    action: "Enviar ao RM",
     tone: "primary",
     tab: "envios",
   },
@@ -194,182 +192,24 @@ export function QueryNotice({
   );
 }
 
-export function OperationReview({
-  request,
-  onClose,
-  onDone,
-}: {
-  request: OperationRequest | null;
-  onClose: () => void;
-  onDone: (message: string) => void;
-}) {
-  const [preview, setPreview] = useState<OperationPreview | null>(null);
-  const [error, setError] = useState("");
+export function useOperationAction(onNotice: (message: string) => void, onDone: () => void) {
   const [busy, setBusy] = useState(false);
-  const [agreed, setAgreed] = useState(false);
-  useEffect(() => {
-    let canceled = false;
-    setPreview(null);
-    setError("");
-    setAgreed(false);
-    if (request) {
-      setBusy(true);
-      OperacaoApi.preview(request)
-        .then((p) => {
-          if (!canceled) setPreview(p);
-        })
-        .catch((e) => {
-          if (!canceled) setError(errorMessage(e));
-        })
-        .finally(() => {
-          if (!canceled) setBusy(false);
-        });
-    }
-    return () => {
-      canceled = true;
-    };
-  }, [request]);
-  const confirm = async () => {
-    if (!preview) return;
+  const inFlight = useRef(false);
+  const run = async (request: OperationRequest) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
-    setError("");
+    onNotice("Agendando etapa…");
     try {
-      const r = await OperacaoApi.confirm(preview.id);
-      onDone(r.message);
-      onClose();
-    } catch (e) {
-      setError(errorMessage(e));
-      setAgreed(false);
-      setPreview(null);
+      const result = await OperacaoApi.execute(request);
+      onNotice(result.message);
+      onDone();
+    } catch (error) {
+      onNotice(errorMessage(error));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
-  return (
-    <Modal
-      show={Boolean(request)}
-      onHide={() => {
-        if (!busy) onClose();
-      }}
-      size="xl"
-      centered
-      className="op-modal"
-      backdrop="static"
-    >
-      <Modal.Header closeButton closeLabel="Fechar revisão">
-        <Modal.Title>Revisar {etapaLabel(request?.etapa ?? "")}</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {busy && !preview && (
-          <p role="status">Preparando o conjunto de pessoas e eventos…</p>
-        )}
-        {error && (
-          <div className="op-notice op-error" role="alert">
-            {error} Feche esta revisão e gere uma nova prévia.
-          </div>
-        )}
-        {preview && (
-          <>
-            <p>
-              <strong>{preview.elegiveis} pessoas elegíveis</strong> ·{" "}
-              {preview.excluidos} excluídas · revisão válida até{" "}
-              {dateTime(preview.expiraEm)}
-            </p>
-            {preview.etapa === "CONFERIR" && (
-              <div className="op-notice">
-                Confira os valores de cada pessoa e evento abaixo. Ao confirmar, a conferência ficará registrada em seu nome para estas versões. Para investigar diferenças, volte e abra a memória do resultado antes de confirmar.
-              </div>
-            )}
-            {(preview.etapa === "VARIAVEIS" || preview.etapa === "VALORES") && (
-              <div className="op-notice">
-                {preview.recalcular
-                  ? "Recálculo explícito: as conferências dos resultados afetados serão invalidadas. Ajustes manuais serão preservados e precisarão de nova conferência."
-                  : "Somente itens pendentes ou com falha elegível entram na retomada. Pessoas com trabalho agendado e etapas concluídas ficam excluídas."}
-              </div>
-            )}
-            <div className="op-scroll">
-              <table className="op-table">
-                <caption className="visually-hidden">
-                  Pessoas, eventos, versões e exclusões deste lote
-                </caption>
-                <thead>
-                  <tr>
-                    <th>Pessoa / competência</th>
-                    <th>Filial</th>
-                    <th>Escopo e decisão</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.items.map((i) => (
-                    <tr key={i.baseId}>
-                      <th scope="row">
-                        {i.nome}
-                        <small>
-                          {i.chapa} · {i.competencia}
-                        </small>
-                      </th>
-                      <td>{i.filial}</td>
-                      <td>
-                        {i.reason ? (
-                          <span className="op-muted">Excluído: {i.reason}</span>
-                        ) : (
-                          <>
-                            <strong>Incluído</strong>
-                            {i.eventos.map((e) => (
-                              <div className="op-preview-event" key={e.id}>
-                                {e.nome} · evento{" "}
-                                {e.evento || "não configurado"} · tipo{" "}
-                                {e.tipo || "—"} · v{e.revisao} ·{" "}
-                                {money(e.valor)}
-                                {preview.etapa === "ENVIAR_RM" && (
-                                  <strong>
-                                    {e.operacao === "novo"
-                                      ? "Novo envio"
-                                      : e.operacao === "atualizacao"
-                                        ? "Atualização no RM"
-                                        : "Já confirmado · não reenviar"}
-                                  </strong>
-                                )}
-                              </div>
-                            ))}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <label className="op-check">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                disabled={busy}
-              />
-              <span>
-                Revisei pessoas, competência, eventos e exclusões deste lote.
-              </span>
-            </label>
-          </>
-        )}
-      </Modal.Body>
-      <Modal.Footer>
-        <button
-          className="btn btn-outline-secondary"
-          disabled={busy}
-          onClick={onClose}
-        >
-          Voltar sem confirmar
-        </button>
-        <button
-          className="btn btn-primary"
-          disabled={busy || !agreed || !preview?.elegiveis}
-          onClick={() => void confirm()}
-        >
-          {busy ? "Confirmando…" : preview?.etapa === "CONFERIR" ? "Registrar conferência" : "Confirmar e acompanhar fila"}
-        </button>
-      </Modal.Footer>
-    </Modal>
-  );
+  return { busy, run };
 }
