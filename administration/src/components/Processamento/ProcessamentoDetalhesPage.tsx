@@ -8,6 +8,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { Modal } from "react-bootstrap";
 import {
   OperacaoApi,
+  type BaseRow,
   type Etapa,
   type ResultDetail,
 } from "../../utils/api/operacaoApi";
@@ -24,6 +25,98 @@ import {
   statusLabel,
   useOperationQuery,
 } from "./OperationCommon";
+
+function CalculationMemory({ result: r }: { result: ResultDetail }) {
+  const f = r.formulaUtilizada ?? r.formula;
+  return (
+    <>
+      <p>
+        Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+        fórmula v{f?.versao ?? "—"}
+      </p>
+      {(!r.formulaUtilizada ||
+        r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
+        <p className="op-notice op-warning">
+          Resultado legado: a fórmula histórica não foi armazenada. A regra
+          exibida é a configuração atual; verifique-a ao interpretar este resultado.
+        </p>
+      )}
+      <pre className="op-formula">
+        {f?.expressao || "Expressão indisponível"}
+      </pre>
+      <div className="op-scroll">
+        <table className="op-table">
+          <caption className="visually-hidden">
+            Entradas da fórmula deste resultado
+          </caption>
+          <thead>
+            <tr>
+              <th>Variável</th>
+              <th>Valor</th>
+              <th>Origem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.memoria_calculo.map((m) => (
+              <tr key={m.memoria_id}>
+                <th scope="row">
+                  {m.variavel_nome}
+                  <small>{m.variavel_codigo}</small>
+                </th>
+                <td>
+                  {Number(m.valor).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 4,
+                  })}
+                </td>
+                <td>
+                  {m.origem}
+                  <details>
+                    <summary>Ver origem e data</summary>
+                    <p>{m.detalhe || "Sem detalhe adicional"}</p>
+                    <small>{dateTime(m.data_registro)}</small>
+                  </details>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!r.memoria_calculo.length && (
+          <p className="op-notice">
+            Não há entradas armazenadas para este resultado. Confira a regra
+            e a origem antes de prosseguir.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person: BaseRow }) {
+  const formulas = person.execucao_funcionario;
+  const [resultId, setResultId] = useState(formulas[0].execucao_funcionario_id);
+  const fetcher = useCallback(
+    () => OperacaoApi.result(execucaoId, resultId),
+    [execucaoId, resultId],
+  );
+  const query = useOperationQuery(fetcher, 0);
+  return (
+    <>
+      <p><strong>{person.nome_funcionario}</strong> · {person.funcionario_id_rm}</p>
+      <label className="op-variable-formula">
+        Fórmula
+        <select value={resultId} onChange={(event) => setResultId(Number(event.target.value))}>
+          {formulas.map((r) => (
+            <option key={r.execucao_funcionario_id} value={r.execucao_funcionario_id}>
+              {r.formula.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <QueryNotice {...query} />
+      {query.data?.execucao_funcionario_id === resultId && <CalculationMemory result={query.data} />}
+    </>
+  );
+}
 
 function ResultPanel({
   execucaoId,
@@ -162,63 +255,7 @@ function ResultPanel({
           </div>
           <details className="op-result-memory">
             <summary>Memória de cálculo · {r.memoria_calculo.length} variáveis</summary>
-            <p>
-              Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
-              fórmula v{f?.versao ?? "—"}
-            </p>
-            {(!r.formulaUtilizada ||
-              r.formulaUtilizada.snapshot_origem === "CONFERENCIA_LEGADO") && (
-              <p className="op-notice op-warning">
-                Resultado legado: a fórmula histórica não foi armazenada. A regra
-                exibida é a configuração atual; verifique-a ao interpretar este resultado.
-              </p>
-            )}
-            <pre className="op-formula">
-              {f?.expressao || "Expressão indisponível"}
-            </pre>
-            <div className="op-scroll">
-              <table className="op-table">
-                <caption className="visually-hidden">
-                  Entradas da fórmula deste resultado
-                </caption>
-                <thead>
-                  <tr>
-                    <th>Variável</th>
-                    <th>Valor</th>
-                    <th>Origem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.memoria_calculo.map((m) => (
-                    <tr key={m.memoria_id}>
-                      <th scope="row">
-                        {m.variavel_nome}
-                        <small>{m.variavel_codigo}</small>
-                      </th>
-                      <td>
-                        {Number(m.valor).toLocaleString("pt-BR", {
-                          maximumFractionDigits: 4,
-                        })}
-                      </td>
-                      <td>
-                        {m.origem}
-                        <details>
-                          <summary>Ver origem e data</summary>
-                          <p>{m.detalhe || "Sem detalhe adicional"}</p>
-                          <small>{dateTime(m.data_registro)}</small>
-                        </details>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {!r.memoria_calculo.length && (
-                <p className="op-notice">
-                  Não há entradas armazenadas para este resultado. Confira a regra
-                  e a origem antes de prosseguir.
-                </p>
-              )}
-            </div>
+            <CalculationMemory result={r} />
           </details>
           <div className="op-actions">
             <button
@@ -383,6 +420,8 @@ export function ProcessamentoDetalhesPage() {
   const search = params.get("busca") ?? "";
   const filter = params.get("filtro") ?? "todos";
   const resultId = Number(params.get("resultado")) || 0;
+  const [memoryPerson, setMemoryPerson] = useState<BaseRow | null>(null);
+  useEffect(() => setMemoryPerson(null), [id]);
   const fetcher = useCallback(
     () => OperacaoApi.detail(id, page, search, filter),
     [id, page, search, filter],
@@ -741,7 +780,7 @@ export function ProcessamentoDetalhesPage() {
                       )}
                       Pessoa
                     </th>
-                    <th>Situação e resultados</th>
+                    <th scope="col" className="op-people-actions">Situação e acesso</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -775,45 +814,42 @@ export function ProcessamentoDetalhesPage() {
                           <span>{b.nome_funcionario}</span>
                         </div>
                         <small>
-                          {b.funcionario_id_rm} · {b.cargo}
+                          {b.funcionario_id_rm} · {b.cargo} · KM: {b.km ?? "não informado"}
                         </small>
-                        <small>KM: {b.km ?? "não informado"}</small>
+                        <div className="op-result-tags">
+                          {b.execucao_funcionario.map((r) => (
+                            <button
+                              key={r.execucao_funcionario_id}
+                              type="button"
+                              className="op-result-tag"
+                              aria-haspopup="dialog"
+                              onClick={() => setContext({ resultado: String(r.execucao_funcionario_id) }, false)}
+                            >
+                              {r.formula.nome} <span>{money(r.valor_final)}</span>
+                              {r.ajuste_manual && <span aria-label="Valor ajustado">· ajustado</span>}
+                            </button>
+                          ))}
+                          {!b.execucao_funcionario.length && <small>Resultados ainda não disponíveis</small>}
+                        </div>
                       </th>
-                      <td>
-                        <span
-                          className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}
-                        >
+                      <td className="op-people-actions">
+                        <span className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}>
                           {statusLabel(b.status)}
                         </span>
-                        {b.execucao_funcionario.map((r) => (
+                        {b.execucao_funcionario.length > 0 && (
                           <button
-                            key={r.execucao_funcionario_id}
-                            className="op-result-link"
+                            type="button"
+                            className="op-variables-button"
                             aria-haspopup="dialog"
-                            onClick={() =>
-                              setContext(
-                                {
-                                  resultado: String(
-                                    r.execucao_funcionario_id,
-                                  ),
-                                },
-                                false,
-                              )
-                            }
+                            aria-label={`Variáveis de ${b.nome_funcionario}`}
+                            onClick={() => setMemoryPerson(b)}
                           >
-                            <strong>{r.formula.nome}</strong>
-                            <span>
-                              {money(r.valor_final)} · v{r.revisao} ·{" "}
-                              {r.status === "ENVIADO_RM" &&
-                              r.enviado_revisao === r.revisao
-                                ? "Enviado"
-                                : "Ver resultado"}
-                              {r.ajuste_manual ? " · ajustado" : ""}
-                            </span>
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                              <path d="M4 7h16M4 12h16M4 17h16" />
+                              <path d="M9 5v4m6 1v4m-5 1v4" strokeWidth="2.5" />
+                            </svg>
+                            Variáveis
                           </button>
-                        ))}
-                        {!b.execucao_funcionario.length && (
-                          <small>Resultados ainda não disponíveis</small>
                         )}
                       </td>
                     </tr>
@@ -858,19 +894,21 @@ export function ProcessamentoDetalhesPage() {
         </>
       )}
       <Modal
-        show={Boolean(resultId)}
-        onHide={() => setContext({ resultado: "" }, false)}
+        show={Boolean(memoryPerson || resultId)}
+        onHide={() => memoryPerson ? setMemoryPerson(null) : setContext({ resultado: "" }, false)}
         aria-labelledby="op-result-title"
         className="op-modal"
         size="lg"
         centered
         scrollable
       >
-        <Modal.Header closeButton closeLabel="Fechar resultado">
-          <Modal.Title id="op-result-title">Detalhes do resultado</Modal.Title>
+        <Modal.Header closeButton closeLabel={memoryPerson ? "Fechar variáveis" : "Fechar resultado"}>
+          <Modal.Title id="op-result-title">{memoryPerson ? "Variáveis do funcionário" : "Detalhes do resultado"}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {resultId > 0 && (
+          {memoryPerson ? (
+            <EmployeeVariables key={memoryPerson.execucao_funcionario_base_id} execucaoId={id} person={memoryPerson} />
+          ) : resultId > 0 && (
             <ResultPanel
               key={resultId}
               execucaoId={id}
