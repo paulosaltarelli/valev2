@@ -150,8 +150,12 @@ export function ProcessamentoPage() {
       variaveis: a.variaveis + r.variaveis,
       valores: a.valores + r.valores,
       rm: a.rm + r.rm,
+      variablesDone: a.variablesDone + r.progresso.variaveisCalculadas,
+      variablesTotal: a.variablesTotal + r.progresso.variaveisPrevistas,
+      formulasDone: a.formulasDone + r.progresso.formulasCalculadas,
+      formulasTotal: a.formulasTotal + r.progresso.formulasPrevistas,
     }),
-    { total: 0, variaveis: 0, valores: 0, rm: 0 },
+    { total: 0, variaveis: 0, valores: 0, rm: 0, variablesDone: 0, variablesTotal: 0, formulasDone: 0, formulasTotal: 0 },
   );
   const inScope = (item: { periodoId: number; filialId: number }) =>
     item.periodoId === query.data?.periodo?.periodo_id && (!filial || item.filialId === Number(filial));
@@ -169,7 +173,8 @@ export function ProcessamentoPage() {
   const queueKnown = !!creation.data && !creation.error && !query.error;
   const calculationActive = activity.some((row) => (row.pending > 0 || row.processing > 0) &&
     row.etapas.some((stage) => stage === "VARIAVEIS" || stage === "VALORES"));
-  const percent = totals.total ? Math.floor(100 * (totals.variaveis + totals.valores) / (2 * totals.total)) : null;
+  const expected = totals.variablesTotal + totals.formulasTotal;
+  const percent = expected ? Math.floor(100 * (totals.variablesDone + totals.formulasDone) / expected) : null;
   const totalKnown = !preparing.length && !creationFailures.size;
   const showPercent = queueKnown && totalKnown && !(calculationActive && percent === 100) && percent !== null;
   const progressStatus = !queueKnown ? "Aguardando atualização da fila"
@@ -318,7 +323,7 @@ export function ProcessamentoPage() {
               <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
                 <div>
                   <h2 id="op-overall-heading">Progresso geral do cálculo</h2>
-                  <p className="op-muted mb-2">O percentual conta duas etapas por funcionário, variáveis e valores.</p>
+                  <p className="op-muted mb-2">Variáveis e fórmulas calculadas sobre o total previsto. Resultados parciais também contam; o envio ao RM é separado.</p>
                 </div>
                 {showPercent && <strong className="op-overall-percent">{percent}%</strong>}
               </div>
@@ -340,7 +345,7 @@ export function ProcessamentoPage() {
                   </ul>
                 )}
               </div>
-              {showPercent && <progress aria-label="Percentual das etapas de variáveis e valores concluídas"
+              {showPercent && <progress aria-label="Percentual de variáveis e fórmulas calculadas"
                 max={100} value={percent} />}
             </section>
           )}
@@ -364,14 +369,18 @@ export function ProcessamentoPage() {
             aria-label="Progresso das execuções atuais"
           >
             <StageCount
-              label="Variáveis concluídas"
-              value={totals.variaveis}
-              total={totals.total}
+              label="Variáveis calculadas"
+              value={totals.variablesDone}
+              total={totals.variablesTotal}
+              unit="variáveis"
+              detail={`${totals.variaveis} de ${totals.total} funcionários completos`}
             />
             <StageCount
-              label="Valores concluídos"
-              value={totals.valores}
-              total={totals.total}
+              label="Fórmulas calculadas"
+              value={totals.formulasDone}
+              total={totals.formulasTotal}
+              unit="fórmulas"
+              detail={`${totals.valores} de ${totals.total} funcionários completos`}
             />
             <StageCount
               label="Enviados ao RM"
@@ -444,7 +453,7 @@ export function ProcessamentoPage() {
             {history
               ? " · cada linha preserva sua execução e seus resultados"
               : " · execução mais recente de cada filial"}
-            . Contagens por funcionário.
+            . Variáveis sem duplicação por funcionário; valores por fórmula; RM por funcionário.
           </p>
           {rows.length ? (
             <div className="op-table-wrap">
@@ -469,12 +478,15 @@ export function ProcessamentoPage() {
                     const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, retorno: returnTo })}`;
                     // A fila pode incluir a próxima etapa; só nomeie a etapa se o tipo for único.
                     const singleStage = r.etapas.length === 1 ? r.etapas[0] : null;
-                    const stageDone = singleStage === "VARIAVEIS" ? r.variaveis
-                      : singleStage === "VALORES" ? r.valores
+                    const stageDone = singleStage === "VARIAVEIS" ? r.progresso.variaveisCalculadas
+                      : singleStage === "VALORES" ? r.progresso.formulasCalculadas
                       : singleStage === "ENVIAR_RM" ? r.rm
                       : null;
-                    const progressMax = r.total * (stageDone === null ? 3 : 1);
-                    const progressValue = stageDone ?? (r.variaveis + r.valores + r.rm);
+                    const progressMax = singleStage === "VARIAVEIS" ? r.progresso.variaveisPrevistas
+                      : singleStage === "VALORES" ? r.progresso.formulasPrevistas
+                      : singleStage === "ENVIAR_RM" ? r.total
+                      : r.progresso.variaveisPrevistas + r.progresso.formulasPrevistas;
+                    const progressValue = stageDone ?? (r.progresso.variaveisCalculadas + r.progresso.formulasCalculadas);
                     const progressLabel = stageDone === null
                       ? "Avanço da execução"
                       : etapaLabel(singleStage!);
@@ -521,16 +533,18 @@ export function ProcessamentoPage() {
                         <td data-label="Variáveis">
                           <StageCount
                             label="Variáveis"
-                            value={r.variaveis}
-                            total={r.total}
+                            value={r.progresso.variaveisCalculadas}
+                            total={r.progresso.variaveisPrevistas}
+                            unit="variáveis"
                             showBar={false}
                           />
                         </td>
                         <td data-label="Valores">
                           <StageCount
                             label="Valores"
-                            value={r.valores}
-                            total={r.total}
+                            value={r.progresso.formulasCalculadas}
+                            total={r.progresso.formulasPrevistas}
+                            unit="fórmulas"
                             showBar={false}
                           />
                         </td>

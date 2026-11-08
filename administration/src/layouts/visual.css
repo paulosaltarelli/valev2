@@ -73,6 +73,60 @@
   overflow-x: auto;
 }
 
+/* Shared with Processamentos: restrained surfaces, visible focus and compact controls. */
+.ve-analysis-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.ve-analysis-nav a {
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--ve-control-radius);
+  color: var(--op-muted);
+  text-decoration: none;
+}
+.ve-analysis-nav a[aria-current="page"] {
+  color: var(--op-blue);
+  background: var(--op-surface);
+  border-color: var(--op-line);
+  font-weight: 600;
+}
+.ve-analysis-nav a:hover {
+  background: var(--op-blue-soft);
+  color: var(--op-blue);
+}
+.ve-page .ve-icon-action {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px;
+  margin: 2px;
+}
+.ve-page .table tbody tr:focus-within > * {
+  background-color: var(--op-blue-soft);
+}
+.ve-page .dt-container :is(.dt-input, .form-control, .form-select) {
+  min-height: var(--ve-control-height);
+  border: 1px solid var(--op-line);
+  border-radius: var(--ve-control-radius);
+  background-color: var(--op-surface);
+  color: var(--op-text);
+}
+.ve-page .dt-container :is(.dt-info, .dt-length, .dt-search) {
+  font-size: 13px;
+  color: var(--op-muted);
+}
+.ve-page .dt-container .dt-layout-row:not(.dt-layout-table) {
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .ve-filter-bar > div { max-width: none; flex-basis: 100%; }
+  .ve-analysis-nav a { flex: 1 1 160px; text-align: center; }
+  .ve-page .dt-container :is(.dt-search, .dt-length) { text-align: left; }
+}
+
 .ve-page .op-back {
   color: var(--op-blue);
 }

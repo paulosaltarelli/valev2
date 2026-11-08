@@ -14,6 +14,12 @@ export type OperationRow = {
   createdAt: string;
   latest: boolean;
   total: number;
+  progresso: {
+    variaveisCalculadas: number;
+    variaveisPrevistas: number;
+    formulasCalculadas: number;
+    formulasPrevistas: number;
+  };
   variaveis: number;
   valores: number;
   rm: number;

@@ -211,7 +211,7 @@ export function FilialVariaveisPage() {
             <div>
               <Button
                 variant="outline-primary"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleEditVariavel(row)}
               >
                 <Icon
@@ -222,7 +222,7 @@ export function FilialVariaveisPage() {
               </Button>
               <Button
                 variant="outline-danger"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleDeleteVariavel(row.variavel_id)}
               >
                 <Icon

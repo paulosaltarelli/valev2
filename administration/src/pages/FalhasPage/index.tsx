@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { QueryNotice, useOperationQuery } from "../../components/Processamento/OperationCommon";
 import { PageHeading } from "../../shared/components/PageHeading";
+import { AnalysisNav } from "../../shared/components/AnalysisNav";
 import { http } from "../../shared/lib/http";
 
 type FailureReport = {
@@ -36,6 +37,7 @@ export function FalhasPage() {
     <div className="op-page">
       <PageHeading area="Análise" title="Falhas por causa"
         description="Veja as falhas que exigem ação e abra a execução afetada." />
+      <AnalysisNav />
       <section className="op-context mb-3" aria-label="Filtros das falhas">
         <label>
           Competência

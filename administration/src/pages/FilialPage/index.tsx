@@ -179,7 +179,7 @@ export function FilialPage() {
                     <Button
                       variant="outline-primary"
                       tooltip="Editar filial"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleEditFilial(row)}
                     >
                       <Icon
@@ -191,7 +191,7 @@ export function FilialPage() {
                     <Button
                       variant="outline-danger"
                       tooltip="Excluir filial"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleDeleteFilial(row)}
                     >
                       <Icon
@@ -203,7 +203,7 @@ export function FilialPage() {
                     <Button
                       variant="outline-secondary"
                       tooltip="Variaveis"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleVariaveisFilial(row.filial_id)}
                     >
                       <Icon icon="hugeicons:variable" width={20} height={20} />
@@ -211,7 +211,7 @@ export function FilialPage() {
                     <Button
                       variant="outline-info"
                       tooltip="Formulas"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleFormulasFilial(row.filial_id)}
                     >
                       <Icon

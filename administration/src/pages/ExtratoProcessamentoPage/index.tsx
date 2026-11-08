@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { PageHeading } from "../../shared/components/PageHeading";
+import { AnalysisNav } from "../../shared/components/AnalysisNav";
 import { http } from "../../shared/lib/http";
 import "./extrato.css";
 
@@ -145,6 +146,7 @@ export function ExtratoProcessamentoPage() {
           </button>
         }
       />
+      <AnalysisNav />
       <section className="op-context extrato-filtros" aria-label="Filtros do extrato">
         <label>
           Competência

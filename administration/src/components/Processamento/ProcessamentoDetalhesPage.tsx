@@ -580,11 +580,13 @@ export function ProcessamentoDetalhesPage() {
       {row && (
         <div className="op-summary">
           <StageCount
-            label="Variáveis"
-            value={row.variaveis}
-            total={row.total}
+            label="Variáveis calculadas"
+            value={row.progresso.variaveisCalculadas}
+            total={row.progresso.variaveisPrevistas}
+            unit="variáveis"
+            detail={`${row.variaveis} de ${row.total} funcionários completos`}
           />
-          <StageCount label="Valores" value={row.valores} total={row.total} />
+          <StageCount label="Fórmulas calculadas" value={row.progresso.formulasCalculadas} total={row.progresso.formulasPrevistas} unit="fórmulas" detail={`${row.valores} de ${row.total} funcionários completos`} />
           <StageCount label="Enviados ao RM" value={row.rm} total={row.total} />
         </div>
       )}

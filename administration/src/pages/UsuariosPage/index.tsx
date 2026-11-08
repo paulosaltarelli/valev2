@@ -140,7 +140,7 @@ export function UsuariosPage() {
                     <Tooltip title="Editar">
                       <Button
                         variant="outline-primary"
-                        className="m-0 px-1 py-1 border-0"
+                        className="ve-icon-action"
                         onClick={() => handleEditUsuario(row)}
                       >
                         <Icon
@@ -154,7 +154,7 @@ export function UsuariosPage() {
                     <Tooltip title="Excluir">
                       <Button
                         variant="outline-danger"
-                        className="m-0 px-1 py-1 border-0"
+                        className="ve-icon-action"
                         onClick={() => handleDeleteUsuario(row)}
                       >
                         <Icon

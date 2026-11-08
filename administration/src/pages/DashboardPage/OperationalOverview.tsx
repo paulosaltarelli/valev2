@@ -4,6 +4,7 @@ import {
   dateTime,
   QueryNotice,
   situacoes,
+  StageCount,
   useOperationQuery,
 } from "../../components/Processamento/OperationCommon";
 import { OperacaoApi } from "../../utils/api/operacaoApi";
@@ -46,6 +47,14 @@ export function OperationalOverview({ activePeriodIds, branches }: {
     }).map((branch) => ({ ...branch, periodo })) : [],
   );
   const links = view === "envio" ? ready : attention;
+  const totals = rows.filter((row) => row.latest).reduce((sum, row) => ({
+    variables: sum.variables + row.progresso.variaveisCalculadas,
+    expectedVariables: sum.expectedVariables + row.progresso.variaveisPrevistas,
+    formulas: sum.formulas + row.progresso.formulasCalculadas,
+    expectedFormulas: sum.expectedFormulas + row.progresso.formulasPrevistas,
+    rm: sum.rm + row.rm,
+    employees: sum.employees + row.total,
+  }), { variables: 0, expectedVariables: 0, formulas: 0, expectedFormulas: 0, rm: 0, employees: 0 });
 
   return (
     <section className="card ve-operation-overview mb-3" aria-labelledby="ve-operation-heading">
@@ -65,6 +74,11 @@ export function OperationalOverview({ activePeriodIds, branches }: {
         {!activePeriodIds.length && <p className="mb-0 mt-2">Nenhuma competência ativa cadastrada.</p>}
         {query.data && activePeriodIds.length > 0 && (
           <>
+            <div className="op-summary mt-3" aria-label="Progresso nas competências ativas">
+              <StageCount label="Variáveis calculadas" value={totals.variables} total={totals.expectedVariables} unit="variáveis" />
+              <StageCount label="Fórmulas calculadas" value={totals.formulas} total={totals.expectedFormulas} unit="fórmulas" />
+              <StageCount label="Enviados ao RM" value={totals.rm} total={totals.employees} />
+            </div>
             <div className="ve-metrics ve-overview-actions" role="group" aria-label="Filtrar próximas ações">
               {([
                 ["falhas", "Falhas a resolver", attention.length],

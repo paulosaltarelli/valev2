@@ -256,7 +256,7 @@ export function FilialFormulasPage() {
             <div>
               <Button
                 variant="outline-primary"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleEditFormula(row)}
                 tooltip="Editar formula"
               >
@@ -268,7 +268,7 @@ export function FilialFormulasPage() {
               </Button>
               <Button
                 variant="outline-danger"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleDeleteFormula(row.formula_id)}
                 tooltip="Excluir formula"
               >
@@ -310,7 +310,7 @@ export function FilialFormulasPage() {
               <Limited limit={10} popover={false} tooltip={false} trigger="click" placement="right">{data}</Limited>
               {data.length > 10 && (
                 <Popover popover={data} placement="right" trigger="click">
-                  <Button variant="link" className="m-0 px-1 py-1 border-0">
+                  <Button variant="link" className="ve-icon-action">
                     <Icon icon="solar:eye-bold-duotone" width={16} height={16} />
                   </Button>
                 </Popover>

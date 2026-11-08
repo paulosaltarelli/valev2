@@ -502,7 +502,7 @@ export function GestaoKmPage() {
                     const normalized = Number(
                       String(data ?? "").replace(",", "."),
                     );
-                    const hasValue = Number.isFinite(normalized);
+                    const hasValue = data !== null && data !== undefined && String(data).trim() !== '' && Number.isFinite(normalized);
                     if (type === "sort" || type === "type") {
                       return hasValue ? normalized : -1;
                     }
@@ -525,10 +525,10 @@ export function GestaoKmPage() {
                 actions: (row: FuncionarioRm) => (
                   <div>
                     <Button
-                      variant="outline-success"
+                      variant="outline-primary"
                       onClick={() => handleCalcularFuncKm(row)}
                       tooltip="Calcular Km"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       disabled={isGeoRunning}
                     >
                       <Icon
@@ -538,10 +538,10 @@ export function GestaoKmPage() {
                       />
                     </Button>
                     <Button
-                      variant="outline-info"
+                      variant="outline-primary"
                       onClick={() => handleVisualizarKm(row)}
                       tooltip="Visualizar Km"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       disabled={isGeoRunning}
                     >
                       <Icon
@@ -563,9 +563,9 @@ export function GestaoKmPage() {
                 <tr>
                   <th scope="col" />
                   <th scope="col">Nome</th>
-                  <th scope="col">CHAPA</th>
-                  <th scope="col">CARGO</th>
-                  <th scope="col">DATAADMISSAO</th>
+                  <th scope="col">Matrícula</th>
+                  <th scope="col">Cargo</th>
+                  <th scope="col">Admissão</th>
                   <th scope="col">KM</th>
                   <th scope="col">Ações</th>
                 </tr>

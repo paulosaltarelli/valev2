@@ -223,7 +223,7 @@ export function PeriodoPage() {
                     <Button
                       variant="outline-primary"
                       tooltip="Editar período"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleEditPeriodo(row)}
                     >
                       <Icon
@@ -235,7 +235,7 @@ export function PeriodoPage() {
                     <Button
                       variant="outline-danger"
                       tooltip="Excluir período"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleDeletePeriodo(row)}
                     >
                       <Icon

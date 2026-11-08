@@ -7,6 +7,7 @@ import {
 import { Prisma, formula } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { operationProgress } from './operation-progress';
 
 type Tx = Prisma.TransactionClient;
 export type Etapa = 'VARIAVEIS' | 'VALORES' | 'CONFERIR' | 'ENVIAR_RM';
@@ -98,7 +99,11 @@ export class OperacaoService {
       where: { periodo_id: periodo.periodo_id },
       orderBy: { execucao_id: 'desc' },
       include: {
-        filial: { select: { nome: true } },
+        filial: { select: {
+          nome: true,
+          formula: { where: { ativa: true }, select: { formula_id: true, expressao: true } },
+          variavel: { where: { ativa: true }, select: { codigo: true } },
+        } },
         execucao_funcionario_base: {
           select: {
             execucao_funcionario_base_id: true,
@@ -110,6 +115,9 @@ export class OperacaoService {
                 conferido_revisao: true,
                 enviado_revisao: true,
                 valor_final: true,
+                valor_calculado: true,
+                formula_id: true,
+                formula_snapshot: true,
               },
             },
           },
@@ -127,6 +135,19 @@ export class OperacaoService {
         },
       },
     });
+    // Aggregate in SQL instead of loading every duplicated memory row or its value.
+    const memory = await this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
+      SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, m.variavel_codigo AS codigo
+      FROM dbo.memoria_calculo m
+      INNER JOIN dbo.execucao_funcionario r ON r.execucao_funcionario_id = m.execucao_funcionario_id
+      INNER JOIN dbo.execucao e ON e.execucao_id = r.execucao_id
+      WHERE e.periodo_id = ${periodo.periodo_id}`);
+    const savedByBase = new Map<number, string[]>();
+    for (const item of memory) {
+      const saved = savedByBase.get(item.baseId) ?? [];
+      saved.push(item.codigo);
+      savedByBase.set(item.baseId, saved);
+    }
     const seen = new Set<number>();
     return {
       periodos,
@@ -137,6 +158,16 @@ export class OperacaoService {
         seen.add(e.filial_id);
         const bases = e.execucao_funcionario_base;
         const total = bases.length;
+        const progresso = bases.reduce((sum, base) => {
+          const partial = operationProgress(e.filial.formula, e.filial.variavel.map((v) => v.codigo),
+            base.execucao_funcionario, savedByBase.get(base.execucao_funcionario_base_id) ?? []);
+          return {
+            variaveisCalculadas: sum.variaveisCalculadas + partial.variaveisCalculadas,
+            variaveisPrevistas: sum.variaveisPrevistas + partial.variaveisPrevistas,
+            formulasCalculadas: sum.formulasCalculadas + partial.formulasCalculadas,
+            formulasPrevistas: sum.formulasPrevistas + partial.formulasPrevistas,
+          };
+        }, { variaveisCalculadas: 0, variaveisPrevistas: 0, formulasCalculadas: 0, formulasPrevistas: 0 });
         const variaveis = bases.filter(
           (b) => b.status && !['PREVIA', 'ERRO_VARIAVEIS'].includes(b.status),
         ).length;
@@ -210,6 +241,7 @@ export class OperacaoService {
           createdAt: e.data_execucao,
           latest,
           total,
+          progresso,
           variaveis,
           valores,
           rm,
