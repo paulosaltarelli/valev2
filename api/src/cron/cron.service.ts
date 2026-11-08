@@ -712,7 +712,7 @@ export class CronService {
         } else {
           const errorMsg = result?.message ?? 'worker_error';
           const isNonRetryable =
-            errorMsg.startsWith('Nenhum funcionário') ||
+            errorMsg.includes('Nenhum funcionário retornado pelo SQL RM') ||
             errorMsg.includes('SQL codigo RM not found') ||
             errorMsg.includes('Formula not found');
           await this.prisma.$executeRaw(
