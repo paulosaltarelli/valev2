@@ -6,6 +6,18 @@ const occurrenceQueries = new Set([
 ]);
 
 const nullableAggregates = new Set(['PVE.AFASTAMENTOS', 'PVE.ATESTADO']);
+const nonRetryableHttpStatuses = new Set([400, 401, 403, 404, 405, 410, 422]);
+
+// Called only when no valid value could be read. Preserve retries for
+// transport failures, 429, 5xx, and failures without a known HTTP status.
+export function isRmVariableFailureFinal(response: {
+  status: boolean;
+  http?: { status?: number };
+}): boolean {
+  const httpStatus = response.http?.status;
+  return response.status ||
+    (httpStatus !== undefined && nonRetryableHttpStatuses.has(httpStatus));
+}
 
 export function readRmVariable(query: string, rows: unknown): number {
   if (!Array.isArray(rows)) return NaN;

@@ -12,7 +12,7 @@ import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
 import { OperacaoService } from './operacao.service';
-import { readRmVariable } from './rm-variable-result';
+import { isRmVariableFailureFinal, readRmVariable } from './rm-variable-result';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
 
 @Injectable()
@@ -1302,7 +1302,7 @@ export class ExecucaoService {
     execucaoId: number,
     rows: execucao_funcionario_base[],
     sessionId: string,
-  ): Promise<{ status: boolean; message: string }> {
+  ): Promise<{ status: boolean; message: string; falhasSemRetryIds?: number[] }> {
     const startedAt = process.hrtime.bigint();
     let cacheHits = 0;
     const timings = new Map<string, { chamadas: number; totalMs: number; maxMs: number }>();
@@ -1391,6 +1391,7 @@ export class ExecucaoService {
       const basesOk: number[] = [];
       const basesComErro: number[] = [];
 
+      const falhasSemRetryIds: number[] = [];
       await this.variableWorkers.forEach(basesSelecionadas, async (funcionarioBase) => {
         let funcionarioOk = true;
 
@@ -1494,6 +1495,8 @@ export class ExecucaoService {
                 : NaN;
               if (!Number.isFinite(valorFinal)) {
                 funcionarioOk = false;
+                if (isRmVariableFailureFinal(resultadoConsulta))
+                  falhasSemRetryIds.push(funcionarioBase.execucao_funcionario_base_id);
                 const reason = resultadoConsulta.status
                   ? 'Dado ausente ou inválido no RM.'
                   : resultadoConsulta.message;
@@ -1583,11 +1586,13 @@ export class ExecucaoService {
         duracaoMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
         cacheHits, funcionariosOk: basesOk.length,
         funcionariosErro: basesComErro.length,
+        falhasSemRetry: falhasSemRetryIds.length,
         consultas: [...timings].map(([sentenca, timing]) => ({ sentenca, ...timing })),
       }));
       return {
         status: true,
         message: 'Processamento de variáveis (batch) concluído com sucesso',
+        falhasSemRetryIds,
       };
     } catch (error) {
       console.error(error);

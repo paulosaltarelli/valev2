@@ -65,260 +65,267 @@ export class CronService {
         `,
       );
 
-      const runnable = Prisma.sql`
-        q.status = 'PENDENTE'
-        AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME())
-        AND EXISTS (SELECT 1 FROM dbo.execucao e WHERE e.execucao_id = q.execucao_id AND e.controle_fila IS NULL)
-        AND NOT EXISTS (
-          SELECT 1 FROM dbo.execucao_queue anterior
-          WHERE anterior.execucao_id = q.execucao_id
-            AND anterior.execucao_funcionario_base_id = q.execucao_funcionario_base_id
-            AND anterior.status IN ('PENDENTE', 'PROCESSANDO')
-            AND (
-              (q.tipo IN ('VALORES', 'ENVIAR_RM') AND anterior.tipo = 'VARIAVEIS')
-              OR (q.tipo = 'ENVIAR_RM' AND anterior.tipo = 'VALORES')
-            )
-        )
-      `;
-
-      // Uma execução em espera de retry cede a vez a outra pronta.
-      const execRows = await this.prisma.$queryRaw<
-        Array<{ execucao_id: number }>
-      >(
-        Prisma.sql`
-        SELECT TOP 1 q.execucao_id
-        FROM dbo.execucao_queue q
-        WHERE ${runnable}
-        ORDER BY q.created_at ASC, q.queue_id ASC;
-        `,
-      );
-      const execucaoId = execRows?.[0]?.execucao_id;
-      if (!execucaoId) return;
-
-      // 2) Decide qual tipo rodar agora (prioriza VARIAVEIS)
-      const tipoRows = await this.prisma.$queryRaw<Array<{ tipo: string }>>(
-        Prisma.sql`
-        SELECT TOP 1 tipo
-        FROM dbo.execucao_queue q
-        WHERE q.execucao_id = ${execucaoId}
-          AND ${runnable}
-        ORDER BY
-          CASE
-            WHEN tipo = 'VARIAVEIS' THEN 0
-            WHEN tipo = 'VALORES' THEN 1
-            WHEN tipo = 'ENVIAR_RM' THEN 2
-            ELSE 3
-          END,
-          created_at ASC;
-        `,
-      );
-      const tipo = tipoRows?.[0]?.tipo;
-      if (!tipo) {
-        // nada runnable agora; ainda assim sincroniza status global
-        await this.syncExecucaoStatus(execucaoId);
-        return;
+      while (await this.processNextExecutionBatch()) {
+        // Cada lote reavalia a fila, incluindo pausas, cancelamentos e backoff.
       }
-
-      // 3) Claim (lock) de um batch de itens para esta execução/tipo
-      const claimed = await this.prisma.$transaction(async (tx) => {
-        const [{ controle_fila }] = await tx.$queryRaw<Array<{ controle_fila: string | null }>>(
-          Prisma.sql`SELECT controle_fila FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${execucaoId}`,
-        );
-        if (controle_fila) return [];
-        const rows = await tx.$queryRaw<
-        Array<{
-          queue_id: number;
-          execucao_funcionario_base_id: number;
-          session_id: string | null;
-          revisao_payload: string | null;
-        }>
-      >(
-        Prisma.sql`
-        UPDATE TOP (${Prisma.raw(String(this.batchSize))}) q
-        SET
-          status = 'PROCESSANDO',
-          lock_owner = ${this.lockOwner},
-          locked_at = SYSDATETIME(),
-          updated_at = SYSDATETIME()
-        OUTPUT inserted.queue_id, inserted.execucao_funcionario_base_id, inserted.session_id, inserted.revisao_payload
-        FROM dbo.execucao_queue q
-        WHERE q.execucao_id = ${execucaoId}
-          AND q.tipo = ${tipo}
-          AND ${runnable};
-        `,
-      );
-        if (tipo !== 'ENVIAR_RM') {
-          const baseIds = rows.filter((row) => row.revisao_payload).map((row) => row.execucao_funcionario_base_id);
-          if (baseIds.length) await tx.execucao_funcionario.updateMany({
-            where: { execucao_funcionario_base_id: { in: baseIds } },
-            data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
-          });
-        }
-        return rows;
-      });
-
-      if (!claimed || claimed.length === 0) {
-        await this.syncExecucaoStatus(execucaoId);
-        return;
-      }
-
-      const baseIds = claimed.map((c) => c.execucao_funcionario_base_id);
-      const sessionId =
-        tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM'
-          ? (claimed.find((c) => c.session_id)?.session_id ?? null)
-          : null;
-
-      if ((tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM') && !sessionId) {
-        // Sem session_id não dá pra chamar o RM; devolve itens para pendente com backoff.
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          UPDATE dbo.execucao_queue
-          SET
-            status = CASE WHEN tentativas + 1 >= ${this.maxAttempts} THEN 'ERRO' ELSE 'PENDENTE' END,
-            tentativas = tentativas + 1,
-            next_run_at = CASE
-              WHEN tentativas + 1 >= ${this.maxAttempts} THEN NULL
-              ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
-            END,
-            last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
-              {
-                code: 'SESSION_ID_AUSENTE',
-                message: 'Não foi possível processar sem sessionId do RM',
-                context: { execucaoId, tipo },
-              },
-            )},
-            lock_owner = NULL,
-            locked_at = NULL,
-            updated_at = SYSDATETIME()
-          WHERE execucao_id = ${execucaoId}
-            AND tipo = ${tipo}
-            AND status = 'PROCESSANDO'
-            AND lock_owner = ${this.lockOwner};
-          `,
-        );
-        await this.syncExecucaoStatus(execucaoId);
-        return;
-      }
-
-      const rows = await this.prisma.execucao_funcionario_base.findMany({
-        where: { execucao_funcionario_base_id: { in: baseIds } },
-      });
-
-      const errosSemRetry = new Set<number>();
-      // 4) Processa (usa seus métodos batch existentes)
-      if (tipo === 'VARIAVEIS') {
-        await this.execucaoService.processarVariaveisBatch(
-          execucaoId,
-          rows,
-          sessionId!,
-        );
-      } else if (tipo === 'VALORES') {
-        const aptos = rows.filter((row) => {
-          if (row.status !== 'ERRO_VARIAVEIS') return true;
-          errosSemRetry.add(row.execucao_funcionario_base_id);
-          return false;
-        });
-        if (aptos.length) {
-          const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos);
-          for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
-        }
-      } else if (tipo === 'ENVIAR_RM') {
-        await this.execucaoService.processarEnviarRmBatch(
-          execucaoId,
-          rows,
-          sessionId!,
-        );
-      }
-
-      // 5) Marca cada item como CONCLUIDO/ERRO baseado no status do funcionario_base
-      const refreshed = await this.prisma.execucao_funcionario_base.findMany({
-        where: { execucao_funcionario_base_id: { in: baseIds } },
-        select: { execucao_funcionario_base_id: true, status: true },
-      });
-
-      const okIds: number[] = [];
-      const errIds: number[] = [];
-      for (const r of refreshed) {
-        if (errosSemRetry.has(r.execucao_funcionario_base_id)) {
-          errIds.push(r.execucao_funcionario_base_id);
-        } else if (tipo === 'VARIAVEIS') {
-          if (r.status === 'VARIAVEIS_PROCESSADAS') {
-            okIds.push(r.execucao_funcionario_base_id);
-          } else if (r.status === 'ERRO_VARIAVEIS') {
-            errIds.push(r.execucao_funcionario_base_id);
-          }
-        } else if (tipo === 'VALORES') {
-          if (r.status === 'RESULTADOS_PROCESSADOS') {
-            okIds.push(r.execucao_funcionario_base_id);
-          } else if (r.status === 'ERRO_RESULTADOS') {
-            errIds.push(r.execucao_funcionario_base_id);
-          }
-        } else if (tipo === 'ENVIAR_RM') {
-          if (r.status === 'ENVIADO_RM') {
-            okIds.push(r.execucao_funcionario_base_id);
-          } else if (r.status === 'ERRO_RM') {
-            errIds.push(r.execucao_funcionario_base_id);
-          }
-        }
-      }
-
-      if (okIds.length > 0) {
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          UPDATE dbo.execucao_queue
-          SET
-            status = 'CONCLUIDO',
-            lock_owner = NULL,
-            locked_at = NULL,
-            updated_at = SYSDATETIME()
-          WHERE execucao_id = ${execucaoId}
-            AND tipo = ${tipo}
-            AND status = 'PROCESSANDO'
-            AND lock_owner = ${this.lockOwner}
-            AND execucao_funcionario_base_id IN (${Prisma.join(okIds)});
-          `,
-        );
-      }
-
-      if (errIds.length > 0) {
-        const terminal = Prisma.sql`execucao_funcionario_base_id IN (${Prisma.join([...errosSemRetry, -1])}) OR tentativas + 1 >= ${this.maxAttempts}`;
-        await this.prisma.$executeRaw(
-          Prisma.sql`
-          UPDATE dbo.execucao_queue
-          SET
-            status = CASE WHEN ${terminal} THEN 'ERRO' ELSE 'PENDENTE' END,
-            tentativas = tentativas + 1,
-            next_run_at = CASE
-              WHEN ${terminal} THEN NULL
-              ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
-            END,
-            last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
-              {
-                code: 'ERRO_WORKER',
-                message:
-                  'O processamento falhou para este item; verifique logs e tente reprocessar',
-                context: { execucaoId, tipo },
-              },
-            )},
-            lock_owner = NULL,
-            locked_at = NULL,
-            updated_at = SYSDATETIME()
-          WHERE execucao_id = ${execucaoId}
-            AND tipo = ${tipo}
-            AND status = 'PROCESSANDO'
-            AND lock_owner = ${this.lockOwner}
-            AND execucao_funcionario_base_id IN (${Prisma.join(errIds)});
-          `,
-        );
-      }
-
-      await this.syncExecucaoStatus(execucaoId);
     } catch (e) {
-      // Evita crash do cron; logs detalhados já ficam no log_execucao no fluxo de processamento
       console.error('[CronService] tick error', e);
     } finally {
       this.tickRunning = false;
     }
+  }
+
+  private async processNextExecutionBatch(): Promise<boolean> {
+    const runnable = Prisma.sql`
+      q.status = 'PENDENTE'
+      AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME())
+      AND EXISTS (SELECT 1 FROM dbo.execucao e WHERE e.execucao_id = q.execucao_id AND e.controle_fila IS NULL)
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.execucao_queue anterior
+        WHERE anterior.execucao_id = q.execucao_id
+          AND anterior.execucao_funcionario_base_id = q.execucao_funcionario_base_id
+          AND anterior.status IN ('PENDENTE', 'PROCESSANDO')
+          AND (
+            (q.tipo IN ('VALORES', 'ENVIAR_RM') AND anterior.tipo = 'VARIAVEIS')
+            OR (q.tipo = 'ENVIAR_RM' AND anterior.tipo = 'VALORES')
+          )
+      )
+    `;
+
+    // Uma execução em espera de retry cede a vez a outra pronta.
+    const execRows = await this.prisma.$queryRaw<
+      Array<{ execucao_id: number }>
+    >(
+      Prisma.sql`
+      SELECT TOP 1 q.execucao_id
+      FROM dbo.execucao_queue q
+      WHERE ${runnable}
+      ORDER BY q.created_at ASC, q.queue_id ASC;
+      `,
+    );
+    const execucaoId = execRows?.[0]?.execucao_id;
+    if (!execucaoId) return false;
+
+    // 2) Decide qual tipo rodar agora (prioriza VARIAVEIS)
+    const tipoRows = await this.prisma.$queryRaw<Array<{ tipo: string }>>(
+      Prisma.sql`
+      SELECT TOP 1 tipo
+      FROM dbo.execucao_queue q
+      WHERE q.execucao_id = ${execucaoId}
+        AND ${runnable}
+      ORDER BY
+        CASE
+          WHEN tipo = 'VARIAVEIS' THEN 0
+          WHEN tipo = 'VALORES' THEN 1
+          WHEN tipo = 'ENVIAR_RM' THEN 2
+          ELSE 3
+        END,
+        created_at ASC;
+      `,
+    );
+    const tipo = tipoRows?.[0]?.tipo;
+    if (!tipo) {
+      // nada runnable agora; ainda assim sincroniza status global
+      await this.syncExecucaoStatus(execucaoId);
+      return false;
+    }
+
+    // 3) Claim (lock) de um batch de itens para esta execução/tipo
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const [{ controle_fila }] = await tx.$queryRaw<Array<{ controle_fila: string | null }>>(
+        Prisma.sql`SELECT controle_fila FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${execucaoId}`,
+      );
+      if (controle_fila) return [];
+      const rows = await tx.$queryRaw<
+      Array<{
+        queue_id: number;
+        execucao_funcionario_base_id: number;
+        session_id: string | null;
+        revisao_payload: string | null;
+      }>
+    >(
+      Prisma.sql`
+      UPDATE TOP (${Prisma.raw(String(this.batchSize))}) q
+      SET
+        status = 'PROCESSANDO',
+        lock_owner = ${this.lockOwner},
+        locked_at = SYSDATETIME(),
+        updated_at = SYSDATETIME()
+      OUTPUT inserted.queue_id, inserted.execucao_funcionario_base_id, inserted.session_id, inserted.revisao_payload
+      FROM dbo.execucao_queue q
+      WHERE q.execucao_id = ${execucaoId}
+        AND q.tipo = ${tipo}
+        AND ${runnable};
+      `,
+    );
+      if (tipo !== 'ENVIAR_RM') {
+        const baseIds = rows.filter((row) => row.revisao_payload).map((row) => row.execucao_funcionario_base_id);
+        if (baseIds.length) await tx.execucao_funcionario.updateMany({
+          where: { execucao_funcionario_base_id: { in: baseIds } },
+          data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
+        });
+      }
+      return rows;
+    });
+
+    if (!claimed || claimed.length === 0) {
+      await this.syncExecucaoStatus(execucaoId);
+      return false;
+    }
+
+    const baseIds = claimed.map((c) => c.execucao_funcionario_base_id);
+    const sessionId =
+      tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM'
+        ? (claimed.find((c) => c.session_id)?.session_id ?? null)
+        : null;
+
+    if ((tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM') && !sessionId) {
+      // Sem session_id não dá pra chamar o RM; devolve itens para pendente com backoff.
+      await this.prisma.$executeRaw(
+        Prisma.sql`
+        UPDATE dbo.execucao_queue
+        SET
+          status = CASE WHEN tentativas + 1 >= ${this.maxAttempts} THEN 'ERRO' ELSE 'PENDENTE' END,
+          tentativas = tentativas + 1,
+          next_run_at = CASE
+            WHEN tentativas + 1 >= ${this.maxAttempts} THEN NULL
+            ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
+          END,
+          last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
+            {
+              code: 'SESSION_ID_AUSENTE',
+              message: 'Não foi possível processar sem sessionId do RM',
+              context: { execucaoId, tipo },
+            },
+          )},
+          lock_owner = NULL,
+          locked_at = NULL,
+          updated_at = SYSDATETIME()
+        WHERE execucao_id = ${execucaoId}
+          AND tipo = ${tipo}
+          AND status = 'PROCESSANDO'
+          AND lock_owner = ${this.lockOwner};
+        `,
+      );
+      await this.syncExecucaoStatus(execucaoId);
+      return true;
+    }
+
+    const rows = await this.prisma.execucao_funcionario_base.findMany({
+      where: { execucao_funcionario_base_id: { in: baseIds } },
+    });
+
+    const errosSemRetry = new Set<number>();
+    // 4) Processa (usa seus métodos batch existentes)
+    if (tipo === 'VARIAVEIS') {
+      const resultado = await this.execucaoService.processarVariaveisBatch(
+        execucaoId,
+        rows,
+        sessionId!,
+      );
+      for (const id of resultado.falhasSemRetryIds ?? []) errosSemRetry.add(id);
+    } else if (tipo === 'VALORES') {
+      const aptos = rows.filter((row) => {
+        if (row.status !== 'ERRO_VARIAVEIS') return true;
+        errosSemRetry.add(row.execucao_funcionario_base_id);
+        return false;
+      });
+      if (aptos.length) {
+        const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos);
+        for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
+      }
+    } else if (tipo === 'ENVIAR_RM') {
+      await this.execucaoService.processarEnviarRmBatch(
+        execucaoId,
+        rows,
+        sessionId!,
+      );
+    }
+
+    // 5) Marca cada item como CONCLUIDO/ERRO baseado no status do funcionario_base
+    const refreshed = await this.prisma.execucao_funcionario_base.findMany({
+      where: { execucao_funcionario_base_id: { in: baseIds } },
+      select: { execucao_funcionario_base_id: true, status: true },
+    });
+
+    const okIds: number[] = [];
+    const errIds: number[] = [];
+    for (const r of refreshed) {
+      if (errosSemRetry.has(r.execucao_funcionario_base_id)) {
+        errIds.push(r.execucao_funcionario_base_id);
+      } else if (tipo === 'VARIAVEIS') {
+        if (r.status === 'VARIAVEIS_PROCESSADAS') {
+          okIds.push(r.execucao_funcionario_base_id);
+        } else if (r.status === 'ERRO_VARIAVEIS') {
+          errIds.push(r.execucao_funcionario_base_id);
+        }
+      } else if (tipo === 'VALORES') {
+        if (r.status === 'RESULTADOS_PROCESSADOS') {
+          okIds.push(r.execucao_funcionario_base_id);
+        } else if (r.status === 'ERRO_RESULTADOS') {
+          errIds.push(r.execucao_funcionario_base_id);
+        }
+      } else if (tipo === 'ENVIAR_RM') {
+        if (r.status === 'ENVIADO_RM') {
+          okIds.push(r.execucao_funcionario_base_id);
+        } else if (r.status === 'ERRO_RM') {
+          errIds.push(r.execucao_funcionario_base_id);
+        }
+      }
+    }
+
+    if (okIds.length > 0) {
+      await this.prisma.$executeRaw(
+        Prisma.sql`
+        UPDATE dbo.execucao_queue
+        SET
+          status = 'CONCLUIDO',
+          lock_owner = NULL,
+          locked_at = NULL,
+          updated_at = SYSDATETIME()
+        WHERE execucao_id = ${execucaoId}
+          AND tipo = ${tipo}
+          AND status = 'PROCESSANDO'
+          AND lock_owner = ${this.lockOwner}
+          AND execucao_funcionario_base_id IN (${Prisma.join(okIds)});
+        `,
+      );
+    }
+
+    if (errIds.length > 0) {
+      const terminal = Prisma.sql`execucao_funcionario_base_id IN (${Prisma.join([...errosSemRetry, -1])}) OR tentativas + 1 >= ${this.maxAttempts}`;
+      await this.prisma.$executeRaw(
+        Prisma.sql`
+        UPDATE dbo.execucao_queue
+        SET
+          status = CASE WHEN ${terminal} THEN 'ERRO' ELSE 'PENDENTE' END,
+          tentativas = tentativas + 1,
+          next_run_at = CASE
+            WHEN ${terminal} THEN NULL
+            ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
+          END,
+          last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
+            {
+              code: 'ERRO_WORKER',
+              message:
+                'O processamento falhou para este item; verifique logs e tente reprocessar',
+              context: { execucaoId, tipo },
+            },
+          )},
+          lock_owner = NULL,
+          locked_at = NULL,
+          updated_at = SYSDATETIME()
+        WHERE execucao_id = ${execucaoId}
+          AND tipo = ${tipo}
+          AND status = 'PROCESSANDO'
+          AND lock_owner = ${this.lockOwner}
+          AND execucao_funcionario_base_id IN (${Prisma.join(errIds)});
+        `,
+      );
+    }
+
+    await this.syncExecucaoStatus(execucaoId);
+    return true;
   }
 
   @Cron(CronExpression.EVERY_10_SECONDS, {

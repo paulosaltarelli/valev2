@@ -1,4 +1,18 @@
-import { readRmVariable } from './rm-variable-result';
+import { isRmVariableFailureFinal, readRmVariable } from './rm-variable-result';
+
+describe('isRmVariableFailureFinal', () => {
+  it('encerra a tentativa se a consulta respondeu com um resultado inválido', () => {
+    expect(isRmVariableFailureFinal({ status: true })).toBe(true);
+  });
+
+  it.each([400, 401, 403, 404, 405, 410, 422])('encerra erros HTTP %i de requisição ou acesso', (status) => {
+    expect(isRmVariableFailureFinal({ status: false, http: { status } })).toBe(true);
+  });
+
+  it.each([undefined, 408, 429, 500, 503])('mantém a repetição para falhas transitórias HTTP %s', (status) => {
+    expect(isRmVariableFailureFinal({ status: false, http: { status } })).toBe(false);
+  });
+});
 
 describe('readRmVariable', () => {
   it('interpreta ausência de ocorrências como zero nas consultas conhecidas', () => {

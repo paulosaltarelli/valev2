@@ -150,5 +150,32 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
     await cron.handleCheckVariablesToProcessExecution();
     assert.equal(visits.length, 3);
   });
+  await check('o mesmo disparo segue para a próxima filial pronta e mantém retry apenas para falha temporária', async () => {
+    const ids = [base.execucao_funcionario_base_id, freshBase.execucao_funcionario_base_id];
+    await service.execute({ etapa: 'VARIAVEIS', execucaoIds: [eid], baseIds: ids, recalcular: true }, uid, 'sessao-nova');
+    await service.execute({ etapa: 'VALORES', execucaoIds: [other.execucao_id], baseIds: [otherBase.execucao_funcionario_base_id], recalcular: true }, uid, 'sessao-outra');
+    const chamadas = [];
+    const workerQueue = new CronService(prisma, {
+      processarVariaveisBatch: async (id) => {
+        chamadas.push(['VARIAVEIS', id]);
+        await prisma.execucao_funcionario_base.updateMany({
+          where: { execucao_funcionario_base_id: { in: ids } },
+          data: { status: 'ERRO_VARIAVEIS' },
+        });
+        return { falhasSemRetryIds: [ids[0]] };
+      },
+      processarValoresBatch: async (id) => {
+        chamadas.push(['VALORES', id]);
+        return {};
+      },
+    }, null);
+    await workerQueue.handleCheckVariablesToProcessExecution();
+    assert.deepEqual(chamadas, [['VARIAVEIS', eid], ['VALORES', other.execucao_id]]);
+    const itens = await prisma.execucao_queue.findMany({ where: { execucao_id: eid, tipo: 'VARIAVEIS' }, orderBy: { execucao_funcionario_base_id: 'asc' } });
+    assert.deepEqual(itens.map((item) => item.status), ['ERRO', 'PENDENTE']);
+    assert.equal(itens[0].next_run_at, null);
+    const backoffMs = +itens[1].next_run_at - +itens[1].updated_at;
+    assert.ok(Math.abs(backoffMs - 300_000) < 1_000);
+  });
   console.log(`PASS ${passed} cenários de integração; nenhuma chamada ao RM.`);
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>prisma.$disconnect());
