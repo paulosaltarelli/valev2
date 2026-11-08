@@ -169,7 +169,7 @@ export function ProcessamentoPage() {
   const queueKnown = !!creation.data && !creation.error && !query.error;
   const calculationActive = activity.some((row) => (row.pending > 0 || row.processing > 0) &&
     row.etapas.some((stage) => stage === "VARIAVEIS" || stage === "VALORES"));
-  const percent = totals.total ? Math.floor(100 * totals.valores / totals.total) : null;
+  const percent = totals.total ? Math.floor(100 * (totals.variaveis + totals.valores) / (2 * totals.total)) : null;
   const showPercent = queueKnown && !preparing.length && !(calculationActive && percent === 100) && percent !== null;
   const progressStatus = !queueKnown ? "Aguardando atualização da fila"
     : preparing.length ? "Preparando execuções"
@@ -317,7 +317,7 @@ export function ProcessamentoPage() {
               <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
                 <div>
                   <h2 id="op-overall-heading">Progresso geral do cálculo</h2>
-                  <p className="op-muted mb-2">Da consulta de variáveis até o cálculo dos valores.</p>
+                  <p className="op-muted mb-2">O percentual conta duas etapas por funcionário, variáveis e valores.</p>
                 </div>
                 {showPercent && <strong className="op-overall-percent">{percent}%</strong>}
               </div>
@@ -339,7 +339,7 @@ export function ProcessamentoPage() {
                   </ul>
                 )}
               </div>
-              {showPercent && <progress aria-label="Percentual de funcionários com valores calculados"
+              {showPercent && <progress aria-label="Percentual das etapas de variáveis e valores concluídas"
                 max={100} value={percent} />}
             </section>
           )}
