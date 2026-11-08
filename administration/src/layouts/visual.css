@@ -288,7 +288,7 @@
 .ve-state-active { color: var(--op-success); }
 .ve-filter-bar { padding: 16px; gap: 16px; }
 .ve-page .pagination { flex-wrap: wrap; gap: 3px; }
-.ve-page .pagination .page-item { width: auto; height: auto; }
+.ve-page .dt-container .pagination .page-item { width: auto; height: auto; }
 .ve-page .pagination .page-link { min-width: 36px; width: auto; }
 .ve-table-list .table thead th { white-space: normal; }
 .ve-operation-overview .op-summary { gap: 0; }
