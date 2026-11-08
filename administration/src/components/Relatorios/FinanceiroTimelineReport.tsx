@@ -297,82 +297,66 @@ export function FinanceiroTimelineReport() {
     };
   }, [brl, data?.extras?.topEventos]);
 
-  const scopeTitle = selectedFilialId
-    ? `Filial: ${scopeSeries?.filialNome ?? selectedFilialId}`
-    : "Todas as filiais";
-
   return (
-    <div className="card">
-      <div className="card-body">
-        <div className="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
-          <div>
-            <h2 className="h5 m-0">Evolução financeira</h2>
-            <div className="text-secondary small mt-1">
-              {scopeTitle} •{" "}
-              {data?.range?.granularity
-                ? `Competências (${data.range.granularity})`
-                : "—"}
-            </div>
-          </div>
-
-          <div className="d-flex flex-wrap align-items-end gap-2 ve-filter-bar mb-0">
-            <div>
-              <label htmlFor="relatorio-inicio">Competência inicial</label>
-              <DatePicker
-                id="relatorio-inicio"
-                selected={startDate}
-                onChange={(d: Date | null) => {
-                  if (!d) return;
-                  const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
-                  setStartDate(normalized);
-                  if (endDate && normalized.getTime() > endDate.getTime())
-                    setEndDate(normalized);
-                }}
-                dateFormat="MM/yyyy"
-                showMonthYearPicker
-                className="form-control"
-                calendarClassName="ve-datepicker"
-                popperClassName="ve-datepicker-popper"
-                showPopperArrow={false}
-                locale="pt-BR"
-              />
-            </div>
-            <div>
-              <label htmlFor="relatorio-fim">Competência final</label>
-              <DatePicker
-                id="relatorio-fim"
-                selected={endDate}
-                onChange={(d: Date | null) => {
-                  if (!d) return;
-                  const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
-                  setEndDate(normalized);
-                  if (startDate && normalized.getTime() < startDate.getTime())
-                    setStartDate(normalized);
-                }}
-                dateFormat="MM/yyyy"
-                showMonthYearPicker
-                className="form-control"
-                calendarClassName="ve-datepicker"
-                popperClassName="ve-datepicker-popper"
-                showPopperArrow={false}
-                locale="pt-BR"
-              />
-            </div>
-            <div>
-              <label htmlFor="relatorio-filial">Filial</label>
-              <Select
-                inputId="relatorio-filial"
-                value={selectedFilialOption}
-                options={filialOptions}
-                onChange={(opt: SingleValue<FilialOption>) =>
-                  setSelectedFilialId(opt?.value ?? null)
-                }
-                isClearable={false}
-              />
-            </div>
-          </div>
+    <>
+      <section className="op-context ve-filter-bar ve-report-filters" aria-label="Filtros do relatório">
+        <div>
+          <label htmlFor="relatorio-inicio">Competência inicial</label>
+          <DatePicker
+            id="relatorio-inicio"
+            selected={startDate}
+            onChange={(d: Date | null) => {
+              if (!d) return;
+              const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
+              setStartDate(normalized);
+              if (endDate && normalized.getTime() > endDate.getTime())
+                setEndDate(normalized);
+            }}
+            dateFormat="MM/yyyy"
+            showMonthYearPicker
+            className="form-control"
+            calendarClassName="ve-datepicker"
+            popperClassName="ve-datepicker-popper"
+            showPopperArrow={false}
+            locale="pt-BR"
+          />
         </div>
+        <div>
+          <label htmlFor="relatorio-fim">Competência final</label>
+          <DatePicker
+            id="relatorio-fim"
+            selected={endDate}
+            onChange={(d: Date | null) => {
+              if (!d) return;
+              const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
+              setEndDate(normalized);
+              if (startDate && normalized.getTime() < startDate.getTime())
+                setStartDate(normalized);
+            }}
+            dateFormat="MM/yyyy"
+            showMonthYearPicker
+            className="form-control"
+            calendarClassName="ve-datepicker"
+            popperClassName="ve-datepicker-popper"
+            showPopperArrow={false}
+            locale="pt-BR"
+          />
+        </div>
+        <div>
+          <label htmlFor="relatorio-filial">Filial</label>
+          <Select
+            inputId="relatorio-filial"
+            value={selectedFilialOption}
+            options={filialOptions}
+            onChange={(opt: SingleValue<FilialOption>) =>
+              setSelectedFilialId(opt?.value ?? null)
+            }
+            isClearable={false}
+          />
+        </div>
+      </section>
 
+      <div className="ve-report-content">
         {error && (
           <Alert variant="danger" className="mb-3">
             <div className="d-flex align-items-center gap-2">
@@ -399,57 +383,12 @@ export function FinanceiroTimelineReport() {
                 <span>Atualizando dados…</span>
               </div>
             )}
-            <div className="row g-3 mb-3">
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Pago ao funcionário
-                  </div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.pago)}
-                  </div>
-                  <Badge bg="primary" className="fw-semibold mt-2">
-                    Pago
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Desconto (economia)
-                  </div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.desconto)}
-                  </div>
-                  <Badge bg="success" className="fw-semibold mt-2">
-                    Economia
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">Saldo líquido</div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.saldo)}
-                  </div>
-                  <Badge bg="secondary" className="fw-semibold mt-2">
-                    Saldo
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Funcionários enviados
-                  </div>
-                  <div className="h4 m-0 mt-1">{data.totals.funcionarios}</div>
-                  <div className="text-secondary small mt-2">
-                    Base: status{" "}
-                    <span className="fw-semibold">Enviado para RM</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <dl className="ve-metrics" aria-label="Totais do relatório">
+              <div><dt>Pago aos funcionários</dt><dd>{brl.format(data.totals.pago)}</dd></div>
+              <div><dt>Descontos</dt><dd>{brl.format(data.totals.desconto)}</dd></div>
+              <div><dt>Saldo líquido</dt><dd>{brl.format(data.totals.saldo)}</dd></div>
+              <div><dt>Funcionários enviados ao RM</dt><dd>{data.totals.funcionarios}</dd></div>
+            </dl>
 
             <div className="row g-3">
               <div className="col-12 col-xl-8">
@@ -457,7 +396,7 @@ export function FinanceiroTimelineReport() {
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                       <div>
-                        <h3 className="h6 m-0">Evolução no tempo</h3>
+                        <h2 className="h6 m-0">Evolução no tempo</h2>
                         <div className="text-secondary small">
                           Pago, desconto e saldo ao longo do período
                           selecionado.
@@ -483,7 +422,7 @@ export function FinanceiroTimelineReport() {
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                       <div>
-                        <h3 className="h6 m-0">Eventos com maior impacto</h3>
+                        <h2 className="h6 m-0">Eventos com maior impacto</h2>
                         <div className="text-secondary small">
                           Top 12 por volume (no período).
                         </div>
@@ -505,9 +444,9 @@ export function FinanceiroTimelineReport() {
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                       <div>
-                        <h3 className="h6 m-0">
+                        <h2 className="h6 m-0">
                           Detalhamento — Evolução no tempo
-                        </h3>
+                        </h2>
                       </div>
                       <span className="text-secondary small">
                         {data.range.start} → {data.range.end}
@@ -599,7 +538,7 @@ export function FinanceiroTimelineReport() {
               <div className="col-12">
                 <div className="card">
                   <div className="card-body">
-                    <h3 className="h6 m-0 mb-2">Detalhamento — Top eventos</h3>
+                    <h2 className="h6 m-0 mb-2">Detalhamento — Top eventos</h2>
                     <Table
                       responsive
                       striped
@@ -648,6 +587,6 @@ export function FinanceiroTimelineReport() {
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

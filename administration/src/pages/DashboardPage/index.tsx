@@ -724,7 +724,7 @@ export function DashboardPage() {
         />
       )}
       <div>
-            <h2>Indicadores por competência</h2>
+            <h2 className="ve-section-title">Indicadores por competência</h2>
             <div className="op-context ve-filter-bar" aria-label="Filtros dos indicadores">
               <div>
                 <label htmlFor="dash-competencia">Competência</label>

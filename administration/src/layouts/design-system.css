@@ -118,3 +118,19 @@
   border-radius: var(--ve-radius);
   box-shadow: none;
 }
+
+.sidebar .sidebar-menu li > a.active-page {
+  background-color: var(--op-blue-soft);
+  color: var(--op-blue);
+  font-weight: 650;
+  box-shadow: inset 3px 0 var(--op-blue);
+}
+
+.sidebar .sidebar-menu li > a.active-page:hover {
+  color: var(--op-blue);
+}
+
+.sidebar .sidebar-menu a:focus-visible {
+  outline: 2px solid var(--op-blue);
+  outline-offset: 2px;
+}

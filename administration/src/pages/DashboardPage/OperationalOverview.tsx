@@ -40,7 +40,7 @@ export function OperationalOverview({ activePeriodIds }: { activePeriodIds: numb
               {activePeriodIds.length === 1 ? "1 competência ativa" : `${activePeriodIds.length} competências ativas`}
             </p>
           </div>
-          <Link className="btn btn-outline-primary" to="/processamento">
+          <Link className="btn btn-primary" to="/processamento">
             Abrir Processamentos
           </Link>
         </div>
@@ -48,8 +48,10 @@ export function OperationalOverview({ activePeriodIds }: { activePeriodIds: numb
         {!activePeriodIds.length && <p className="mb-0 mt-2">Nenhuma competência ativa cadastrada.</p>}
         {query.data && activePeriodIds.length > 0 && (
           <>
-            <dl className="ve-operation-counts">
-              <div><dt>Exigem ação</dt><dd>{attention.length}</dd></div>
+            <dl className="ve-metrics">
+              <div className={attention.length ? "ve-metric-attention" : undefined}>
+                <dt>Exigem ação</dt><dd>{attention.length}</dd>
+              </div>
               <div><dt>Na fila ou rodando</dt><dd>{running.length}</dd></div>
               <div><dt>Prontas para envio</dt><dd>{ready.length}</dd></div>
               <div><dt>Enviadas ao RM</dt><dd>{sent.length}</dd></div>
