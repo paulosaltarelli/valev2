@@ -7,5 +7,6 @@ import { PrismaModule } from 'src/prisma/prisma.module';
   imports: [PrismaModule],
   providers: [DashService],
   controllers: [DashController],
+  exports: [DashService],
 })
 export class DashModule {}

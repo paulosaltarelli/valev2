@@ -37,6 +37,7 @@ import { Tooltip } from "../Tooltip";
 import type { ExecFunc } from "../../models/ExecFuncModel";
 import { Limited } from "../utils/Limited";
 import { renderToString } from "react-dom/server";
+import { AssistenteVale } from "./AssistenteVale";
 
 // o react-hooks/rules-of-hooks confunde esse método com um Hook por ser `.use`
 // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -757,6 +758,14 @@ export function ProcessamentoDetalhesPage() {
           <h1 className="h4 m-0 p-0">Processamento</h1>
         </div>
         <div className="d-flex align-items-center gap-2">
+          {execucao.periodo && execucao.filial && (
+            <AssistenteVale
+              periodo={execucao.periodo}
+              filialId={execucao.filial_id}
+              periodos={[execucao.periodo]}
+              filiais={[execucao.filial]}
+            />
+          )}
           <Button
             variant="link"
             onClick={async () => {

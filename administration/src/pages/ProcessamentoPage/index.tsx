@@ -39,6 +39,7 @@ import type { Usuario } from "../../models/UsuariosModel";
 import { Tooltip } from "../../components/Tooltip";
 import { useBlockUi } from "../../app/providers/blockUiContext";
 import { Limited } from "../../components/utils/Limited";
+import { AssistenteVale } from "../../components/Processamento/AssistenteVale";
 
 // o react-hooks/rules-of-hooks confunde esse método com um Hook por ser `.use`
 // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -469,6 +470,7 @@ export function ProcessamentoPage() {
               <h1 className="h4 m-0 p-0">Processamentos</h1>
             </div>
             <div className="d-flex align-items-center gap-2">
+              <AssistenteVale periodo={periodosFilter} filialId={filialId} periodos={periodos} filiais={filiais} />
               <Button variant="primary" onClick={openCreateModal}>
                 <Icon icon="tabler:plus" width={20} height={20} />
                 <span className="ms-1">Novo Processamento</span>
