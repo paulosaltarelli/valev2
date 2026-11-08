@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Header,
@@ -10,8 +11,10 @@ import {
   Injectable,
   Module,
   NotFoundException,
+  Param,
   Post,
   Req,
+  Query,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -19,11 +22,20 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import type { JwtPayload } from '../auth/types';
 import { DashModule } from '../dash/dash.module';
+import { OperationalReportsService } from '../dash/operational-reports.service';
 import { ExecucaoModule } from '../execucao/execucao.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssistenteConsultas } from './assistente-consultas';
-import { AssistenteDto } from './assistente.dto';
-import { provedores, selecionarConsulta } from './assistente-intencao';
+import {
+  AssistenteDto,
+  ConectarProvedorDto,
+  ProvedorExterno,
+} from './assistente.dto';
+import {
+  ChavesPessoais,
+  provedores,
+  selecionarConsulta,
+} from './assistente-intencao';
 
 type Turno = { pergunta: string; resposta: string; em: string };
 const ttl = 30 * 60_000;
@@ -39,6 +51,48 @@ export class AssistenteSessoes {
     { vezes: number; expira: number }
   >();
   private readonly emConsulta = new Set<number>();
+  private readonly credenciais = new Map<
+    string,
+    { chaves: ChavesPessoais; timer: NodeJS.Timeout }
+  >();
+
+  pessoais(sessao: string): ChavesPessoais {
+    return this.credenciais.get(sessao)?.chaves ?? {};
+  }
+
+  conectar(
+    sessao: string,
+    expira: number,
+    provedor: ProvedorExterno,
+    chave: string,
+  ) {
+    const anterior = this.credenciais.get(sessao);
+    if (!anterior && this.credenciais.size >= 500) {
+      throw new HttpException(
+        'Limite temporário de conexões.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (anterior) clearTimeout(anterior.timer);
+    const timer = setTimeout(
+      () => this.credenciais.delete(sessao),
+      Math.max(0, expira - Date.now()),
+    ).unref();
+    this.credenciais.set(sessao, {
+      chaves: { ...anterior?.chaves, [provedor]: chave },
+      timer,
+    });
+  }
+
+  desconectar(sessao: string, provedor: ProvedorExterno) {
+    const registro = this.credenciais.get(sessao);
+    if (!registro) return;
+    delete registro.chaves[provedor];
+    if (!Object.keys(registro.chaves).length) {
+      clearTimeout(registro.timer);
+      this.credenciais.delete(sessao);
+    }
+  }
 
   ler(chave: string) {
     const sessao = this.historico.get(chave);
@@ -94,6 +148,7 @@ export class AssistenteController {
     private readonly prisma: PrismaService,
     private readonly sessoes: AssistenteSessoes,
     private readonly consultas: AssistenteConsultas,
+    private readonly relatorios: OperationalReportsService,
   ) {}
 
   private async autorizar(req: Request) {
@@ -124,6 +179,7 @@ export class AssistenteController {
       id: payload.usuarioId,
       perfil: usuario.perfil,
       chave: `${payload.usuarioId}:${payload.sessionId}`,
+      expira: sessao.expires_at.getTime(),
     };
   }
 
@@ -132,17 +188,12 @@ export class AssistenteController {
   async estado(@Req() req: Request) {
     const usuario = await this.autorizar(req);
     return {
-      provedores: provedores(),
+      provedores: provedores(this.sessoes.pessoais(usuario.chave)),
       historico: this.sessoes.ler(usuario.chave),
     };
   }
 
-  @Post('consultar')
-  @Header('Cache-Control', 'no-store')
-  async consultar(@Req() req: Request, @Body() input: AssistenteDto) {
-    const usuario = await this.autorizar(req);
-    input.pergunta = input.pergunta.trim();
-    if (!input.pergunta) throw new BadRequestException('Digite uma pergunta.');
+  private validarOrigem(req: Request) {
     if (
       req.get('origin') &&
       req.get('origin') !==
@@ -150,8 +201,77 @@ export class AssistenteController {
     ) {
       throw new ForbiddenException('Origem inválida.');
     }
+  }
+
+  @Get('contexto')
+  @Header('Cache-Control', 'no-store')
+  async contexto(@Req() req: Request, @Query('execucao') execucao?: string) {
+    await this.autorizar(req);
+    const id = Number(execucao);
+    if (
+      execucao !== undefined &&
+      (!Number.isInteger(id) || id < 1 || id > 2147483647)
+    ) {
+      throw new BadRequestException('Execução inválida.');
+    }
+    const [opcoes, filtro] = await Promise.all([
+      this.relatorios.options(),
+      execucao
+        ? this.prisma.execucao.findUnique({
+            where: { execucao_id: id },
+            select: { periodo_id: true, filial_id: true },
+          })
+        : null,
+    ]);
+    return { ...opcoes, filtro };
+  }
+
+  @Post('provedores')
+  @Header('Cache-Control', 'no-store')
+  async conectar(@Req() req: Request, @Body() input: ConectarProvedorDto) {
+    const usuario = await this.autorizar(req);
+    this.validarOrigem(req);
+    const prefixo = input.provedor === 'gpt' ? 'sk-' : 'sk-ant-';
+    if (
+      !input.chave.startsWith(prefixo) ||
+      (input.provedor === 'gpt' && input.chave.startsWith('sk-ant-'))
+    ) {
+      throw new BadRequestException(
+        'A chave não corresponde ao provedor selecionado.',
+      );
+    }
+    this.sessoes.conectar(
+      usuario.chave,
+      usuario.expira,
+      input.provedor,
+      input.chave,
+    );
+    return { provedores: provedores(this.sessoes.pessoais(usuario.chave)) };
+  }
+
+  @Delete('provedores/:provedor')
+  @Header('Cache-Control', 'no-store')
+  async desconectar(@Req() req: Request, @Param('provedor') provedor: string) {
+    const usuario = await this.autorizar(req);
+    this.validarOrigem(req);
+    if (provedor !== 'gpt' && provedor !== 'claude')
+      throw new BadRequestException('Provedor inválido.');
+    this.sessoes.desconectar(usuario.chave, provedor);
+    return { provedores: provedores(this.sessoes.pessoais(usuario.chave)) };
+  }
+
+  @Post('consultar')
+  @Header('Cache-Control', 'no-store')
+  async consultar(@Req() req: Request, @Body() input: AssistenteDto) {
+    const usuario = await this.autorizar(req);
+    this.validarOrigem(req);
+    input.pergunta = input.pergunta.trim();
+    if (!input.pergunta) throw new BadRequestException('Digite uma pergunta.');
     return this.sessoes.consultar(usuario.id, async () => {
-      const intent = await selecionarConsulta(input);
+      const intent = await selecionarConsulta(
+        input,
+        this.sessoes.pessoais(usuario.chave),
+      );
       if (
         input.matricula &&
         !['valores', 'variaveis', 'erros', 'km', 'esclarecer'].includes(intent)

@@ -47,6 +47,12 @@ describe('Assistente do Vale', () => {
         AssistenteSessoes,
         { provide: PrismaService, useValue: prisma },
         { provide: AssistenteConsultas, useValue: consultas },
+        {
+          provide: OperationalReportsService,
+          useValue: {
+            options: jest.fn().mockResolvedValue({ periodos: [], filiais: [] }),
+          },
+        },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -130,6 +136,77 @@ describe('Assistente do Vale', () => {
         .expect(400);
     }
     expect(consultas.consultar).not.toHaveBeenCalled();
+  });
+
+  it('usa a chave pessoal somente na sessão que a conectou e permite removê-la', async () => {
+    const chave = 'sk-proj-chave-pessoal-de-teste';
+    const sessao = cookie(8, 'pessoal');
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: 'message',
+              content: [{ type: 'output_text', text: 'valores' }],
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      const conectado = await request(app.getHttpServer())
+        .post('/assistente/provedores')
+        .set('Cookie', sessao)
+        .send({ provedor: 'gpt', chave })
+        .expect(201);
+      expect(conectado.body.provedores).toContainEqual({
+        id: 'gpt',
+        origem: 'pessoal',
+      });
+      expect(conectado.text).not.toContain(chave);
+      const outraSessao = await request(app.getHttpServer())
+        .get('/assistente')
+        .set('Cookie', cookie(8, 'outra'))
+        .expect(200);
+      expect(outraSessao.body.provedores).not.toContainEqual({
+        id: 'gpt',
+        origem: 'pessoal',
+      });
+      await request(app.getHttpServer())
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
+        .send({ pergunta: 'valores', provedor: 'gpt' })
+        .expect(201);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/responses',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer ' + chave,
+          }),
+        }),
+      );
+      const removido = await request(app.getHttpServer())
+        .delete('/assistente/provedores/gpt')
+        .set('Cookie', sessao)
+        .expect(200);
+      expect(removido.body.provedores).not.toContainEqual({
+        id: 'gpt',
+        origem: 'pessoal',
+      });
+      fetchMock.mockClear();
+      await request(app.getHttpServer())
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
+        .send({
+          pergunta: 'valores',
+          provedor: 'gpt',
+          origemProvedor: 'pessoal',
+        })
+        .expect(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it('aplica o limite de oito consultas por usuário', async () => {

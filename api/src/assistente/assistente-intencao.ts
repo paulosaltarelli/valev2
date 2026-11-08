@@ -1,15 +1,29 @@
 import {
   BadRequestException,
+  ForbiddenException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AssistenteDto, Intent, intents } from './assistente.dto';
+import {
+  AssistenteDto,
+  Intent,
+  intents,
+  ProvedorExterno,
+  provedoresExternos,
+} from './assistente.dto';
 
-export function provedores() {
-  return [
-    'local',
-    ...(process.env.OPENAI_API_KEY ? ['gpt'] : []),
-    ...(process.env.ANTHROPIC_API_KEY ? ['claude'] : []),
-  ];
+function chaveDoVale(provedor: ProvedorExterno) {
+  return provedor === 'gpt'
+    ? process.env.OPENAI_API_KEY
+    : process.env.ANTHROPIC_API_KEY;
+}
+
+export type ChavesPessoais = Partial<Record<ProvedorExterno, string>>;
+
+export function provedores(pessoais: ChavesPessoais = {}) {
+  return provedoresExternos.map((id) => ({
+    id,
+    origem: pessoais[id] ? 'pessoal' : chaveDoVale(id) ? 'vale' : null,
+  }));
 }
 
 export function intencaoLocal(texto: string): Intent {
@@ -37,14 +51,25 @@ export function intencaoLocal(texto: string): Intent {
 
 export async function selecionarConsulta(
   input: AssistenteDto,
+  pessoais: ChavesPessoais = {},
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
-  if (!provedores().includes(provedor)) {
-    throw new BadRequestException('Provedor indisponível no Vale.');
-  }
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
   if (provedor === 'local') return local;
+  const chave = pessoais[provedor] ?? chaveDoVale(provedor);
+  if (
+    input.origemProvedor &&
+    input.origemProvedor !== (pessoais[provedor] ? 'pessoal' : 'vale')
+  ) {
+    throw new BadRequestException(
+      'A conexão com o provedor mudou. Reabra o assistente e selecione a conexão desejada.',
+    );
+  }
+  if (!chave)
+    throw new BadRequestException(
+      'Conecte uma chave de API para usar este provedor.',
+    );
   const instructions =
     'Classifique a pergunta sobre o Vale Expresso. Responda com exatamente uma opção: ' +
     intents.join(', ') +
@@ -58,15 +83,16 @@ export async function selecionarConsulta(
         : 'https://api.anthropic.com/v1/messages',
       {
         method: 'POST',
+        redirect: 'error',
         signal: AbortSignal.timeout(8000),
         headers: gpt
           ? {
               'Content-Type': 'application/json',
-              Authorization: 'Bearer ' + process.env.OPENAI_API_KEY,
+              Authorization: 'Bearer ' + chave,
             }
           : {
               'Content-Type': 'application/json',
-              'x-api-key': process.env.ANTHROPIC_API_KEY!,
+              'x-api-key': chave,
               'anthropic-version': '2023-06-01',
             },
         body: JSON.stringify(
@@ -89,6 +115,11 @@ export async function selecionarConsulta(
         ),
       },
     );
+    if (response.status === 401 || response.status === 403) {
+      throw new ForbiddenException(
+        'O provedor recusou a chave. Confira o acesso à API e ao modelo.',
+      );
+    }
     if (!response.ok) throw new Error('Resposta inválida do provedor');
     type TextPart = { type: string; text?: string };
     const body = (await response.json()) as {
@@ -106,7 +137,8 @@ export async function selecionarConsulta(
       .join('')
       .trim();
     if (intents.includes(answer as Intent)) return answer as Intent;
-  } catch {
+  } catch (error) {
+    if (error instanceof ForbiddenException) throw error;
     if (local !== 'esclarecer') return local;
     throw new ServiceUnavailableException(
       'O provedor está indisponível. Selecione uma consulta sugerida.',

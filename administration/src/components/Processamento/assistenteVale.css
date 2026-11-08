@@ -1,0 +1,78 @@
+.vale-ia-atalho,
+.vale-ia-marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #143f38;
+}
+
+.vale-ia-atalho {
+  position: fixed;
+  z-index: 1025;
+  inset-inline-end: max(1rem, env(safe-area-inset-right));
+  inset-block-end: max(1rem, env(safe-area-inset-bottom));
+  gap: 0.45rem;
+  min-height: 3.25rem;
+  padding: 0.45rem 0.9rem 0.45rem 0.65rem;
+  border: 1px solid #37746a;
+  border-radius: 2rem;
+  box-shadow: 0 0.35rem 1.25rem #0b302a40;
+  font-weight: 700;
+}
+
+.vale-ia-atalho:hover {
+  background: #20564b;
+}
+
+.vale-ia-atalho:focus-visible {
+  outline: 3px solid #b97814;
+  outline-offset: 3px;
+}
+
+.vale-ia-atalho svg,
+.vale-ia-marca svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.vale-ia-modal .modal-header {
+  border-block-start: 0.25rem solid #378577;
+}
+
+.vale-ia-modal .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  line-height: 1.25;
+}
+
+.vale-ia-modal .modal-title small {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.vale-ia-marca {
+  flex: 0 0 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+}
+
+.vale-ia-conexoes {
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+}
+
+@media (max-width: 575.98px) {
+  .vale-ia-atalho {
+    width: 3.25rem;
+    padding: 0.45rem;
+  }
+
+  .vale-ia-atalho span {
+    display: none;
+  }
+}

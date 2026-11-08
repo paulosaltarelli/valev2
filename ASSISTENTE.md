@@ -1,6 +1,6 @@
 # Assistente do Vale Expresso
 
-O botão **Assistente do Vale** fica na lista de Processamentos e nos detalhes da execução. A competência e a filial vêm da tela quando selecionadas. O usuário pode conferir o recorte antes de consultar. A resposta mostra a fonte e a hora da leitura, e oferece os detalhes, a tabela e os links pertinentes.
+O botão flutuante **Vale IA** fica no canto inferior das telas autenticadas. Em Processamentos, a competência e a filial vêm da tela quando selecionadas. O usuário pode conferir o recorte antes de consultar. A resposta mostra a fonte, a hora da leitura, os detalhes, a tabela e os links pertinentes.
 
 | Pergunta | Resultado |
 | --- | --- |
@@ -19,6 +19,8 @@ As consultas de KM usam os registros da execução. O cadastro de fórmulas segu
 
 O login do Vale identifica o operador. O servidor revalida a sessão e o perfil atual e mantém até oito interações por sessão, em memória, por até 30 minutos de inatividade. Há um limite de oito consultas por minuto por usuário, uma consulta simultânea por usuário e quatro por instância. Os limites reiniciam junto com a instância.
 
+Depois de entrar no Vale, o operador pode abrir **Conexões de IA** e informar uma chave pessoal de API do GPT ou Claude. O servidor guarda a chave em memória durante a sessão, sem devolver seu valor ao navegador. O operador pode remover a chave, e o uso é cobrado no projeto que a emitiu. Se houver chave institucional, a seleção indica quando o provedor usa o projeto do Vale.
+
 GPT e Claude classificam a pergunta em um catálogo fechado. O Vale executa a consulta parametrizada e monta as tabelas, indicadores, links e arquivos. O histórico, os filtros estruturados, os registros e as credenciais do banco ficam no Vale. O usuário pode selecionar **Consultas do Vale** para interpretação local. Ao escolher um modelo externo, envie apenas a pergunta sem dados pessoais e use o campo de matrícula para identificar funcionários.
 
 | Opção | Integração | US$ por milhão de tokens de entrada e saída | Cenário de mil perguntas |
@@ -36,7 +38,7 @@ O ChatGPT oferece login a parceiros comerciais selecionados. O compartilhamento 
 1. Gere o cliente Prisma e rode `npm run build` e `npm test -- --runInBand --runTestsByPath src/assistente/assistente.spec.ts src/execucao/execucao.variables.spec.ts` na API. No frontend, instale com `npm ci --legacy-peer-deps` e rode `npm run build`.
 2. A branch do MVP usa o release de relatórios operacionais como base. Reaplique somente o delta do assistente sobre uma cópia isolada da origem que corresponde às imagens ativas. A VPS tem alterações fora dessa revisão. Preserve os arquivos vigentes e resolva os pontos de integração sobre eles.
 3. Gere imagens candidatas com tags próprias. Em ambiente de homologação isolado, valide login, usuário desativado e sessão expirada, filtros, duas sessões distintas, resultados parciais, erros, zero, comparação e Excel. Confira o dashboard financeiro contra a tela Relatórios para o mesmo recorte. Use banco de teste e mantenha os workers de produção fora da homologação.
-4. Configure `OPENAI_API_KEY` e/ou `ANTHROPIC_API_KEY` no arquivo de segredos da API. `VALE_OPENAI_MODEL` e `VALE_CLAUDE_MODEL` são opcionais. Use `VALE_ASSISTENTE_ATIVO=true` para habilitar o recurso após o teste de fumaça. A configuração deve manter a origem HTTPS do frontend em `FRONTEND_URL`. Valide uma chamada com cada credencial usando pergunta sem dados pessoais.
+4. Use `VALE_ASSISTENTE_ATIVO=true` para habilitar o recurso após o teste de fumaça. Mantenha a origem HTTPS do frontend em `FRONTEND_URL`. As chaves institucionais `OPENAI_API_KEY` e `ANTHROPIC_API_KEY` são opcionais, assim como `VALE_OPENAI_MODEL` e `VALE_CLAUDE_MODEL`. Valide cada provedor com uma chave de teste e uma pergunta sem dados pessoais.
 
 ## Hostinger e rollback
 

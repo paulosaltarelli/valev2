@@ -22,6 +22,18 @@ export const intents = [
   'esclarecer',
 ] as const;
 export type Intent = (typeof intents)[number];
+export const provedoresExternos = ['gpt', 'claude'] as const;
+export type ProvedorExterno = (typeof provedoresExternos)[number];
+
+export class ConectarProvedorDto {
+  @IsIn(provedoresExternos)
+  provedor!: ProvedorExterno;
+
+  @IsString()
+  @Length(20, 512)
+  @Matches(/^[A-Za-z0-9_-]+$/, { message: 'Formato de chave inválido.' })
+  chave!: string;
+}
 
 export class AssistenteDto {
   @IsString()
@@ -35,6 +47,10 @@ export class AssistenteDto {
   @IsOptional()
   @IsIn(['local', 'gpt', 'claude'])
   provedor?: 'local' | 'gpt' | 'claude';
+
+  @IsOptional()
+  @IsIn(['pessoal', 'vale'])
+  origemProvedor?: 'pessoal' | 'vale';
 
   @IsOptional()
   @IsInt()
