@@ -14,6 +14,7 @@ import { ProcessamentoPage } from "../pages/ProcessamentoPage";
 import { ProcessamentoDetalhesPage } from "../components/Processamento/ProcessamentoDetalhesPage";
 import { GestaoKmPage } from "../pages/GestaoKmPage";
 import { RelatoriosPage } from "../pages/RelatoriosPage";
+import { ExtratoProcessamentoPage } from "../pages/ExtratoProcessamentoPage";
 
 async function requireAuth({ request }: LoaderFunctionArgs) {
   try {
@@ -121,6 +122,10 @@ export const router = createBrowserRouter([
       {
         path: "relatorios",
         element: <RelatoriosPage />,
+      },
+      {
+        path: "extrato-processamento",
+        element: <ExtratoProcessamentoPage />,
       },
     ],
   },

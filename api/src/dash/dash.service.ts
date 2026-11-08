@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -77,6 +77,113 @@ export type DashSummary = {
 @Injectable()
 export class DashService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getProcessamentoOptions(periodoId?: number) {
+    const periodos = await this.prisma.periodo.findMany({
+      where: { OR: [{ ativo: true }, { execucao: { some: {} } }] },
+      orderBy: [{ ativo: 'desc' }, { data_inicio: 'desc' }, { periodo_id: 'desc' }],
+      select: { periodo_id: true, competencia: true, ativo: true },
+    });
+    const periodo = periodoId ?? periodos[0]?.periodo_id ?? null;
+    const execucoes = periodo === null ? [] : await this.prisma.execucao.findMany({
+      where: { periodo_id: periodo },
+      orderBy: [{ data_execucao: 'desc' }, { execucao_id: 'desc' }],
+      select: {
+        execucao_id: true,
+        data_execucao: true,
+        filial: { select: { filial_id: true, nome: true } },
+      },
+    });
+    return { periodos, periodo, execucoes };
+  }
+
+  async getProcessamentoReport(id: number) {
+    const formulaFields = { formula_id: true, nome: true, versao: true, tipo: true } as const;
+    const execucao = await this.prisma.execucao.findUnique({
+      where: { execucao_id: id },
+      select: {
+        periodo: { select: { competencia: true } },
+        filial: { select: { nome: true, formula: { where: { ativa: true }, select: formulaFields } } },
+        execucao_funcionario_base: {
+          orderBy: [{ nome_funcionario: 'asc' }, { execucao_funcionario_base_id: 'asc' }],
+          select: {
+            execucao_funcionario_base_id: true,
+            funcionario_id_rm: true,
+            nome_funcionario: true,
+            status: true,
+            execucao_queue: {
+              where: { tipo: 'VARIAVEIS' },
+              orderBy: { queue_id: 'desc' },
+              take: 1,
+              select: { status: true, last_error: true },
+            },
+            execucao_funcionario: {
+              select: { formula: { select: formulaFields }, valor_calculado: true, status: true },
+            },
+          },
+        },
+      },
+    });
+    if (!execucao) throw new NotFoundException('Execução não encontrada.');
+
+    const bases = execucao.execucao_funcionario_base;
+    const formulas = new Map(execucao.filial.formula.map((f) => [f.formula_id, f]));
+    const failures = new Map<string, string>();
+    if (bases.some((b) => b.execucao_funcionario.some((r) => r.status === 'ERRO'))) {
+      const logs = await this.prisma.log_execucao.findMany({
+        where: {
+          execucao_id: id,
+          nivel: 'ERROR',
+          OR: [
+            { mensagem: { startsWith: 'Erro ao calcular fórmula ' } },
+            { mensagem: { startsWith: 'Sem memoria_calculo para fórmula ' } },
+          ],
+        },
+        orderBy: { log_id: 'asc' },
+        select: { mensagem: true },
+      });
+      for (const { mensagem } of logs) {
+        const calc = /^Erro ao calcular fórmula (\d+) para funcionário (.*?):\s*(.*)/u.exec(mensagem);
+        const memoria = /^Sem memoria_calculo para fórmula (\d+) do funcionário (.*?)\. Rode/u.exec(mensagem);
+        if (calc) failures.set(`${calc[1]}:${calc[2]}`, calc[3].replace(/^Erro ao calcular fórmula:\s*/u, '').slice(0, 140));
+        if (memoria) failures.set(`${memoria[1]}:${memoria[2]}`, 'Variáveis sem memória de cálculo');
+      }
+    }
+
+    const funcionarios = bases.map((base) => {
+      const job = base.execucao_queue[0];
+      let erroGeral: string | null = null;
+      if (base.status === 'ERRO_VARIAVEIS' || job?.status === 'ERRO') {
+        const variableCode = [...(job?.last_error ?? '').matchAll(/\[ERRO_VARIAVEIS\]\s+([\w.-]+)\s*\(/gu)]
+          .at(-1)?.[1];
+        erroGeral = variableCode ? `Falha ao consultar ${variableCode}` : 'Falha na consulta de variáveis';
+      } else if (base.status === 'ERRO_RESULTADOS' && !base.execucao_funcionario.some((r) => r.status === 'ERRO')) {
+        erroGeral = 'Falha no cálculo do funcionário';
+      }
+      const resultados = Object.fromEntries(base.execucao_funcionario.map((resultado) => {
+        const formula = resultado.formula;
+        formulas.set(formula.formula_id, formula);
+        return [formula.formula_id, resultado.status === 'ERRO'
+          ? { valor: null, erro: failures.get(`${formula.formula_id}:${base.funcionario_id_rm}`) || 'Falha ao calcular a fórmula' }
+          : { valor: resultado.valor_calculado?.toString() ?? null, erro: null }];
+      }));
+      return {
+        id: base.execucao_funcionario_base_id,
+        nome: base.nome_funcionario,
+        matricula: base.funcionario_id_rm,
+        erroGeral,
+        resultados,
+      };
+    });
+
+    return {
+      filial: execucao.filial.nome,
+      competencia: execucao.periodo.competencia,
+      formulas: [...formulas.values()].sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'pt-BR') || b.versao - a.versao || a.formula_id - b.formula_id),
+      funcionarios,
+    };
+  }
 
   private parseEnvNumber(name: string, fallback: number): number {
     const raw = process.env[name];

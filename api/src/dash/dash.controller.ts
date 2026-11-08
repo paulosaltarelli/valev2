@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Header,
+  Param,
+  ParseIntPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -12,6 +14,24 @@ import { DashService, type DashSummary } from './dash.service';
 @Controller('dash')
 export class DashController {
   constructor(private readonly dashService: DashService) {}
+
+  @Get('reports/processamento/opcoes')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  getProcessamentoOptions(@Query('periodoId') periodoId?: string) {
+    const id = periodoId === undefined ? undefined : Number(periodoId);
+    if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
+      throw new BadRequestException('Competência inválida.');
+    }
+    return this.dashService.getProcessamentoOptions(id);
+  }
+
+  @Get('reports/processamento/:id')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  getProcessamentoReport(@Param('id', ParseIntPipe) id: number) {
+    return this.dashService.getProcessamentoReport(id);
+  }
 
   @Get('summary')
   @UseGuards(JwtAuthGuard)

@@ -17,7 +17,10 @@ const navigation = [
   },
   {
     label: "Análise",
-    links: [["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"]],
+    links: [
+      ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"],
+      ["/extrato-processamento", "Extrato de processamento", "mdi:table-large"],
+    ],
   },
   {
     label: "Regras e cadastros",
