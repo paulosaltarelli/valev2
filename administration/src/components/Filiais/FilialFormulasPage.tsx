@@ -225,6 +225,8 @@ export function FilialFormulasPage() {
             topStart: null,
           },
           columnDefs: [
+            { targets: 0, responsivePriority: 1 },
+            { targets: -1, responsivePriority: 2 },
             {
               targets: ["_all"],
               className: "text-center",
@@ -258,7 +260,7 @@ export function FilialFormulasPage() {
                 variant="outline-primary"
                 className="ve-icon-action"
                 onClick={() => handleEditFormula(row)}
-                tooltip="Editar formula"
+                tooltip="Editar fórmula"
               >
                 <Icon
                   icon="solar:pen-new-square-bold-duotone"
@@ -270,7 +272,7 @@ export function FilialFormulasPage() {
                 variant="outline-danger"
                 className="ve-icon-action"
                 onClick={() => handleDeleteFormula(row.formula_id)}
-                tooltip="Excluir formula"
+                tooltip="Excluir fórmula"
               >
                 <Icon
                   icon="solar:trash-bin-trash-bold-duotone"
@@ -287,36 +289,20 @@ export function FilialFormulasPage() {
             <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
           ),
           ativa: (data: boolean) => (
-            <span>
-              {data ? (
-                <Icon
-                  className="text-success"
-                  icon="solar:check-circle-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-              ) : (
-                <Icon
-                  className="text-danger"
-                  icon="solar:close-circle-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-              )}
-            </span>
+            <span className={`ve-state ${data ? "ve-state-active" : ""}`}>{data ? "Ativa" : "Inativa"}</span>
           ),
-          expressao: (data: string) => (
+          expressao: (data: string, type: string, _row: Formula) => type === "display" ? (
             <>
-              <Limited limit={10} popover={false} tooltip={false} trigger="click" placement="right">{data}</Limited>
-              {data.length > 10 && (
+              <span>{data.length > 24 ? `${data.slice(0, 24)}…` : data}</span>
+              {data.length > 0 && (
                 <Popover popover={data} placement="right" trigger="click">
-                  <Button variant="link" className="ve-icon-action">
+                  <Button variant="link" className="ve-icon-action" aria-label="Ver expressão completa" title="Ver expressão completa">
                     <Icon icon="solar:eye-bold-duotone" width={16} height={16} />
                   </Button>
                 </Popover>
               )}
             </>
-          ),
+          ) : data,
           tipo: (data: string) => (
             <Badge bg={data == 'V' ? 'primary' : 'info'}>{data == 'V' ? 'Valor' : 'Dias'}</Badge>
           ),
