@@ -124,7 +124,8 @@ export function ProcessamentoPage() {
       (!filial || r.filialId === Number(filial)),
   );
   const branchNeedle = branchSearch.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-  const visibleBranches = filiais.filter((f) => f.ativa &&
+  const activeBranches = filiais.filter((f) => f.ativa);
+  const visibleBranches = activeBranches.filter((f) =>
     f.nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().includes(branchNeedle));
   const totals = current.reduce(
     (a, r) => ({
@@ -618,14 +619,45 @@ export function ProcessamentoPage() {
               Selecione as filiais para esta competência. Execuções anteriores
               permanecem no histórico.
             </p>
+            <label className="op-check">
+              <input
+                type="checkbox"
+                checked={automatic}
+                disabled={saving}
+                onChange={(e) => setAutomatic(e.target.checked)}
+              />
+              <span>
+                Processar Variáveis e Valores após a criação
+                <small>
+                  O envio ao RM é feito pelo botão Enviar ao RM após o cálculo dos valores.
+                </small>
+              </span>
+            </label>
             <label>
               Buscar filial
               <input type="search" value={branchSearch} onChange={(e) => setBranchSearch(e.target.value)} />
             </label>
-            <p className="op-muted mt-2" role="status">
-              {createIds.length === 1 ? "1 filial selecionada" : `${createIds.length} filiais selecionadas`}
-              {createIds.length > 0 && ` · ${filiais.filter((f) => createIds.includes(f.filial_id)).map((f) => f.nome).join(", ")}`}
-            </p>
+            <div className="d-flex flex-wrap align-items-center gap-2 my-3">
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm"
+                disabled={saving || !activeBranches.some((f) => !createIds.includes(f.filial_id))}
+                onClick={() => setCreateIds(activeBranches.map((f) => f.filial_id))}
+              >
+                Selecionar todas as filiais
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                disabled={saving || !createIds.length}
+                onClick={() => setCreateIds([])}
+              >
+                Limpar seleção
+              </button>
+              <span className="op-muted" role="status">
+                {createIds.length === 1 ? "1 filial selecionada" : `${createIds.length} filiais selecionadas`}
+              </span>
+            </div>
             <fieldset className="op-choices">
               <legend>Filiais</legend>
               {branchNeedle && visibleBranches.length === 0 && <p>Nenhuma filial encontrada.</p>}
@@ -651,19 +683,6 @@ export function ProcessamentoPage() {
                   </label>
                 ))}
             </fieldset>
-            <label className="op-check">
-              <input
-                type="checkbox"
-                checked={automatic}
-                onChange={(e) => setAutomatic(e.target.checked)}
-              />
-              <span>
-                Processar Variáveis e Valores após a criação
-                <small>
-                  O envio ao RM é feito pelo botão Enviar ao RM após o cálculo dos valores.
-                </small>
-              </span>
-            </label>
           </Modal.Body>
           <Modal.Footer>
             <button
