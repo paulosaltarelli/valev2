@@ -7,6 +7,7 @@ import { isAxiosError } from "axios";
 import { safeReturn } from "../../utils/safeReturn";
 import logoFullNegativo from "../../assets/images/Logo-Full-Negativo-2.png";
 import { useBlockUi } from "../../app/providers/blockUiContext";
+import "../../layouts/visual.css";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export function LoginPage() {
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
 
   return (
-    <div className="auth bg-base d-flex flex-column justify-content-center align-items-center h-100">
+    <div className="ve-auth auth bg-base d-flex flex-column justify-content-center align-items-center h-100">
       <div className="d-flex flex-column justify-content-center px-3 py-32">
         <div className="d-flex justify-content-center align-items-center flex-column card card-body">
           <div>
@@ -37,7 +38,7 @@ export function LoginPage() {
                 style={{ display: state.theme === "light" ? "none" : "block" }}
               /> */}
             </Link>
-            <h4 className="mb-12">Entrar</h4>
+            <h1 className="mb-12">Entrar</h1>
             <p className="mb-32 text-secondary-light text-lg">
               Faça login para acessar o painel
             </p>
@@ -60,7 +61,7 @@ export function LoginPage() {
               }
             }}
           >
-            {params.get("motivo") === "sessao" && <p role="status">Sua sessão expirou. Entre novamente para retomar a tela anterior. As ações pendentes precisarão de nova revisão.</p>}
+            {params.get("motivo") === "sessao" && <p role="status">Sua sessão expirou. Entre novamente para retomar a tela anterior.</p>}
             <label htmlFor="login-usuario" className="form-label">Usuário RM</label>
             <div className="icon-field mb-16">
               <span className="icon top-50 translate-middle-y">

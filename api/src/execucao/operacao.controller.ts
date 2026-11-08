@@ -44,6 +44,19 @@ export class OperacaoController {
   ) {
     return this.service.result(id, result);
   }
+  @Get(':id/pessoas/:base/variaveis')
+  @Header('Cache-Control', 'no-store')
+  employeeVariables(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('base', ParseIntPipe) base: number,
+  ) {
+    return this.service.employeeVariables(id, base);
+  }
+  @Post('escopo-envio')
+  @Header('Cache-Control', 'no-store')
+  sendScope(@Body() body: PedidoOperacao) {
+    return this.service.sendScope(body);
+  }
   @Get(':id/resultado/:resultado/historico')
   history(
     @Param('id', ParseIntPipe) id: number,

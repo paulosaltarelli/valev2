@@ -152,7 +152,7 @@ export function FilialPage() {
                   height={20}
                 />
               </Button>
-              <h1 className="h4 m-0 p-0">Filiais</h1>
+              <div><p className="op-eyebrow">Regras e cadastros</p><h1 className="m-0">Filiais e regras</h1></div>
             </div>
             <div className="d-flex align-items-center gap-2">
               <Button

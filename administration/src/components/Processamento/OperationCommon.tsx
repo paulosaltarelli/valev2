@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   OperacaoApi,
@@ -21,6 +21,47 @@ export const dateTime = (value?: string | null) =>
         timeStyle: "short",
       })
     : "—";
+export const resultValue = (value: unknown, type?: string | null) => {
+  if (type?.trim() !== "D" || value == null) return money(value);
+  const days = Number(value);
+  return `${days.toLocaleString("pt-BR")} ${Math.abs(days) === 1 ? "dia" : "dias"}`;
+};
+
+export function SendScope({
+  executionIds,
+  personIds,
+  disabled,
+  onSend,
+}: {
+  executionIds: number[];
+  personIds?: number[];
+  disabled?: boolean;
+  onSend: () => void;
+}) {
+  const execKey = executionIds.join(",");
+  const personKey = personIds?.join(",");
+  const fetcher = useCallback(
+    () => OperacaoApi.sendScope(execKey.split(",").map(Number), personKey?.split(",").map(Number)),
+    [execKey, personKey],
+  );
+  const scope = useOperationQuery(fetcher);
+  return (
+    <div>
+      <button type="button" className="btn btn-primary"
+        disabled={disabled || scope.loading || Boolean(scope.error) || !scope.data?.eligible}
+        onClick={onSend}>
+        {scope.data ? `Enviar ${scope.data.eligible} ao RM` : "Enviar ao RM"}
+      </button>
+      <div className="op-muted" role="status">
+        {scope.loading && "Consultando pessoas elegíveis…"}
+        {scope.error && <span>{scope.error} <button type="button" className="btn btn-link" onClick={scope.refresh}>Tentar novamente</button></span>}
+        {scope.data && Object.entries(scope.data.excluded).map(([reason, count]) => (
+          <small key={reason}>{count} fora da fila · {reason}</small>
+        ))}
+      </div>
+    </div>
+  );
+}
 export const etapaLabel = (value: string) =>
   ({ VARIAVEIS: "Variáveis", VALORES: "Valores", ENVIAR_RM: "Envio ao RM" })[
     value

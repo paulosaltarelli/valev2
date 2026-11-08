@@ -367,8 +367,10 @@ export function GestaoKmPage() {
                   height={20}
                 />
               </Button>
-              <h1 className="h4 m-0 p-0 d-flex align-items-center gap-1">
-                Gestão de Km{" "}
+              <div>
+              <p className="op-eyebrow">Operação diária</p>
+              <h1 className="m-0 d-flex align-items-center gap-1">
+                Gestão de KM{" "}
                 <Tooltip
                   title="Gerencia a distância entre a casa dos funcionários e o local de trabalho."
                   placement="right"
@@ -380,9 +382,10 @@ export function GestaoKmPage() {
                   />
                 </Tooltip>
               </h1>
+              </div>
             </div>
           </div>
-          <div className="d-flex align-items-end justify-content-start gap-2 mb-3">
+          <div className="d-flex flex-wrap align-items-end justify-content-start gap-2 mb-3">
             <div className="col-md-4 col-12">
               <Form.Label>Filial</Form.Label>
               {(() => {

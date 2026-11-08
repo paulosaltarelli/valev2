@@ -327,7 +327,8 @@ export class RmService {
     tableName: string,
     dataRecord: unknown,
     sessionId: string,
-  ): Promise<{ status: boolean; message: string; data: unknown }> {
+  ): Promise<{ status: boolean; message: string; data: unknown; notSent?: boolean }> {
+    let dispatched = false;
     try {
       const rmBase = process.env.RM_API_URL;
       if (!rmBase) throw new Error('RM_API_URL not configured');
@@ -357,6 +358,7 @@ export class RmService {
           },
         ],
       } as Record<string, unknown>;
+      dispatched = true;
       const response = await this.http.post<unknown>(url, body, {
         headers: {
           Authorization: authorization,
@@ -384,11 +386,13 @@ export class RmService {
             httpStatus ? ` (HTTP ${httpStatus})` : ''
           }: ${responseMsg ?? error.message ?? 'Erro desconhecido'}`,
           data: error.response?.data ?? {},
+          notSent: !dispatched || [401, 403, 429].includes(httpStatus ?? 0),
         };
       }
       return {
         status: false,
         message: 'Erro ao salvar metadados no RM',
+        notSent: !dispatched,
         data: {},
       };
     }

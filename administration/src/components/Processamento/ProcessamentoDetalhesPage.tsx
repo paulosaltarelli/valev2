@@ -18,7 +18,8 @@ import {
   dateTime,
   errorMessage,
   etapaLabel,
-  money,
+  resultValue,
+  SendScope,
   useOperationAction,
   QueryNotice,
   StageCount,
@@ -111,12 +112,10 @@ function VariableTable({ rows }: { rows: VariableRow[] }) {
 
 function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person: BaseRow }) {
   const fetcher = useCallback(async () => {
-    const results = await Promise.all(
-      person.execucao_funcionario.map((r) => OperacaoApi.result(execucaoId, r.execucao_funcionario_id)),
-    );
+    const results = await OperacaoApi.employeeVariables(execucaoId, person.execucao_funcionario_base_id);
     const grouped = new Map<string, Map<string, Required<VariableRow>>>();
     for (const result of results) {
-      const formula = (result.formulaUtilizada ?? result.formula).nome;
+      const formula = result.formula.nome;
       for (const entry of result.memoria_calculo) {
         const code = entry.variavel_codigo;
         const value = String(entry.valor);
@@ -136,7 +135,7 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
         formulas: variants.size > 1 ? row.formulas : undefined,
       })),
     ).sort((a, b) => a.entry.variavel_nome.localeCompare(b.entry.variavel_nome, "pt-BR"));
-  }, [execucaoId, person]);
+  }, [execucaoId, person.execucao_funcionario_base_id]);
   const query = useOperationQuery(fetcher, 0);
   return (
     <>
@@ -147,6 +146,10 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
           Tentar novamente
         </button>
       )}
+      {query.data?.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "REGRA_PGTO" && Number(entry.valor) === 3) &&
+        query.data.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "KM_FUNC" && Number(entry.valor) === 0) && (
+          <p className="op-notice op-warning">KM zerado. A regra de pagamento usa a quilometragem. Confira o cadastro no RM antes de enviar.</p>
+        )}
       {query.data && <VariableTable rows={query.data} />}
     </>
   );
@@ -232,6 +235,7 @@ function ResultPanel({
   };
   const r = query.data;
   const f = r?.formulaUtilizada ?? r?.formula;
+  const amount = (value: unknown) => resultValue(value, f?.tipo);
   const valid =
     r &&
     ["PROCESSADO", "ENVIADO_RM"].includes(r.status) &&
@@ -278,10 +282,10 @@ function ResultPanel({
           )}
           <div className="op-value-pair">
             <div>
-              Valor calculado<strong>{money(r.valor_calculado)}</strong>
+              Calculado<strong>{amount(r.valor_calculado)}</strong>
             </div>
             <div>
-              Valor final<strong>{money(r.valor_final)}</strong>
+              Resultado final<strong>{amount(r.valor_final)}</strong>
               <small>
                 {r.ajuste_manual ? "Com ajuste manual" : "Sem ajuste manual"}
               </small>
@@ -315,8 +319,8 @@ function ResultPanel({
             <form className="op-adjust" onSubmit={(e) => void adjust(e)}>
               <h3>Ajustar valor final</h3>
               <p>
-                Calculado: {money(r.valor_calculado)} · atual:{" "}
-                {money(r.valor_final)}. O histórico preserva o valor anterior e a nova versão.
+                Calculado: {amount(r.valor_calculado)} · atual:{" "}
+                {amount(r.valor_final)}. O histórico preserva o valor anterior e a nova versão.
               </p>
               <label>
                 Novo valor final
@@ -369,6 +373,7 @@ function ResultPanel({
                   CONFERENCIA: "Conferência",
                   AJUSTE: "Ajuste",
                   ENVIO_RM: "Confirmado pelo RM",
+                  ENVIO_RM_INICIADO: "Tentativa de criação no RM",
                   ERRO_RM: "Falha no RM",
                 }[h.tipo] ?? h.tipo}{" "}
                 · v{h.revisao} · {dateTime(h.registrado_em)}
@@ -382,8 +387,8 @@ function ResultPanel({
               ) : null}
               {h.tipo === "AJUSTE" && (
                 <p>
-                  {String(h.detalhe.motivo ?? "")} · {money(h.detalhe.anterior)}{" "}
-                  → {money(h.detalhe.novo)}
+                  {String(h.detalhe.motivo ?? "")} · {amount(h.detalhe.anterior)}{" "}
+                  → {amount(h.detalhe.novo)}
                 </p>
               )}
               {h.tipo === "ENVIO_RM" && Boolean(h.detalhe.record) && (
@@ -392,7 +397,7 @@ function ResultPanel({
                   {String(
                     (h.detalhe.record as Record<string, unknown>).CODEVENTO,
                   )}{" "}
-                  · {money((h.detalhe.record as Record<string, unknown>).VALOR)}
+                  · {amount((h.detalhe.record as Record<string, unknown>).VALOR)}
                 </p>
               )}
               <details>
@@ -423,7 +428,7 @@ function ResultPanel({
                 <div key={a.ajuste_id}>
                   <p>
                     {dateTime(a.data_ajuste)} · {a.usuario.nome} ·{" "}
-                    {money(a.valor_anterior)} → {money(a.valor_novo)}
+                    {amount(a.valor_anterior)} → {amount(a.valor_novo)}
                   </p>
                   <p>{a.motivo}</p>
                 </div>
@@ -671,6 +676,7 @@ export function ProcessamentoDetalhesPage() {
       {row && (row.processing > 0 || row.pending > 0) && (
         <div className="op-notice" role="status">
           {row.processing > 0 ? `${row.processing} itens em processamento` : "Aguardando execução da fila"} · {row.pending} etapas agendadas.
+          {row.lastActivityAt && ` Última atividade da fila: ${dateTime(row.lastActivityAt)}.`}
           {row.etapas.includes("VARIAVEIS") && " As variáveis consultam o RM em lotes de até 25 pessoas; as contagens avançam quando cada lote termina."}
         </div>
       )}
@@ -681,13 +687,18 @@ export function ProcessamentoDetalhesPage() {
             Envie os valores calculados diretamente. Eventos existentes são atualizados;
             versões já enviadas e pessoas com cálculo incompleto ou etapa em andamento ficam fora da fila.
           </p>
-          <button
-            className="btn btn-primary"
-            disabled={commandDisabled}
-            onClick={() => process("ENVIAR_RM")}
-          >
-            {command.busy ? "Agendando…" : `Enviar ${selecting ? "seleção" : "execução"} ao RM`}
-          </button>
+          <p><strong>{selecting ? `${selected.length} pessoas selecionadas` : "Execução inteira"}</strong>
+            {!selecting && " · A busca e os filtros da lista não limitam o envio."}
+          </p>
+          {(!selecting || selected.length > 0) && (
+            <SendScope
+              key={`${id}:${selecting ? selected.join(",") : "todas"}`}
+              executionIds={[id]}
+              personIds={selecting ? selected : undefined}
+              disabled={commandDisabled}
+              onSend={() => process("ENVIAR_RM")}
+            />
+          )}
           <p className="op-muted">
             Abra um resultado abaixo para consultar a versão e a confirmação por
             evento.
@@ -859,7 +870,7 @@ export function ProcessamentoDetalhesPage() {
                               aria-haspopup="dialog"
                               onClick={() => setContext({ resultado: String(r.execucao_funcionario_id) }, false)}
                             >
-                              {r.formula.nome} <span>{money(r.valor_final)}</span>
+                              {r.formula.nome} <span>{resultValue(r.valor_final, r.formula.tipo)}</span>
                               {r.ajuste_manual && <span aria-label="Valor ajustado">· ajustado</span>}
                             </button>
                           ))}

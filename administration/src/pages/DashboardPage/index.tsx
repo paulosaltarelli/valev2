@@ -15,7 +15,7 @@ import { useAdaptivePolling } from "../../hooks/useAdaptivePolling";
 import { Limited } from "../../components/utils/Limited";
 import { FunctionsHelper } from "../../utils/functionsHelper";
 
-import styles from "./styles.module.css";
+import { PageHeading } from "../../shared/components/PageHeading";
 
 type PeriodoOption = { label: string; value: number };
 type FilialOption = { label: string; value: number | null };
@@ -710,33 +710,29 @@ export function DashboardPage() {
   const activeDetails: unknown = activeIndicator?.details ?? null;
 
   return (
-    <div className="card">
-      <div className="card-body">
-        <div className={styles.dashHeaderContainer}>
-          <div className="d-flex align-items-center justify-content-between  flex-wrap gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <h1 className="h4 m-0 p-0 d-flex align-items-center gap-2">
-                Dashboard
-                {/* {isRunning && (
-                <Badge bg="warning" className="fw-semibold">
-                  Atualização rápida
-                </Badge>
-              )} */}
-              </h1>
-            </div>
-
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <div style={{ minWidth: 240 }}>
+    <>
+      <PageHeading
+        area="Análise"
+        title="Visão geral"
+        description="Acompanhe as pendências, os indicadores e o andamento das filiais."
+      />
+      <div>
+            <div className="op-context ve-filter-bar" aria-label="Filtros da visão geral">
+              <div>
+                <label htmlFor="dash-competencia">Competência</label>
                 <Select
+                  inputId="dash-competencia"
                   value={selectedPeriodoOption}
                   options={periodoOptions}
-                  placeholder="Selecione o período"
+                  placeholder="Selecione a competência"
                   onChange={handlePeriodoChange}
                   isClearable={false}
                 />
               </div>
-              <div style={{ minWidth: 260 }}>
+              <div>
+                <label htmlFor="dash-filial">Filial</label>
                 <Select
+                  inputId="dash-filial"
                   value={selectedFilialOption}
                   options={filialOptions}
                   placeholder="Todas as filiais"
@@ -761,9 +757,6 @@ export function DashboardPage() {
                 <span className="ms-1">Atualizar</span>
               </Button>
             </div>
-          </div>
-          {/* <hr className="mb-1" /> */}
-        </div>
 
         {error && (
           <Alert variant="danger" className="mb-3">
@@ -1826,6 +1819,6 @@ export function DashboardPage() {
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

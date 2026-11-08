@@ -1,0 +1,100 @@
+.ve-page {
+  max-width: 1600px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.ve-page h1,
+.ve-auth h1 {
+  font-size: clamp(24px, 2.5vw, 28px) !important;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+.ve-heading h1 {
+  margin: 4px 0 10px;
+  color: var(--op-text);
+}
+
+.ve-heading p:last-child {
+  margin-bottom: 0;
+}
+
+.ve-page .card {
+  color: var(--op-text);
+  background: var(--op-surface);
+  border: 1px solid var(--op-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.ve-page .card-body {
+  min-width: 0;
+  padding: clamp(14px, 2vw, 22px);
+}
+
+.ve-page .table {
+  --bs-table-color: var(--op-text);
+  --bs-table-bg: var(--op-surface);
+  --bs-table-border-color: var(--op-line);
+  font-size: 13px !important;
+}
+
+.ve-page .table > thead > tr > th {
+  background: var(--op-soft);
+  color: var(--op-muted);
+  font-weight: 600;
+}
+
+.ve-page .form-control,
+.ve-page .form-select {
+  background-color: var(--op-surface);
+  border-color: var(--op-line);
+  color: var(--op-text);
+  border-radius: 7px;
+}
+
+.ve-page .btn,
+.ve-auth .btn {
+  border-radius: 7px;
+}
+
+.ve-page .btn-primary,
+.ve-auth .btn-primary {
+  background: #195caa;
+  border-color: #195caa;
+  color: white;
+}
+
+.ve-page .btn-primary:hover,
+.ve-auth .btn-primary:hover {
+  background: #164f9d;
+  border-color: #164f9d;
+}
+
+.ve-page :is(button, a, input, select):focus-visible,
+.ve-auth :is(button, a, input):focus-visible {
+  outline: 3px solid #3279cc;
+  outline-offset: 2px;
+}
+
+.ve-filter-bar {
+  margin-bottom: 20px;
+}
+
+.ve-filter-bar > div {
+  flex: 1 1 190px;
+  min-width: 0;
+  max-width: 350px;
+}
+
+.ve-filter-bar label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.ve-page .table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+}

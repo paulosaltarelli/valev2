@@ -18,6 +18,7 @@ import {
   errorMessage,
   useOperationAction,
   QueryNotice,
+  SendScope,
   situacoes,
   StageCount,
   useOperationQuery,
@@ -45,6 +46,7 @@ export function ProcessamentoPage() {
   const [create, setCreate] = useState(false);
   const [filiais, setFiliais] = useState<Filial[]>([]);
   const [createIds, setCreateIds] = useState<number[]>([]);
+  const [branchSearch, setBranchSearch] = useState("");
   const [automatic, setAutomatic] = useState(true);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -94,6 +96,13 @@ export function ProcessamentoPage() {
   const current = (query.data?.rows ?? []).filter(
     (r) => r.latest && (!filial || r.filialId === Number(filial)),
   );
+  const previousActive = (query.data?.rows ?? []).filter(
+    (r) => !r.latest && (r.processing > 0 || r.pending > 0) &&
+      (!filial || r.filialId === Number(filial)),
+  );
+  const branchNeedle = branchSearch.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  const visibleBranches = filiais.filter((f) => f.ativa &&
+    f.nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().includes(branchNeedle));
   const totals = current.reduce(
     (a, r) => ({
       total: a.total + r.total,
@@ -114,6 +123,7 @@ export function ProcessamentoPage() {
   const openCreate = async () => {
     setCreate(true);
     setCreateError("");
+    setBranchSearch("");
     setCreateIds(filial ? [Number(filial)] : []);
     try {
       setFiliais(await filialApi.all());
@@ -235,6 +245,21 @@ export function ProcessamentoPage() {
       )}
       {query.data && (
         <>
+          {!history && previousActive.length > 0 && (
+            <div className="op-notice" role="status">
+              <strong>Execuções anteriores ainda na fila</strong>
+              <ul className="mb-0">
+                {previousActive.map((r) => (
+                  <li key={r.id}>
+                    <Link to={`/processamento/${r.id}?aba=acompanhamento&retorno=${encodeURIComponent(`/processamento?${params}`)}`}>
+                      {r.filial} · execução #{r.id}
+                    </Link>
+                    {" · "}{r.processing} em andamento · {r.pending} na fila
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div
             className="op-summary"
             aria-label="Progresso das execuções atuais"
@@ -300,15 +325,12 @@ export function ProcessamentoPage() {
               <strong>
                 {selected.length} execuções selecionadas neste recorte
               </strong>
-              <button
-                className="btn btn-primary"
-                disabled={command.busy || !selected.length || Boolean(query.error)}
-                onClick={() =>
-                  void command.run({ etapa: "ENVIAR_RM", execucaoIds: selected })
-                }
-              >
-                Enviar seleção ao RM
-              </button>
+              {selected.length > 0 && (
+                <SendScope key={selected.join(",")} executionIds={selected}
+                  disabled={command.busy || Boolean(query.error)}
+                  onSend={() => void command.run({ etapa: "ENVIAR_RM", execucaoIds: selected })}
+                />
+              )}
               <button
                 className="btn btn-outline-secondary"
                 onClick={() => setSelected([])}
@@ -493,11 +515,18 @@ export function ProcessamentoPage() {
               Selecione as filiais para esta competência. Execuções anteriores
               permanecem no histórico.
             </p>
+            <label>
+              Buscar filial
+              <input type="search" value={branchSearch} onChange={(e) => setBranchSearch(e.target.value)} />
+            </label>
+            <p className="op-muted mt-2" role="status">
+              {createIds.length === 1 ? "1 filial selecionada" : `${createIds.length} filiais selecionadas`}
+              {createIds.length > 0 && ` · ${filiais.filter((f) => createIds.includes(f.filial_id)).map((f) => f.nome).join(", ")}`}
+            </p>
             <fieldset className="op-choices">
               <legend>Filiais</legend>
-              {filiais
-                .filter((f) => f.ativa)
-                .map((f) => (
+              {branchNeedle && visibleBranches.length === 0 && <p>Nenhuma filial encontrada.</p>}
+              {visibleBranches.map((f) => (
                   <label className="op-check" key={f.filial_id}>
                     <input
                       type="checkbox"

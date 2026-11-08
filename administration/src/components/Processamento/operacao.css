@@ -1,4 +1,5 @@
 .op-page,
+.ve-page,
 .op-modal {
   --h1: 28px;
   --h2: 20px;
@@ -8,6 +9,7 @@
   --h6: 15px;
 }
 .op-page,
+.ve-page,
 .op-modal {
   --op-text: #1d2a3b;
   --op-muted: #526176;
@@ -24,8 +26,10 @@
   line-height: 1.5;
 }
 [data-theme="dark"] .op-page,
+[data-theme="dark"] .ve-page,
 [data-theme="dark"] .op-modal,
 [data-bs-theme="dark"] .op-page,
+[data-bs-theme="dark"] .ve-page,
 [data-bs-theme="dark"] .op-modal {
   --op-text: #ecf0f6;
   --op-muted: #b7c3d4;

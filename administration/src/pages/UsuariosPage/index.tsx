@@ -104,7 +104,7 @@ export function UsuariosPage() {
                   height={20}
                 />
               </Button>
-              <h1 className="h4 m-0 p-0">Usuários</h1>
+              <div><p className="op-eyebrow">Administração</p><h1 className="m-0">Usuários e acesso</h1></div>
             </div>
             <div className="d-flex align-items-center gap-2">
               <Button

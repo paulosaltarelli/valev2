@@ -168,7 +168,7 @@ export function FilialVariaveisPage() {
           >
             <Icon icon="solar:alt-arrow-left-linear" width={20} height={20} />
           </Button>
-          <h1 className="h4 m-0 p-0">Variáveis de: {filial?.nome}</h1>
+          <div><p className="op-eyebrow">Regras e cadastros</p><h1 className="m-0">Variáveis</h1><p className="mb-0">{filial?.nome}</p></div>
         </div>
         <div className="d-flex align-items-center gap-2">
           <Button

@@ -1206,9 +1206,10 @@ export class ExecucaoService {
                   });
                   continue;
                 }
-                const valorFinal = resultadoConsulta.data[0]?.RESULTADO ?? 0;
-                if (isNaN(valorFinal)) {
-                  continue;
+                const raw = resultadoConsulta.data?.[0]?.RESULTADO;
+                const valorFinal = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+                if (!Number.isFinite(valorFinal)) {
+                  throw new Error(`Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`);
                 }
 
                 scopeBase[codigo] = valorFinal;
@@ -1503,19 +1504,18 @@ export class ExecucaoService {
                 break;
               }
 
-              const valorFinal = Number(
-                resultadoConsulta.data?.[0]?.RESULTADO ?? 0,
-              );
-              if (Number.isNaN(valorFinal)) {
+              const raw = resultadoConsulta.data?.[0]?.RESULTADO;
+              const valorFinal = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+              if (!Number.isFinite(valorFinal)) {
                 funcionarioOk = false;
                 this.logger.error(
-                  `Valor RESULTADO inválido (NaN) para variavel ${variavel.codigo} (${variavel.sql_codigo_rm}) do funcionário ${funcionarioBase.funcionario_id_rm}`,
+                  `Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`,
                 );
                 await this.prisma.log_execucao.create({
                   data: {
                     execucao_id: execucaoId,
                     nivel: 'ERROR',
-                    mensagem: `Valor RESULTADO inválido (NaN) para variavel ${variavel.codigo} (${variavel.sql_codigo_rm}) do funcionário ${funcionarioBase.funcionario_id_rm}`,
+                    mensagem: `Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`,
                   },
                 });
                 break;
@@ -1767,6 +1767,9 @@ export class ExecucaoService {
             const record = approved.record;
 
             if (!execFunc.metadados_rm_id) {
+              await this.operacao.beginRmInsert(
+                execucaoId, execFunc.execucao_funcionario_id, execFunc.revisao, approved.usuarioId, record,
+              );
               this.logger.log(
                 `processarEnviarRmBatch: salvando metadados para funcionário ${base.funcionario_id_rm}, Dados: ${JSON.stringify(record, null, 2)}`,
               );
@@ -1780,7 +1783,12 @@ export class ExecucaoService {
                 `RM response: ${JSON.stringify(resp.data, null, 2)}`,
               );
               const insertedId = this.extractRmInsertedId(resp.data);
-              if (!insertedId) throw new Error('RM não retornou id no POST');
+              if (!resp.status && resp.notSent) {
+                await this.operacao.releaseRmInsert(execFunc.execucao_funcionario_id, execFunc.revisao);
+                throw new Error(resp.message);
+              }
+              if (!resp.status || !insertedId)
+                throw new Error('Aguardando confirmação do RM. Verifique se o evento foi gravado antes de reenviar.');
 
               await this.operacao.receipt(execFunc.execucao_funcionario_id, execFunc.revisao, insertedId, approved.usuarioId, record);
             } else {

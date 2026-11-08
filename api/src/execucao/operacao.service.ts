@@ -87,6 +87,7 @@ export class OperacaoService {
             status: true,
             next_run_at: true,
             tentativas: true,
+            updated_at: true,
             execucao_funcionario_base_id: true,
           },
         },
@@ -179,6 +180,8 @@ export class OperacaoService {
           processing,
           pending,
           nextRunAt,
+          lastActivityAt: jobs.reduce<Date | null>((last, q) =>
+            !last || q.updated_at > last ? q.updated_at : last, null),
           etapas: [...new Set(jobs.map((q) => q.tipo))],
           situacao,
         };
@@ -238,7 +241,7 @@ export class OperacaoService {
               valor_final: true,
               ajuste_manual: true,
               metadados_rm_id: true,
-              formula: { select: { nome: true, codEvento: true } },
+              formula: { select: { nome: true, codEvento: true, tipo: true } },
             },
           },
         },
@@ -269,6 +272,34 @@ export class OperacaoService {
       queue,
       updatedAt: new Date(),
     };
+  }
+
+  async employeeVariables(execucaoId: number, baseId: number) {
+    const base = await this.prisma.execucao_funcionario_base.findFirst({
+      where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
+      select: {
+        execucao_funcionario: {
+          select: {
+            formula: { select: { nome: true } },
+            memoria_calculo: true,
+          },
+        },
+      },
+    });
+    if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
+    return base.execucao_funcionario;
+  }
+
+  async sendScope(pedido: PedidoOperacao) {
+    const p = this.normalize({ ...pedido, etapa: 'ENVIAR_RM' });
+    const items = await this.candidates(this.prisma, p);
+    const excluded: Record<string, number> = {};
+    let eligible = 0;
+    for (const item of items) {
+      if (item.reason) excluded[item.reason] = (excluded[item.reason] ?? 0) + 1;
+      else eligible++;
+    }
+    return { eligible, excluded };
   }
 
   async result(execucaoId: number, id: number) {
@@ -574,6 +605,13 @@ export class OperacaoService {
       throw new BadRequestException(
         'A seleção contém pessoas de outra execução.',
       );
+    const pendingReceipts = p.etapa === 'ENVIAR_RM'
+      ? await tx.resultado_historico.findMany({
+          where: { execucao_id: { in: p.execucaoIds }, tipo: 'ENVIO_RM_INICIADO' },
+          select: { resultado_id: true },
+        })
+      : [];
+    const started = new Set(pendingReceipts.map((row) => row.resultado_id));
     return bases.map((b) => {
       const results = b.execucao_funcionario;
       let reason = b.execucao_queue.length
@@ -605,7 +643,9 @@ export class OperacaoService {
           reason = 'Versão atual já conferida';
       }
       if (!reason && p.etapa === 'ENVIAR_RM') {
-        if (
+        if (results.some((r) => !r.metadados_rm_id && started.has(r.execucao_funcionario_id)))
+          reason = 'Aguardando confirmação do RM';
+        else if (
           !calculados.includes(b.status ?? '') ||
           !results.length ||
           !results.every(resultadoValido)
@@ -883,6 +923,33 @@ export class OperacaoService {
         'A versão do resultado difere da versão agendada.',
       );
     return { record: event.record, usuarioId: payload.usuarioId };
+  }
+
+  async beginRmInsert(execucaoId: number, id: number, revisao: number, usuarioId: number, record: unknown) {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lock(tx, [execucaoId]);
+      const prior = await tx.resultado_historico.findFirst({
+        where: { resultado_id: id, tipo: 'ENVIO_RM_INICIADO' },
+        select: { id: true },
+      });
+      if (prior) throw new ConflictException('Aguardando confirmação do RM. Verifique se o evento foi gravado antes de reenviar.');
+      await tx.resultado_historico.create({
+        data: {
+          resultado_id: id,
+          execucao_id: execucaoId,
+          revisao,
+          usuario_id: usuarioId,
+          tipo: 'ENVIO_RM_INICIADO',
+          detalhe: JSON.stringify({ record }),
+        },
+      });
+    });
+  }
+
+  async releaseRmInsert(id: number, revisao: number) {
+    await this.prisma.resultado_historico.deleteMany({
+      where: { resultado_id: id, revisao, tipo: 'ENVIO_RM_INICIADO' },
+    });
   }
 
   async receipt(

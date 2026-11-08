@@ -21,6 +21,7 @@ export type OperationRow = {
   processing: number;
   pending: number;
   nextRunAt: string | null;
+  lastActivityAt?: string | null;
   etapas: string[];
   situacao: string;
 };
@@ -151,6 +152,16 @@ export type OperationPreview = {
   }>;
 };
 export const OperacaoApi = {
+  employeeVariables: (id: number, base: number) =>
+    api.get(`/operacao/${id}/pessoas/${base}/variaveis`) as Promise<Array<{
+      formula: { nome: string };
+      memoria_calculo: ResultDetail["memoria_calculo"];
+    }>>,
+  sendScope: (execucaoIds: number[], baseIds?: number[]) =>
+    api.post("/operacao/escopo-envio", { execucaoIds, baseIds }) as Promise<{
+      eligible: number;
+      excluded: Record<string, number>;
+    }>,
   execute: (pedido: OperationRequest) => api.post("/operacao/executar", pedido) as Promise<{ status: boolean; message: string }>,
   summary: (periodo?: string) =>
     api.get(

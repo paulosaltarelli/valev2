@@ -47,9 +47,9 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
   await check('ajuste não mascara resultado parcial',async()=>{await prisma.execucao_funcionario_base.update({where:{execucao_funcionario_base_id:base.execucao_funcionario_base_id},data:{status:'RESULTADOS_PARCIAL'}});await rejects(()=>service.adjust(eid,rid,130,'Resultado incompleto',4,uid),409);await prisma.execucao_funcionario_base.update({where:{execucao_funcionario_base_id:base.execucao_funcionario_base_id},data:{status:'RESULTADOS_PROCESSADOS'}});});
   // Exercita o worker real com um RM estritamente simulado.
   const {ExecucaoService}=require('../dist/src/execucao/execucao.service');
-  const calls=[]; let fail=true;
+  const calls=[]; let fail=true; let loseReceipt=false;
   process.env.RM_METADATA_DATASERVER='SIMULADO';
-  const fakeRm={saveRecordMetaData:async(_ds,_table,record)=>{calls.push({method:'POST',record});return {data:{id:23456}};},putRecordMetaData:async(_ds,_table,rmId,record)=>{calls.push({method:'PUT',rmId,record});if(fail)throw Error('Falha transitória simulada');return {data:{id:rmId}};}};
+  const fakeRm={saveRecordMetaData:async(_ds,_table,record)=>{calls.push({method:'POST',record});if(loseReceipt)throw Error('Resposta perdida');return {status:true,data:{id:23456}};},putRecordMetaData:async(_ds,_table,rmId,record)=>{calls.push({method:'PUT',rmId,record});if(fail)throw Error('Falha transitória simulada');return {data:{id:rmId}};}};
   const worker=new ExecucaoService(prisma,{}, {},fakeRm,service);
   worker.logger={log:()=>{},error:()=>{},warn:()=>{}};
   await service.execute(request,uid,'sessao-ficticia');
@@ -76,5 +76,31 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
   await check('conferência por seleção registra versão sem criar fila',async()=>{const count=await prisma.execucao_queue.count();const p=await service.preview(confer,uid);assert.equal(p.elegiveis,1);assert.equal(p.items[0].eventos[0].valor.toString(),'110');await service.confirm(p.id,uid,'sessao-ficticia');const r=await prisma.execucao_funcionario.findUnique({where:{execucao_funcionario_id:fresh.execucao_funcionario_id}});assert.equal(r.conferido_revisao,2);assert.equal(r.conferido_por,uid);assert.equal(await prisma.execucao_queue.count(),count);await rejects(()=>service.confirm(p.id,uid,'sessao-ficticia'),409);});
   await check('seleção exclui versões já conferidas',async()=>{const p=await service.preview(confer,uid);assert.equal(p.elegiveis,0);assert.match(p.items[0].reason,/já conferida/);});
   await check('conferência por seleção recusa valor alterado após prévia',async()=>{await service.adjust(eid,fresh.execucao_funcionario_id,120,'Outro ajuste fictício',2,uid);const p=await service.preview(confer,uid);await service.adjust(eid,fresh.execucao_funcionario_id,130,'Mudou após prévia',3,uid);await rejects(()=>service.confirm(p.id,uid,'sessao-ficticia'),409);});
+  await check('POST sem confirmação não é reenviado e aparece como exclusão no escopo',async()=>{
+    const pendingBase=await prisma.execucao_funcionario_base.create({data:{
+      execucao_id:eid,funcionario_id_rm:'FICTICIO3',nome_funcionario:'Pessoa fictícia',
+      codcoligada:1,codfilial:1,status:'RESULTADOS_PROCESSADOS',
+    }});
+    await prisma.execucao_funcionario.create({data:{
+      execucao_id:eid,execucao_funcionario_base_id:pendingBase.execucao_funcionario_base_id,
+      formula_id:formula.formula_id,funcionario_id_rm:'FICTICIO3',
+      valor_calculado:100,valor_final:100,status:'PROCESSADO',
+    }});
+    const scope={etapa:'ENVIAR_RM',execucaoIds:[eid],baseIds:[pendingBase.execucao_funcionario_base_id]};
+    assert.equal((await service.sendScope(scope)).eligible,1);
+    await service.execute(scope,uid,'sessao-ficticia');
+    const queued=await prisma.execucao_queue.findFirst({where:{status:'PENDENTE',tipo:'ENVIAR_RM'}});
+    await prisma.execucao_queue.update({where:{queue_id:queued.queue_id},data:{status:'PROCESSANDO'}});
+    loseReceipt=true;
+    const before=calls.length;
+    await worker.processarEnviarRmBatch(eid,[pendingBase],'sessao-ficticia');
+    await worker.processarEnviarRmBatch(eid,[pendingBase],'sessao-ficticia');
+    assert.equal(calls.length,before+1);
+    await prisma.execucao_queue.update({where:{queue_id:queued.queue_id},data:{status:'ERRO'}});
+    const after=await service.sendScope(scope);
+    assert.equal(after.eligible,0);
+    assert.equal(after.excluded['Aguardando confirmação do RM'],1);
+    await rejects(()=>service.execute(scope,uid,'sessao-ficticia'),400);
+  });
   console.log(`PASS ${passed} cenários de integração; nenhuma chamada ao RM.`);
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>prisma.$disconnect());

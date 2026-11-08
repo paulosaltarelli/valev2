@@ -306,8 +306,7 @@ export function FinanceiroTimelineReport() {
       <div className="card-body">
         <div className="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
           <div>
-            <div className="text-secondary small">Relatório</div>
-            <h2 className="h5 m-0">Timeline financeira</h2>
+            <h2 className="h5 m-0">Evolução financeira</h2>
             <div className="text-secondary small mt-1">
               {scopeTitle} •{" "}
               {data?.range?.granularity
@@ -316,10 +315,11 @@ export function FinanceiroTimelineReport() {
             </div>
           </div>
 
-          <div className="d-flex flex-wrap align-items-center gap-2">
+          <div className="d-flex flex-wrap align-items-end gap-2 ve-filter-bar mb-0">
             <div>
-              <div className="text-secondary small">Início</div>
+              <label htmlFor="relatorio-inicio">Competência inicial</label>
               <DatePicker
+                id="relatorio-inicio"
                 selected={startDate}
                 onChange={(d: Date | null) => {
                   if (!d) return;
@@ -338,8 +338,9 @@ export function FinanceiroTimelineReport() {
               />
             </div>
             <div>
-              <div className="text-secondary small">Fim</div>
+              <label htmlFor="relatorio-fim">Competência final</label>
               <DatePicker
+                id="relatorio-fim"
                 selected={endDate}
                 onChange={(d: Date | null) => {
                   if (!d) return;
@@ -357,9 +358,10 @@ export function FinanceiroTimelineReport() {
                 locale="pt-BR"
               />
             </div>
-            <div style={{ minWidth: 260 }}>
-              <div className="text-secondary small">Filial</div>
+            <div>
+              <label htmlFor="relatorio-filial">Filial</label>
               <Select
+                inputId="relatorio-filial"
                 value={selectedFilialOption}
                 options={filialOptions}
                 onChange={(opt: SingleValue<FilialOption>) =>
