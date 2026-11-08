@@ -170,7 +170,8 @@ export function ProcessamentoPage() {
   const calculationActive = activity.some((row) => (row.pending > 0 || row.processing > 0) &&
     row.etapas.some((stage) => stage === "VARIAVEIS" || stage === "VALORES"));
   const percent = totals.total ? Math.floor(100 * (totals.variaveis + totals.valores) / (2 * totals.total)) : null;
-  const showPercent = queueKnown && !preparing.length && !(calculationActive && percent === 100) && percent !== null;
+  const totalKnown = !preparing.length && !creationFailures.size;
+  const showPercent = queueKnown && totalKnown && !(calculationActive && percent === 100) && percent !== null;
   const progressStatus = !queueKnown ? "Aguardando atualização da fila"
     : preparing.length ? "Preparando execuções"
     : percent === 100 && !calculationActive && processingJobs ? "Cálculo concluído · envio ao RM em andamento"
@@ -325,7 +326,7 @@ export function ProcessamentoPage() {
                 <strong>{progressStatus}</strong>
                 <p className="mb-2">
                   {totals.valores.toLocaleString("pt-BR")} de {totals.total.toLocaleString("pt-BR")} funcionários com valores calculados
-                  {preparing.length > 0 && " nas execuções já criadas"}
+                  {!totalKnown && " nas execuções já criadas"}
                 </p>
                 {queueKnown && (preparing.length > 0 || pendingJobs > 0 || processingJobs > 0 || attention > 0 || creationFailures.size > 0) && (
                   <ul className="op-overall-activity">
