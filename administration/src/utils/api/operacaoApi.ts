@@ -1,5 +1,6 @@
 import api from "./Api";
 export type Etapa = "VARIAVEIS" | "VALORES" | "ENVIAR_RM";
+export type QueueAction = "pausar" | "retomar" | "cancelar";
 export type PeriodoOperacao = {
   periodo_id: number;
   competencia: string;
@@ -20,6 +21,7 @@ export type OperationRow = {
   errors: number;
   processing: number;
   pending: number;
+  controleFila?: "PAUSADA" | "CANCELADA" | null;
   nextRunAt: string | null;
   lastActivityAt?: string | null;
   etapas: string[];
@@ -152,6 +154,8 @@ export type OperationPreview = {
   }>;
 };
 export const OperacaoApi = {
+  controlQueue: (id: number, action: QueueAction) =>
+    api.post(`/operacao/${id}/fila/${action}`) as Promise<{ message: string }>,
   employeeVariables: (id: number, base: number) =>
     api.get(`/operacao/${id}/pessoas/${base}/variaveis?incluirFalhas=1`) as Promise<{
       results: Array<{

@@ -6,9 +6,11 @@ import {
   type FormEvent,
 } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Dropdown, Modal } from "react-bootstrap";
 import {
   OperacaoApi,
+  type OperationRow,
+  type QueueAction,
 } from "../../utils/api/operacaoApi";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import { filialApi } from "../../utils/api/filialApi";
@@ -39,6 +41,24 @@ export function ProcessamentoPage() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [notice, setNotice] = useState("");
+  const [queueCommand, setQueueCommand] = useState<{ row: OperationRow; action: QueueAction } | null>(null);
+  const [queueSaving, setQueueSaving] = useState(false);
+  const [queueError, setQueueError] = useState("");
+  const controlQueue = async () => {
+    if (!queueCommand) return;
+    setQueueSaving(true);
+    setQueueError("");
+    try {
+      const result = await OperacaoApi.controlQueue(queueCommand.row.id, queueCommand.action);
+      setNotice(result.message);
+      setQueueCommand(null);
+      query.refresh();
+    } catch (error) {
+      setQueueError(errorMessage(error));
+    } finally {
+      setQueueSaving(false);
+    }
+  };
   const command = useOperationAction(setNotice, () => {
     setSelected([]);
     setSelecting(false);
@@ -86,7 +106,7 @@ export function ProcessamentoPage() {
           (r) =>
             filter === "todas" ||
             (filter === "pendencias"
-              ? ["acao", "tentativa", "fila", "andamento"].includes(r.situacao)
+              ? ["acao", "tentativa", "fila", "andamento", "pausando", "pausada", "cancelando"].includes(r.situacao)
               : r.situacao === filter),
         )
         .sort(
@@ -443,7 +463,7 @@ export function ProcessamentoPage() {
                           <span className={`op-status op-${s.tone}`}>
                             {s.label}
                           </span>
-                          {r.nextRunAt && (
+                          {r.nextRunAt && !r.controleFila && (
                             <small>
                               Próxima tentativa: {dateTime(r.nextRunAt)}
                             </small>
@@ -465,6 +485,30 @@ export function ProcessamentoPage() {
                           >
                             {s.action}
                           </Link>
+                          {r.controleFila !== "CANCELADA" &&
+                            (r.processing + r.pending > 0 || r.controleFila === "PAUSADA") && (
+                              <Dropdown className="mt-2">
+                                <Dropdown.Toggle variant="outline-secondary" size="sm">
+                                  Gerenciar fila
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu>
+                                  <Dropdown.Item onClick={() => {
+                                    setQueueError("");
+                                    setQueueCommand({ row: r, action: r.controleFila === "PAUSADA" ? "retomar" : "pausar" });
+                                  }}>
+                                    {r.controleFila === "PAUSADA" ? "Retomar" : "Pausar"}
+                                  </Dropdown.Item>
+                                  {r.processing + r.pending > 0 && (
+                                    <Dropdown.Item className="text-danger" onClick={() => {
+                                      setQueueError("");
+                                      setQueueCommand({ row: r, action: "cancelar" });
+                                    }}>
+                                      Cancelar processamento
+                                    </Dropdown.Item>
+                                  )}
+                                </Dropdown.Menu>
+                              </Dropdown>
+                            )}
                         </td>
                       </tr>
                     );
@@ -515,6 +559,38 @@ export function ProcessamentoPage() {
           </span>
         )}
       </div>
+      <Modal
+        show={queueCommand !== null}
+        onHide={() => { if (!queueSaving) setQueueCommand(null); }}
+        backdrop={queueSaving ? "static" : true}
+        keyboard={!queueSaving}
+      >
+        <Modal.Header closeButton={!queueSaving}>
+          <Modal.Title>
+            {queueCommand?.action === "cancelar" ? "Cancelar processamento"
+              : queueCommand?.action === "retomar" ? "Retomar processamento"
+                : "Pausar processamento"}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p><strong>{queueCommand?.row.filial}</strong> · execução #{queueCommand?.row.id}</p>
+          <p>
+            {queueCommand?.action === "cancelar"
+              ? "As etapas pendentes serão canceladas. O lote em andamento pode terminar. Resultados já gravados e envios já efetuados são preservados."
+              : queueCommand?.action === "retomar"
+                ? "As etapas pendentes voltam a ficar disponíveis para processamento."
+                : "O lote em andamento pode terminar. As demais etapas desta execução aguardam até você retomar."}
+          </p>
+          {queueError && <p role="alert" className="text-danger">{queueError}</p>}
+        </Modal.Body>
+        <Modal.Footer>
+          <button className="btn btn-outline-secondary" disabled={queueSaving} onClick={() => setQueueCommand(null)}>Voltar</button>
+          <button className={`btn ${queueCommand?.action === "cancelar" ? "btn-danger" : "btn-primary"}`}
+            disabled={queueSaving} onClick={() => void controlQueue()}>
+            {queueSaving ? "Aplicando…" : "Confirmar"}
+          </button>
+        </Modal.Footer>
+      </Modal>
       <Modal
         show={create}
         onHide={() => {
@@ -610,10 +686,10 @@ export function ProcessamentoPage() {
         </form>
       </Modal>
       <Modal
+        className="op-modal"
         show={showErrors}
         onHide={() => setShowErrors(false)}
         size="lg"
-        className="op-modal"
       >
         <Modal.Header closeButton closeLabel="Fechar falhas">
           <Modal.Title>Falhas de criação</Modal.Title>
