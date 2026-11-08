@@ -1,4 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Alert, Button, Form, Table } from "react-bootstrap";
 import { Link, useLocation } from "react-router";
 import { isAxiosError } from "axios";
@@ -29,6 +35,12 @@ const nomeProvedor = {
   claude: "Claude",
 };
 type Turno = { pergunta: string; resposta: string; em: string };
+type Mensagem = {
+  id: number;
+  pergunta: string;
+  resposta: Resposta | null;
+  erro?: string;
+};
 type Estado = { provedores: Conexoes; historico: Turno[] };
 type Contexto = {
   periodos: Pick<Periodo, "periodo_id" | "competencia" | "ativo">[];
@@ -80,20 +92,34 @@ export function AssistenteVale() {
   const [competencia, setCompetencia] = useState("");
   const [filial, setFilial] = useState("");
   const [matricula, setMatricula] = useState("");
-  const [resposta, setResposta] = useState<Resposta>();
+  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const proximoId = useRef(0);
+  const fimDaConversa = useRef<HTMLDivElement>(null);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  const [exportando, setExportando] = useState(false);
-  const [mostrarTodas, setMostrarTodas] = useState(false);
+  const [exportando, setExportando] = useState<Resposta>();
 
   useEffect(() => {
     const controller = new AbortController();
     void http
       .get<Estado>("/assistente", { signal: controller.signal })
-      .then(({ data }) => setEstado(data))
+      .then(({ data }) => {
+        setEstado(data);
+        setMensagens(
+          data.historico.map((turno) => ({
+            id: proximoId.current++,
+            pergunta: turno.pergunta,
+            resposta: { texto: turno.resposta },
+          })),
+        );
+      })
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (aberto) fimDaConversa.current?.scrollIntoView({ block: "end" });
+  }, [aberto, mensagens]);
 
   const abrir = async () => {
     const params = new URLSearchParams(location.search);
@@ -101,8 +127,6 @@ export function AssistenteVale() {
     setCompetencia("");
     setFilial("");
     setMatricula("");
-    setPergunta("");
-    setResposta(undefined);
     setErro("");
     setAberto(true);
     setCarregandoContexto(true);
@@ -145,7 +169,7 @@ export function AssistenteVale() {
   const fechar = () => setAberto(false);
 
   const enviar = async (texto: string, consulta?: string) => {
-    if (!texto.trim() || ocupado) return;
+    if (!texto.trim() || ocupado || carregandoContexto) return;
     setErro("");
     const pedido = texto.trim();
     const exportar =
@@ -157,23 +181,31 @@ export function AssistenteVale() {
           pedido,
         ));
     if (!consulta && exportar) {
+      const resposta = [...mensagens]
+        .reverse()
+        .find((mensagem) => mensagem.resposta)?.resposta;
       if (!resposta?.tabela || resposta.tabela.parcial) {
         setErro(
           "Consulte primeiro um recorte com tabela completa para baixar o Excel.",
         );
         return;
       }
-      await baixarExcel();
+      await baixarExcel(resposta);
+      setPergunta("");
       return;
     }
-    setResposta(undefined);
-    setMostrarTodas(false);
+    const id = proximoId.current++;
+    setPergunta("");
+    setMensagens((atuais) => [
+      ...atuais.slice(-7),
+      { id, pergunta: pedido, resposta: null },
+    ]);
     setOcupado(true);
     try {
       const { data } = await http.post<Resposta>(
         "/assistente/consultar",
         {
-          pergunta: texto,
+          pergunta: pedido,
           consulta,
           provedor,
           periodoId: competencia ? Number(competencia) : undefined,
@@ -182,41 +214,34 @@ export function AssistenteVale() {
         },
         { timeout: 30000 },
       );
-      setResposta(data);
-      setPergunta("");
-      setEstado(
-        (atual) =>
-          atual && {
-            ...atual,
-            historico: [
-              ...atual.historico,
-              {
-                pergunta: texto,
-                resposta: data.texto,
-                em: new Date().toISOString(),
-              },
-            ].slice(-8),
-          },
+      setMensagens((atuais) =>
+        atuais.map((mensagem) =>
+          mensagem.id === id ? { ...mensagem, resposta: data } : mensagem,
+        ),
       );
     } catch (e) {
       const message = isAxiosError<{ message?: unknown }>(e)
         ? e.response?.data?.message
         : undefined;
-      setErro(
+      const falha =
         typeof message === "string" &&
-          isAxiosError(e) &&
-          (e.response?.status ?? 500) < 500
+        isAxiosError(e) &&
+        (e.response?.status ?? 500) < 500
           ? message
-          : "A consulta falhou. Tente novamente ou use uma consulta sugerida.",
+          : "A consulta falhou. Tente enviar a pergunta novamente.";
+      setMensagens((atuais) =>
+        atuais.map((mensagem) =>
+          mensagem.id === id ? { ...mensagem, erro: falha } : mensagem,
+        ),
       );
     } finally {
       setOcupado(false);
     }
   };
 
-  const baixarExcel = async () => {
-    if (!resposta?.tabela || resposta.tabela.parcial || exportando) return;
-    setExportando(true);
+  const baixarExcel = async (resposta: Resposta) => {
+    if (!resposta.tabela || resposta.tabela.parcial || exportando) return;
+    setExportando(resposta);
     setErro("");
     try {
       const { gerarExcel } = await import("./assistenteExcel");
@@ -242,19 +267,23 @@ export function AssistenteVale() {
     } catch {
       setErro("Falha ao gerar o Excel. Tente novamente.");
     } finally {
-      setExportando(false);
+      setExportando(undefined);
     }
   };
 
-  const mudarFiltro = (setter: (valor: string) => void, valor: string) => {
-    setter(valor);
-    setResposta(undefined);
-  };
-  const moeda = (valor: number) =>
-    valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const submit = (event: FormEvent) => {
     event.preventDefault();
     void enviar(pergunta);
+  };
+  const atalhosDeTeclado = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
+      event.preventDefault();
+      void enviar(pergunta);
+    }
   };
   if (!estado) return null;
 
@@ -288,9 +317,20 @@ export function AssistenteVale() {
             </span>
           </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          {carregandoContexto && <p role="status">Carregando opções…</p>}
-          <Form onSubmit={submit}>
+        <Modal.Body className="vale-ia-corpo">
+          <details className="vale-ia-contexto">
+            <summary>
+              Contexto e filtros{" "}
+              {contexto?.periodos.find(
+                (item) => String(item.periodo_id) === competencia,
+              )?.competencia ?? ""}
+              {filial
+                ? " · " +
+                  (contexto?.filiais.find(
+                    (item) => String(item.filial_id) === filial,
+                  )?.nome ?? "")
+                : ""}
+            </summary>
             <fieldset disabled={ocupado || carregandoContexto}>
               <div className="row g-2 mb-3">
                 <Form.Group
@@ -300,9 +340,7 @@ export function AssistenteVale() {
                   <Form.Label>Competência</Form.Label>
                   <Form.Select
                     value={competencia}
-                    onChange={(e) =>
-                      mudarFiltro(setCompetencia, e.target.value)
-                    }
+                    onChange={(e) => setCompetencia(e.target.value)}
                   >
                     <option value="">Selecione</option>
                     {contexto?.periodos.map((p) => (
@@ -316,7 +354,7 @@ export function AssistenteVale() {
                   <Form.Label>Filial</Form.Label>
                   <Form.Select
                     value={filial}
-                    onChange={(e) => mudarFiltro(setFilial, e.target.value)}
+                    onChange={(e) => setFilial(e.target.value)}
                   >
                     <option value="">Todas as filiais ativas</option>
                     {contexto?.filiais.map((f) => (
@@ -334,26 +372,11 @@ export function AssistenteVale() {
                   <Form.Control
                     value={matricula}
                     maxLength={50}
-                    onChange={(e) => mudarFiltro(setMatricula, e.target.value)}
+                    onChange={(e) => setMatricula(e.target.value)}
                   />
                 </Form.Group>
               </div>
-              <div
-                className="d-flex flex-wrap gap-2 mb-3"
-                aria-label="Consultas sugeridas"
-              >
-                {sugestoes.map(([id, texto]) => (
-                  <Button
-                    key={id}
-                    type="button"
-                    variant="outline-secondary"
-                    size="sm"
-                    onClick={() => void enviar(texto, id)}
-                  >
-                    {texto}
-                  </Button>
-                ))}
-              </div>
+
               {estado.provedores.some((p) => p.disponivel) && (
                 <Form.Group className="mb-2" controlId="assistente-provedor">
                   <Form.Label>Provedor para interpretar a pergunta</Form.Label>
@@ -379,163 +402,216 @@ export function AssistenteVale() {
                   )}
                 </Form.Group>
               )}
-              <Form.Group controlId="assistente-pergunta">
-                <Form.Label>Pergunta</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                  maxLength={500}
-                  value={pergunta}
-                  onChange={(e) => setPergunta(e.target.value)}
-                />
-              </Form.Group>
-              <Button
-                type="submit"
-                size="sm"
-                className="mt-2"
-                disabled={!pergunta.trim()}
-              >
-                Consultar
-              </Button>
             </fieldset>
-          </Form>
-          <div aria-live="polite" className="mt-3">
-            {ocupado && <p role="status">Consultando o Vale…</p>}
-            {erro && <Alert variant="warning">{erro}</Alert>}
-            {resposta && (
-              <>
-                <p className="fw-semibold mb-2">{resposta.texto}</p>
-                {resposta.fonte && (
-                  <p className="small text-body-secondary">
-                    {[
-                      resposta.competencia,
-                      resposta.filial,
-                      resposta.matricula && `Matrícula ${resposta.matricula}`,
-                      resposta.fonte,
-                      resposta.consultadoEm &&
-                        `Consulta em ${new Date(resposta.consultadoEm).toLocaleString("pt-BR")}`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                )}
-                {resposta.detalhes && (
-                  <details className="mb-2">
-                    <summary>Como interpretar</summary>
-                    <p>{resposta.detalhes}</p>
-                  </details>
-                )}
-                {resposta.grafico && (
+          </details>
+          <div
+            className="vale-ia-conversa"
+            role="log"
+            aria-label="Conversa com o Vale IA"
+            tabIndex={0}
+          >
+            {!mensagens.length && (
+              <div className="vale-ia-balao vale-ia-resposta">
+                <strong>Vale IA</strong>
+                <p className="mb-2">
+                  Olá! Como posso ajudar com o Vale Expresso?
+                </p>
+                <fieldset disabled={ocupado || carregandoContexto}>
                   <div
-                    className="row g-2 mb-3"
-                    aria-label="Indicadores da consulta"
+                    className="d-flex flex-wrap gap-2 mb-3"
+                    aria-label="Consultas sugeridas"
                   >
-                    {resposta.grafico.map((item) => (
-                      <div key={item.rotulo} className="col-sm-4">
-                        <div className="border rounded p-2">
-                          <div>{item.rotulo}</div>
-                          <strong>
-                            {item.moeda
-                              ? moeda(item.valor)
-                              : item.valor.toLocaleString("pt-BR")}
-                          </strong>
-                          <div className="progress mt-2" aria-hidden="true">
-                            <div
-                              className="progress-bar"
-                              style={{
-                                width: `${(100 * Math.abs(item.valor)) / Math.max(1, ...resposta.grafico!.map((p) => Math.abs(p.valor)))}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                    {sugestoes.map(([id, texto]) => (
+                      <Button
+                        key={id}
+                        type="button"
+                        variant="outline-secondary"
+                        size="sm"
+                        onClick={() => void enviar(texto, id)}
+                      >
+                        {texto}
+                      </Button>
                     ))}
                   </div>
-                )}
-                {resposta.tabela && (
-                  <>
-                    {resposta.tabela.parcial && (
-                      <p className="text-warning-emphasis">
-                        A consulta excedeu 2.000 linhas. Refine o filtro para
-                        exportar.
-                      </p>
-                    )}
-                    {!resposta.tabela.parcial && (
-                      <Button
-                        size="sm"
-                        variant="outline-primary"
-                        disabled={exportando}
-                        onClick={() => void baixarExcel()}
-                      >
-                        {exportando ? "Gerando…" : "Baixar Excel"}
-                      </Button>
-                    )}
-                    <details className="mt-2">
-                      <summary>
-                        Ver tabela ({resposta.tabela.linhas.length} linhas)
-                      </summary>
-                      <Table responsive size="sm" striped>
-                        <thead>
-                          <tr>
-                            {resposta.tabela.colunas.map((c) => (
-                              <th key={c} scope="col">
-                                {c}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {resposta.tabela.linhas
-                            .slice(0, mostrarTodas ? undefined : 30)
-                            .map((linha, i) => (
-                              <tr key={i}>
-                                {linha.map((valor, j) => (
-                                  <td key={j}>{valor ?? "—"}</td>
-                                ))}
-                              </tr>
-                            ))}
-                        </tbody>
-                      </Table>
-                      {resposta.tabela.linhas.length > 30 && (
-                        <Button
-                          size="sm"
-                          variant="link"
-                          onClick={() => setMostrarTodas(!mostrarTodas)}
-                        >
-                          {mostrarTodas
-                            ? "Mostrar 30 linhas"
-                            : "Mostrar todas as linhas"}
-                        </Button>
-                      )}
-                    </details>
-                  </>
-                )}
-                <div className="d-flex gap-3 mt-2">
-                  {resposta.links?.map((link) => (
-                    <Link key={link.url} to={link.url} onClick={fechar}>
-                      {link.texto}
-                    </Link>
-                  ))}
-                </div>
-              </>
+                </fieldset>
+              </div>
             )}
+            {mensagens.map(({ id, pergunta: texto, resposta, erro: falha }) => (
+              <div className="vale-ia-turno" key={id}>
+                <div className="vale-ia-balao vale-ia-pergunta">
+                  <span className="visually-hidden">Você: </span>
+                  {texto}
+                </div>
+                <div className="vale-ia-balao vale-ia-resposta">
+                  <strong className="vale-ia-autor">Vale IA</strong>
+                  {resposta ? (
+                    <MensagemVale
+                      resposta={resposta}
+                      fechar={fechar}
+                      baixar={() => void baixarExcel(resposta)}
+                      exportando={exportando}
+                    />
+                  ) : falha ? (
+                    <p className="mb-0">{falha}</p>
+                  ) : (
+                    <p role="status" className="mb-0">
+                      Consultando o Vale…
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {carregandoContexto && <p role="status">Carregando opções…</p>}
+            {erro && <Alert variant="warning">{erro}</Alert>}
+            <div ref={fimDaConversa} />
           </div>
-          {estado.historico.length > 0 && (
-            <details className="mt-3">
-              <summary>Histórico desta sessão</summary>
-              <ol>
-                {estado.historico.map((turno, i) => (
-                  <li key={i}>
-                    <strong>{turno.pergunta}</strong>
-                    <br />
-                    {turno.resposta}
-                  </li>
-                ))}
-              </ol>
-            </details>
-          )}
+          <Form className="vale-ia-compor" onSubmit={submit}>
+            <Form.Control
+              as="textarea"
+              rows={2}
+              maxLength={500}
+              value={pergunta}
+              onChange={(e) => setPergunta(e.target.value)}
+              onKeyDown={atalhosDeTeclado}
+              aria-label="Mensagem"
+              placeholder="Escreva sua mensagem…"
+            />
+            <Button
+              type="submit"
+              disabled={!pergunta.trim() || ocupado || carregandoContexto}
+            >
+              Enviar
+            </Button>
+          </Form>
         </Modal.Body>
       </Modal>
+    </>
+  );
+}
+
+function MensagemVale({
+  resposta,
+  fechar,
+  baixar,
+  exportando,
+}: {
+  resposta: Resposta;
+  fechar: () => void;
+  baixar: () => void;
+  exportando?: Resposta;
+}) {
+  const [mostrarTodas, setMostrarTodas] = useState(false);
+  const moeda = (valor: number) =>
+    valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (
+    <>
+      <p className="fw-semibold mb-2">{resposta.texto}</p>
+      {resposta.fonte && (
+        <p className="small text-body-secondary">
+          {[
+            resposta.competencia,
+            resposta.filial,
+            resposta.matricula && `Matrícula ${resposta.matricula}`,
+            resposta.fonte,
+            resposta.consultadoEm &&
+              `Consulta em ${new Date(resposta.consultadoEm).toLocaleString("pt-BR")}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
+      {resposta.detalhes && (
+        <details className="mb-2">
+          <summary>Como interpretar</summary>
+          <p>{resposta.detalhes}</p>
+        </details>
+      )}
+      {resposta.grafico && (
+        <div className="row g-2 mb-3" aria-label="Indicadores da consulta">
+          {resposta.grafico.map((item) => (
+            <div key={item.rotulo} className="col-sm-4">
+              <div className="border rounded p-2">
+                <div>{item.rotulo}</div>
+                <strong>
+                  {item.moeda
+                    ? moeda(item.valor)
+                    : item.valor.toLocaleString("pt-BR")}
+                </strong>
+                <div className="progress mt-2" aria-hidden="true">
+                  <div
+                    className="progress-bar"
+                    style={{
+                      width: `${(100 * Math.abs(item.valor)) / Math.max(1, ...resposta.grafico!.map((p) => Math.abs(p.valor)))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {resposta.tabela && (
+        <>
+          {resposta.tabela.parcial && (
+            <p className="text-warning-emphasis">
+              A consulta excedeu 2.000 linhas. Refine o filtro para exportar.
+            </p>
+          )}
+          {!resposta.tabela.parcial && (
+            <Button
+              size="sm"
+              variant="outline-primary"
+              disabled={Boolean(exportando)}
+              onClick={baixar}
+            >
+              {exportando === resposta ? "Gerando…" : "Baixar Excel"}
+            </Button>
+          )}
+          <details className="mt-2">
+            <summary>
+              Ver tabela ({resposta.tabela.linhas.length} linhas)
+            </summary>
+            <Table responsive size="sm" striped>
+              <thead>
+                <tr>
+                  {resposta.tabela.colunas.map((c) => (
+                    <th key={c} scope="col">
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {resposta.tabela.linhas
+                  .slice(0, mostrarTodas ? undefined : 30)
+                  .map((linha, i) => (
+                    <tr key={i}>
+                      {linha.map((valor, j) => (
+                        <td key={j}>{valor ?? "—"}</td>
+                      ))}
+                    </tr>
+                  ))}
+              </tbody>
+            </Table>
+            {resposta.tabela.linhas.length > 30 && (
+              <Button
+                size="sm"
+                variant="link"
+                onClick={() => setMostrarTodas(!mostrarTodas)}
+              >
+                {mostrarTodas ? "Mostrar 30 linhas" : "Mostrar todas as linhas"}
+              </Button>
+            )}
+          </details>
+        </>
+      )}
+      <div className="d-flex gap-3 mt-2">
+        {resposta.links?.map((link) => (
+          <Link key={link.url} to={link.url} onClick={fechar}>
+            {link.texto}
+          </Link>
+        ))}
+      </div>
     </>
   );
 }
