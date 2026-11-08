@@ -211,6 +211,8 @@ export function FilialVariaveisPage() {
             <div>
               <Button
                 variant="outline-primary"
+                aria-label="Editar variável"
+                title="Editar variável"
                 className="ve-icon-action"
                 onClick={() => handleEditVariavel(row)}
               >
@@ -222,6 +224,8 @@ export function FilialVariaveisPage() {
               </Button>
               <Button
                 variant="outline-danger"
+                aria-label="Excluir variável"
+                title="Excluir variável"
                 className="ve-icon-action"
                 onClick={() => handleDeleteVariavel(row.variavel_id)}
               >
@@ -277,7 +281,7 @@ export function FilialVariaveisPage() {
                   </Form.Select>
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome_variavel">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -292,7 +296,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -308,7 +312,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label>SQL Código RM</Form.Label>
                   <Form.Control
@@ -330,7 +334,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
                   <Form.Control
@@ -409,7 +413,7 @@ export function FilialVariaveisPage() {
                   </Form.Select>
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_nome_variavel">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -424,7 +428,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -442,7 +446,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_sql_codigo_rm">
                   <Form.Label>SQL Código RM</Form.Label>
                   <Form.Control
@@ -464,7 +468,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
                   <Form.Control

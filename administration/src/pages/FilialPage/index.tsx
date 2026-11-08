@@ -174,6 +174,12 @@ export function FilialPage() {
               data={filiais}
               columns={columns}
               slots={{
+                nome: (nome: string, row: Filial) => (
+                  <div><span>{nome}</span><div className="ve-row-links">
+                    <button type="button" onClick={() => handleVariaveisFilial(row.filial_id)} aria-label={`Variáveis de ${nome}`}><Icon icon="hugeicons:variable" width={16} />Variáveis</button>
+                    <button type="button" onClick={() => handleFormulasFilial(row.filial_id)} aria-label={`Fórmulas de ${nome}`}><Icon icon="hugeicons:function-square" width={16} />Fórmulas</button>
+                  </div></div>
+                ),
                 actions: (row: Filial) => (
                   <div>
                     <Button
@@ -196,26 +202,6 @@ export function FilialPage() {
                     >
                       <Icon
                         icon="solar:trash-bin-trash-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                    <Button
-                      variant="outline-secondary"
-                      tooltip="Variaveis"
-                      className="ve-icon-action"
-                      onClick={() => handleVariaveisFilial(row.filial_id)}
-                    >
-                      <Icon icon="hugeicons:variable" width={20} height={20} />
-                    </Button>
-                    <Button
-                      variant="outline-info"
-                      tooltip="Formulas"
-                      className="ve-icon-action"
-                      onClick={() => handleFormulasFilial(row.filial_id)}
-                    >
-                      <Icon
-                        icon="hugeicons:function-square"
                         width={20}
                         height={20}
                       />
@@ -262,7 +248,7 @@ export function FilialPage() {
                 </Form.Group>
               </div>
 
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
                   <Form.Label>Código da Filial</Form.Label>
                   <Form.Control
@@ -277,7 +263,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
                   <Form.Label>Código da Coligada</Form.Label>
                   <Form.Control
@@ -292,7 +278,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     SQL Código RM
@@ -319,7 +305,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="km_max">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     Km Máximo
@@ -380,7 +366,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
                   <Form.Label>Código da Filial</Form.Label>
                   <Form.Control
@@ -395,7 +381,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
                   <Form.Label>Código da Coligada</Form.Label>
                   <Form.Control
@@ -410,7 +396,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     SQL Código RM
@@ -437,7 +423,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     Km Máximo

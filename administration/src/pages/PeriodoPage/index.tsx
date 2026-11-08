@@ -214,6 +214,7 @@ export function PeriodoPage() {
                   },
                 ],
                 ...defaultConfig,
+                order: [[1, "desc"]],
               }}
               data={periodos}
               columns={columns}
@@ -253,13 +254,7 @@ export function PeriodoPage() {
                   <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
                 ),
                 ativo: (ativo: boolean) => (
-                  <span>
-                    {ativo ? (
-                      <Icon icon="solar:check-circle-bold-duotone" className="text-success" width={20} height={20} />
-                    ) : (
-                      <Icon icon="solar:close-circle-bold-duotone" className="text-danger" width={20} height={20} />
-                    )}
-                  </span>
+                  <span className={`ve-state ${ativo ? "ve-state-active" : ""}`}>{ativo ? "Ativa" : "Encerrada"}</span>
                 ),
               }}
             >
@@ -268,7 +263,7 @@ export function PeriodoPage() {
                   <th scope="col">Competência</th>
                   <th scope="col">Data Início</th>
                   <th scope="col">Data Fim</th>
-                  <th scope="col">Ativo</th>
+                  <th scope="col">Situação</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
@@ -283,7 +278,7 @@ export function PeriodoPage() {
         <Modal.Body>
           <Form onSubmit={handleSaveEditPeriodo} id="editPeriodoForm">
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
                   <Form.Label>Data Inicial</Form.Label>
                   <Form.Control
@@ -299,7 +294,7 @@ export function PeriodoPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
                   <Form.Label>Data Final</Form.Label>
                   <Form.Control
@@ -377,7 +372,7 @@ export function PeriodoPage() {
         <Modal.Body>
           <Form onSubmit={handleSaveCreatePeriodo} id="createPeriodoForm">
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
                   <Form.Label>Data Inicial</Form.Label>
                   <Form.Control
@@ -399,7 +394,7 @@ export function PeriodoPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
                   <Form.Label>Data Final</Form.Label>
                   <Form.Control

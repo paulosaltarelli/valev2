@@ -349,11 +349,11 @@ function severityToBootstrapVariant(sev: DashIndicator["severity"]) {
 function severityToBgClass(sev: DashIndicator["severity"]) {
   switch (sev) {
     case "danger":
-      return "bg-danger bg-opacity-10 border-danger";
+      return "ve-indicator-danger";
     case "warning":
-      return "bg-warning bg-opacity-10 border-warning";
+      return "ve-indicator-warning";
     default:
-      return "bg-primary bg-opacity-10 border-primary";
+      return "ve-indicator-info";
   }
 }
 
@@ -854,7 +854,7 @@ export function DashboardPage() {
                         to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
                         className="text-decoration-none"
                       >
-                        <div className="d-flex align-items-center justify-content-between p-2 border rounded">
+                        <div className="ve-summary-row">
                           <div className="d-flex align-items-center gap-2">
                             <Icon
                               icon="solar:diagram-up-bold-duotone"
@@ -871,7 +871,7 @@ export function DashboardPage() {
                         </div>
                       </Link>
                       <Link to="/gestao-km" className="text-decoration-none">
-                        <div className="d-flex align-items-center justify-content-between p-2 border rounded">
+                        <div className="ve-summary-row">
                           <div className="d-flex align-items-center gap-2">
                             <Icon
                               icon="solar:map-point-bold-duotone"
@@ -895,14 +895,15 @@ export function DashboardPage() {
               <div className="col-12 col-xl-6">
                 <div className="card h-100">
                   <div className="card-body">
-                    <h2 className="h6 m-0 mb-2">Resumo</h2>
+                    <details className="ve-indicator-details">
+                    <summary>Todos os indicadores</summary>
                     <div className="text-secondary small mb-2">
                       Selecione o período para ver pendências e alertas.
                     </div>
                     <div className="d-flex flex-column gap-2">
                       {(summary?.indicators ?? []).map((i) => (
                         <div
-                          className="d-flex align-items-center justify-content-between border rounded p-2"
+                          className="ve-summary-row"
                           key={i.id}
                         >
                           <div className="d-flex align-items-center gap-2">
@@ -922,6 +923,7 @@ export function DashboardPage() {
                         </div>
                       ))}
                     </div>
+                    </details>
                   </div>
                 </div>
               </div>

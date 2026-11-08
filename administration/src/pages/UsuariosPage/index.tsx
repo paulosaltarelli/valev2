@@ -167,23 +167,7 @@ export function UsuariosPage() {
                   </div>
                 ),
                 ativo: (data: boolean) => (
-                  <Tooltip title={data ? "Ativo" : "Inativo"}>
-                    {data ? (
-                      <Icon
-                        icon="solar:check-circle-bold-duotone"
-                        className="text-success"
-                        width={20}
-                        height={20}
-                      />
-                    ) : (
-                      <Icon
-                        icon="solar:close-circle-bold-duotone"
-                        className="text-danger"
-                        width={20}
-                        height={20}
-                      />
-                    )}
-                  </Tooltip>
+                  <span className={`ve-state ${data ? "ve-state-active" : ""}`}>{data ? "Ativo" : "Inativo"}</span>
                 ),
                 data_criacao: (data: Date) => (
                   <span>{FunctionsHelper.formatDateTimePtBr(data)}</span>
@@ -194,7 +178,7 @@ export function UsuariosPage() {
                 <tr>
                   <th scope="col">Nome</th>
                   <th scope="col">Código do Usuário</th>
-                  <th scope="col">Ativo</th>
+                  <th scope="col">Situação</th>
                   <th scope="col">Data de Criação</th>
                   <th scope="col">Ações</th>
                 </tr>
@@ -216,7 +200,7 @@ export function UsuariosPage() {
         <Modal.Body>
           <Form>
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -231,7 +215,7 @@ export function UsuariosPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
                   <Form.Label>Código do Usuário(RM)</Form.Label>
                   <Form.Control
@@ -306,7 +290,7 @@ export function UsuariosPage() {
         <Modal.Body>
           <Form>
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -321,7 +305,7 @@ export function UsuariosPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
                   <Form.Label className="d-flex align-items-center gap-1">
                     Código do Usuário(RM)

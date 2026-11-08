@@ -435,7 +435,7 @@ export function GestaoKmPage() {
               Processando: {geoStatus.processing}
             </div>
           )}
-          <div className="ve-table-list">
+          <div className="ve-table-list ve-km-table">
             <DataTable
               className="table striped-table mb-0"
               ref={tableRef}
@@ -444,6 +444,10 @@ export function GestaoKmPage() {
               onDeselect={syncSelectedRows}
               options={{
                 ...defaultConfig,
+                language: {
+                  ...defaultConfig.language,
+                  emptyTable: "Nenhum funcionário para exibir. Use Buscar funcionários para consultar a filial.",
+                },
                 pageLength: 10,
                 layout: {
                   // troca o "pageLength" padrão (topStart) por botões e mantém search no topo (topEnd default)

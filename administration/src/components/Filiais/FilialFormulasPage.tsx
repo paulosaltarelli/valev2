@@ -446,7 +446,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              {/* <div className="col-6 mb-2">
+              {/* <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -461,7 +461,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div> */}
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
                   <Form.Label>Data de Início de Vigência</Form.Label>
                   <Form.Control
@@ -483,7 +483,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
                   <Form.Label>Data de Fim de Vigência</Form.Label>
                   <Form.Control
@@ -505,7 +505,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codEvento">
                   <Form.Label>Evento RM <Tooltip title="codEvento do metadados do RM"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Control
@@ -520,7 +520,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="tipo">
                   <Form.Label>Tipo de dado <Tooltip title="Dias ou Valor"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Select
@@ -656,7 +656,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
                   <Form.Label>Data de Início de Vigência</Form.Label>
                   <Form.Control
@@ -674,7 +674,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
                   <Form.Label>Data de Fim de Vigência</Form.Label>
                   <Form.Control
@@ -691,7 +691,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codEvento">
                   <Form.Label>Evento RM <Tooltip title="codEvento do metadados do RM"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Control
@@ -709,7 +709,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="tipo">
                   <Form.Label>Tipo de dado <Tooltip title="Dias ou Valor"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Select
