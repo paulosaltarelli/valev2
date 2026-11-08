@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 type DashSeverity = 'info' | 'warning' | 'danger';
@@ -98,7 +99,7 @@ export class DashService {
   }
 
   async getProcessamentoReport(id: number) {
-    const formulaFields = { formula_id: true, nome: true, versao: true, tipo: true } as const;
+    const formulaFields = { formula_id: true, nome: true, versao: true, tipo: true, expressao: true } as const;
     const execucao = await this.prisma.execucao.findUnique({
       where: { execucao_id: id },
       select: {
@@ -128,6 +129,13 @@ export class DashService {
 
     const bases = execucao.execucao_funcionario_base;
     const formulas = new Map(execucao.filial.formula.map((f) => [f.formula_id, f]));
+    for (const base of bases) {
+      for (const { formula } of base.execucao_funcionario) {
+        formulas.set(formula.formula_id, formula);
+      }
+    }
+    const dependencies = new Map([...formulas].map(([id, { expressao }]) =>
+      [id, analisarExpressao(expressao).codigos]));
     const failures = new Map<string, string>();
     if (bases.some((b) => b.execucao_funcionario.some((r) => r.status === 'ERRO'))) {
       const logs = await this.prisma.log_execucao.findMany({
@@ -151,22 +159,35 @@ export class DashService {
     }
 
     const funcionarios = bases.map((base) => {
-      const job = base.execucao_queue[0];
-      let erroGeral: string | null = null;
-      if (base.status === 'ERRO_VARIAVEIS' || job?.status === 'ERRO') {
-        const variableCode = [...(job?.last_error ?? '').matchAll(/\[ERRO_VARIAVEIS\]\s+([\w.-]+)\s*\(/gu)]
-          .at(-1)?.[1];
-        erroGeral = variableCode ? `Falha ao consultar ${variableCode}` : 'Falha na consulta de variáveis';
-      } else if (base.status === 'ERRO_RESULTADOS' && !base.execucao_funcionario.some((r) => r.status === 'ERRO')) {
-        erroGeral = 'Falha no cálculo do funcionário';
-      }
       const resultados = Object.fromEntries(base.execucao_funcionario.map((resultado) => {
         const formula = resultado.formula;
-        formulas.set(formula.formula_id, formula);
         return [formula.formula_id, resultado.status === 'ERRO'
           ? { valor: null, erro: failures.get(`${formula.formula_id}:${base.funcionario_id_rm}`) || 'Falha ao calcular a fórmula' }
           : { valor: resultado.valor_calculado?.toString() ?? null, erro: null }];
       }));
+
+      const job = base.execucao_queue[0];
+      let erroGeral: string | null = null;
+      if (base.status === 'ERRO_VARIAVEIS' || job?.status === 'ERRO') {
+        const failure = (job?.last_error ?? '').split(/\r?\n|\\n/u)
+          .map((line) => /\[ERRO_VARIAVEIS\]\s+([\w.-]+)\s*\(.*?\):\s*(.*)/u.exec(line))
+          .findLast((match) => match !== null);
+        const code = failure?.[1];
+        const message = !code ? 'Falha na consulta de variáveis' :
+          failure?.[2].startsWith('Dado ausente ou inválido no RM')
+            ? `${code}: sem valor válido no RM` : `Falha ao consultar ${code}`;
+        let attributed = false;
+        for (const [formulaId, codes] of dependencies) {
+          const cell = resultados[formulaId];
+          if (code && codes.has(code) && cell?.valor == null && !cell?.erro) {
+            resultados[formulaId] = { valor: null, erro: message };
+            attributed = true;
+          }
+        }
+        if (!attributed) erroGeral = message;
+      } else if (base.status === 'ERRO_RESULTADOS' && !base.execucao_funcionario.some((r) => r.status === 'ERRO')) {
+        erroGeral = 'Falha no cálculo do funcionário';
+      }
       return {
         id: base.execucao_funcionario_base_id,
         nome: base.nome_funcionario,
@@ -180,7 +201,8 @@ export class DashService {
       filial: execucao.filial.nome,
       competencia: execucao.periodo.competencia,
       formulas: [...formulas.values()].sort((a, b) =>
-        a.nome.localeCompare(b.nome, 'pt-BR') || b.versao - a.versao || a.formula_id - b.formula_id),
+        a.nome.localeCompare(b.nome, 'pt-BR') || b.versao - a.versao || a.formula_id - b.formula_id)
+        .map(({ formula_id, nome, versao, tipo }) => ({ formula_id, nome, versao, tipo })),
       funcionarios,
     };
   }

@@ -29,14 +29,6 @@ const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
-function getCell(employee: Employee, formulaId: number) {
-  const cell = employee.resultados[formulaId];
-  return {
-    valor: cell?.valor ?? null,
-    erro: cell?.erro ?? (cell?.valor == null ? employee.erroGeral : null),
-  };
-}
-
 export function ExtratoProcessamentoPage() {
   const [periodo, setPeriodo] = useState<number>();
   const [filial, setFilial] = useState<number>();
@@ -110,14 +102,19 @@ export function ExtratoProcessamentoPage() {
       sheet.getRow(1).font = { bold: true };
       sheet.getRow(1).alignment = { wrapText: true, vertical: "middle" };
       for (const employee of employees) {
-        sheet.addRow([
+        const row = sheet.addRow([
           employee.nome ?? "",
           employee.matricula,
           ...columns.map(({ formula_id }) => {
-            const { valor, erro } = getCell(employee, formula_id);
-            return erro ? `Erro · ${erro}` : valor === null ? null : Number(valor);
+            const cell = employee.resultados[formula_id];
+            return cell?.erro ? `Erro · ${cell.erro}` : cell?.valor == null ? null : Number(cell.valor);
           }),
         ]);
+        if (employee.erroGeral) {
+          const name = row.getCell(1);
+          name.value = `${employee.nome ?? ""}\nErro · ${employee.erroGeral}`;
+          name.alignment = { wrapText: true };
+        }
       }
       sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: sheet.columnCount } };
       const buffer = await workbook.xlsx.writeBuffer();
@@ -203,13 +200,17 @@ export function ExtratoProcessamentoPage() {
                 <tbody>
                   {employees.slice(offset, offset + pageSize).map((employee) => (
                     <tr key={employee.id}>
-                      <th scope="row">{employee.nome || "Nome indisponível"}<small className="op-muted">{employee.matricula}</small></th>
+                      <th scope="row">
+                        {employee.nome || "Nome indisponível"}
+                        <small className="op-muted">{employee.matricula}</small>
+                        {employee.erroGeral && <small className="op-danger">Erro · {employee.erroGeral}</small>}
+                      </th>
                       {columns.map((column) => {
-                        const { valor, erro } = getCell(employee, column.formula_id);
+                        const cell = employee.resultados[column.formula_id];
                         return <td key={column.formula_id}>{
-                          erro ? <span className="op-danger">Erro · {erro}</span> :
-                            valor === null ? <span className="op-muted">—</span> :
-                              (column.tipo === "V" ? money : number).format(Number(valor))
+                          cell?.erro ? <span className="op-danger">Erro · {cell.erro}</span> :
+                            cell?.valor == null ? <span className="op-muted">—</span> :
+                              (column.tipo === "V" ? money : number).format(Number(cell.valor))
                         }</td>;
                       })}
                     </tr>
