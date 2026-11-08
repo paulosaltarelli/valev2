@@ -14,6 +14,8 @@ import type { Periodo } from "../../models/PeriodoModel";
 import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
+import { contextoDaPergunta } from "./contextoDaPergunta";
+
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
   ["variaveis", "Quais variáveis já foram calculadas?"],
@@ -26,14 +28,6 @@ const sugestoes = [
   ["ajuda", "Como funciona o Vale Expresso?"],
 ] as const;
 
-type Provedor = "local" | "gpt" | "claude";
-type ProvedorExterno = Exclude<Provedor, "local">;
-type Conexoes = { id: ProvedorExterno; disponivel: boolean }[];
-const nomeProvedor = {
-  local: "Consultas do Vale",
-  gpt: "GPT",
-  claude: "Claude",
-};
 type Turno = { pergunta: string; resposta: string; em: string };
 type Mensagem = {
   id: number;
@@ -41,7 +35,7 @@ type Mensagem = {
   resposta: Resposta | null;
   erro?: string;
 };
-type Estado = { provedores: Conexoes; historico: Turno[] };
+type Estado = { historico: Turno[] };
 type Contexto = {
   periodos: Pick<Periodo, "periodo_id" | "competencia" | "ativo">[];
   filiais: Pick<Filial, "filial_id" | "nome">[];
@@ -83,17 +77,16 @@ function MarcaAssistente() {
 
 export function AssistenteVale() {
   const location = useLocation();
-  const [estado, setEstado] = useState<Estado>();
+  const [disponivel, setDisponivel] = useState(false);
   const [contexto, setContexto] = useState<Contexto>();
   const [carregandoContexto, setCarregandoContexto] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [pergunta, setPergunta] = useState("");
-  const [provedor, setProvedor] = useState<Provedor>("local");
   const [competencia, setCompetencia] = useState("");
   const [filial, setFilial] = useState("");
-  const [matricula, setMatricula] = useState("");
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const proximoId = useRef(0);
+  const perguntaSemFilial = useRef<{ texto: string; consulta?: string }>(null);
   const fimDaConversa = useRef<HTMLDivElement>(null);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -104,7 +97,7 @@ export function AssistenteVale() {
     void http
       .get<Estado>("/assistente", { signal: controller.signal })
       .then(({ data }) => {
-        setEstado(data);
+        setDisponivel(true);
         setMensagens(
           data.historico.map((turno) => ({
             id: proximoId.current++,
@@ -124,24 +117,19 @@ export function AssistenteVale() {
   const abrir = async () => {
     const params = new URLSearchParams(location.search);
     const execucao = /^\/processamento\/(\d+)$/.exec(location.pathname)?.[1];
+    perguntaSemFilial.current = null;
     setCompetencia("");
     setFilial("");
-    setMatricula("");
+    setContexto(undefined);
     setErro("");
     setAberto(true);
     setCarregandoContexto(true);
     try {
-      const [{ data: sessao }, { data }] = await Promise.all([
-        http.get<Estado>("/assistente"),
-        http.get<Contexto>("/assistente/contexto", { params: { execucao } }),
-      ]);
-      setEstado(sessao);
-      setProvedor((atual) =>
-        sessao.provedores.some((p) => p.id === atual && p.disponivel)
-          ? atual
-          : "local",
-      );
-      setContexto(data);
+      const { data } = await http.get<Contexto>("/assistente/contexto", {
+        params: { execucao },
+      });
+      const periodos = data.periodos.filter((item) => item.ativo);
+      setContexto({ ...data, periodos });
       const periodo =
         data.filtro?.periodo_id ??
         params.get("periodoId") ??
@@ -151,10 +139,8 @@ export function AssistenteVale() {
         params.get("filialId") ??
         params.get("filial");
       const selecionado =
-        data.periodos.find((p) => String(p.periodo_id) === String(periodo)) ??
-        (!periodo && location.pathname === "/processamento"
-          ? data.periodos.find((p) => p.ativo)
-          : undefined);
+        periodos.find((p) => String(p.periodo_id) === String(periodo)) ??
+        periodos[0];
       setCompetencia(selecionado ? String(selecionado.periodo_id) : "");
       if (data.filiais.some((f) => String(f.filial_id) === String(filialId))) {
         setFilial(String(filialId));
@@ -200,23 +186,81 @@ export function AssistenteVale() {
       ...atuais.slice(-7),
       { id, pergunta: pedido, resposta: null },
     ]);
+    const pendente = perguntaSemFilial.current;
+    perguntaSemFilial.current = null;
+    const filialInformada = pendente
+      ? contextoDaPergunta(pedido, contexto, competencia, "").filialId
+      : undefined;
+    const nomeFilial = contexto?.filiais.find(
+      (item) => item.filial_id === filialInformada,
+    )?.nome;
+    const completouPergunta =
+      pendente &&
+      nomeFilial &&
+      pedido
+        .replace(/^filial\s+(?:de\s+)?/i, "")
+        .replace(/[.!?]+$/, "")
+        .localeCompare(nomeFilial.replace(/^filial\s+/i, ""), "pt-BR", {
+          sensitivity: "base",
+        }) === 0;
+    const textoConsulta = completouPergunta
+      ? pendente.texto + " · " + pedido
+      : pedido;
+    const consultaEfetiva = completouPergunta ? pendente.consulta : consulta;
+    const { aviso, ...filtros } = contextoDaPergunta(
+      textoConsulta,
+      contexto,
+      competencia,
+      filial,
+    );
+    if (completouPergunta) filtros.filialId = filialInformada;
+    if (aviso) {
+      setMensagens((atuais) =>
+        atuais.map((mensagem) =>
+          mensagem.id === id
+            ? { ...mensagem, resposta: { texto: aviso } }
+            : mensagem,
+        ),
+      );
+      return;
+    }
     setOcupado(true);
     try {
       const { data } = await http.post<Resposta>(
         "/assistente/consultar",
         {
-          pergunta: pedido,
-          consulta,
-          provedor,
-          periodoId: competencia ? Number(competencia) : undefined,
-          filialId: filial ? Number(filial) : undefined,
-          matricula: matricula.trim() || undefined,
+          pergunta: textoConsulta.slice(0, 500),
+          consulta: consultaEfetiva,
+          ...filtros,
         },
         { timeout: 30000 },
       );
+      const faltaFilial =
+        data.texto === "Selecione uma filial para esta consulta.";
+      if (faltaFilial)
+        perguntaSemFilial.current = {
+          texto: textoConsulta,
+          consulta: consultaEfetiva,
+        };
+      const resposta = faltaFilial
+        ? {
+            ...data,
+            texto:
+              "Qual filial você quer consultar? Pode responder só com o nome.",
+          }
+        : data.texto === "Selecione uma competência para consultar os dados."
+          ? {
+              ...data,
+              texto: "Não há competência ativa disponível para esta consulta.",
+            }
+          : data;
+      if (data.competencia && filtros.periodoId)
+        setCompetencia(String(filtros.periodoId));
+      if (data.filial)
+        setFilial(filtros.filialId ? String(filtros.filialId) : "");
       setMensagens((atuais) =>
         atuais.map((mensagem) =>
-          mensagem.id === id ? { ...mensagem, resposta: data } : mensagem,
+          mensagem.id === id ? { ...mensagem, resposta } : mensagem,
         ),
       );
     } catch (e) {
@@ -285,7 +329,7 @@ export function AssistenteVale() {
       void enviar(pergunta);
     }
   };
-  if (!estado) return null;
+  if (!disponivel) return null;
 
   return (
     <>
@@ -318,92 +362,18 @@ export function AssistenteVale() {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="vale-ia-corpo">
-          <details className="vale-ia-contexto">
-            <summary>
-              Contexto e filtros{" "}
-              {contexto?.periodos.find(
+          {contexto && (
+            <div className="vale-ia-contexto">
+              {contexto.periodos.find(
                 (item) => String(item.periodo_id) === competencia,
-              )?.competencia ?? ""}
-              {filial
-                ? " · " +
-                  (contexto?.filiais.find(
+              )?.competencia ?? "Sem competência ativa"}
+              {filial &&
+                " · " +
+                  (contexto.filiais.find(
                     (item) => String(item.filial_id) === filial,
-                  )?.nome ?? "")
-                : ""}
-            </summary>
-            <fieldset disabled={ocupado || carregandoContexto}>
-              <div className="row g-2 mb-3">
-                <Form.Group
-                  className="col-sm-4"
-                  controlId="assistente-competencia"
-                >
-                  <Form.Label>Competência</Form.Label>
-                  <Form.Select
-                    value={competencia}
-                    onChange={(e) => setCompetencia(e.target.value)}
-                  >
-                    <option value="">Selecione</option>
-                    {contexto?.periodos.map((p) => (
-                      <option key={p.periodo_id} value={p.periodo_id}>
-                        {p.competencia}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group className="col-sm-4" controlId="assistente-filial">
-                  <Form.Label>Filial</Form.Label>
-                  <Form.Select
-                    value={filial}
-                    onChange={(e) => setFilial(e.target.value)}
-                  >
-                    <option value="">Todas as filiais ativas</option>
-                    {contexto?.filiais.map((f) => (
-                      <option key={f.filial_id} value={f.filial_id}>
-                        {f.nome}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-                <Form.Group
-                  className="col-sm-4"
-                  controlId="assistente-matricula"
-                >
-                  <Form.Label>Matrícula (opcional)</Form.Label>
-                  <Form.Control
-                    value={matricula}
-                    maxLength={50}
-                    onChange={(e) => setMatricula(e.target.value)}
-                  />
-                </Form.Group>
-              </div>
-
-              {estado.provedores.some((p) => p.disponivel) && (
-                <Form.Group className="mb-2" controlId="assistente-provedor">
-                  <Form.Label>Provedor para interpretar a pergunta</Form.Label>
-                  <Form.Select
-                    value={provedor}
-                    onChange={(e) => setProvedor(e.target.value as Provedor)}
-                  >
-                    <option value="local">{nomeProvedor.local}</option>
-                    {estado.provedores
-                      .filter((p) => p.disponivel)
-                      .map(({ id }) => (
-                        <option key={id} value={id}>
-                          {nomeProvedor[id]} · projeto do Vale
-                        </option>
-                      ))}
-                  </Form.Select>
-                  {provedor !== "local" && (
-                    <Form.Text>
-                      O texto digitado será enviado ao provedor. Informe
-                      matrículas no filtro acima e mantenha dados pessoais fora
-                      da pergunta.
-                    </Form.Text>
-                  )}
-                </Form.Group>
-              )}
-            </fieldset>
-          </details>
+                  )?.nome ?? "")}
+            </div>
+          )}
           <div
             className="vale-ia-conversa"
             role="log"

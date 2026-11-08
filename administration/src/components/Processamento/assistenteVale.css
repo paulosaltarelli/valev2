@@ -24,15 +24,6 @@
   border-bottom: 1px solid var(--bs-border-color);
 }
 
-.vale-ia-contexto[open] summary {
-  margin-bottom: 0.75rem;
-}
-
-.vale-ia-contexto[open] {
-  max-height: 45%;
-  overflow-y: auto;
-}
-
 .vale-ia-conversa {
   flex: 1 1 auto;
   min-height: 0;
