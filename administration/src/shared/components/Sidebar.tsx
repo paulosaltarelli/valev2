@@ -10,13 +10,14 @@ const navigation = [
   {
     label: "Operação",
     links: [
+      ["/dashboard", "Visão geral", "mdi:home-outline"],
       ["/processamento", "Operação por competência", "mdi:clipboard-list-outline"],
       ["/gestao-km", "Gestão de KM", "mdi:map-marker-distance"],
     ],
   },
   {
     label: "Análise",
-    links: [["/dashboard", "Visão geral", "mdi:home-outline"], ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"]],
+    links: [["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"]],
   },
   {
     label: "Regras e cadastros",

@@ -63,7 +63,7 @@ export const router = createBrowserRouter([
       {
         index: true,
         loader: () => {
-          throw redirect("/processamento");
+          throw redirect("/dashboard");
         },
       },
       {

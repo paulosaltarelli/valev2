@@ -119,3 +119,52 @@
 .ve-km-filters > .ve-km-branch {
   flex: 1 1 260px;
 }
+
+.ve-operation-head,
+.ve-operation-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.ve-operation-head h2 {
+  margin: 0 0 4px;
+}
+.ve-operation-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(135px, 100%), 1fr));
+  gap: 10px;
+  margin: 16px 0 12px;
+}
+.ve-operation-counts div {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--op-soft);
+}
+.ve-operation-counts dt {
+  font-size: 13px;
+  color: var(--op-muted);
+}
+.ve-operation-counts dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+}
+.ve-operation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ve-operation-list li {
+  border-bottom: 1px solid var(--op-line);
+  padding: 8px 0;
+}
+.ve-operation-list a {
+  color: var(--op-blue);
+  font-weight: 600;
+}
+.ve-operation-list small {
+  display: block;
+  color: var(--op-muted);
+}

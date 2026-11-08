@@ -16,6 +16,7 @@ import { Limited } from "../../components/utils/Limited";
 import { FunctionsHelper } from "../../utils/functionsHelper";
 
 import { PageHeading } from "../../shared/components/PageHeading";
+import { OperationalOverview } from "./OperationalOverview";
 
 type PeriodoOption = { label: string; value: number };
 type FilialOption = { label: string; value: number | null };
@@ -712,12 +713,18 @@ export function DashboardPage() {
   return (
     <>
       <PageHeading
-        area="Análise"
+        area="Operação diária"
         title="Visão geral"
         description="Acompanhe as pendências, os indicadores e o andamento das filiais."
       />
+      {summary && (
+        <OperationalOverview
+          activePeriodIds={summary.periodos.filter((p) => p.ativo).map((p) => p.periodoId)}
+        />
+      )}
       <div>
-            <div className="op-context ve-filter-bar" aria-label="Filtros da visão geral">
+            <h2>Indicadores por competência</h2>
+            <div className="op-context ve-filter-bar" aria-label="Filtros dos indicadores">
               <div>
                 <label htmlFor="dash-competencia">Competência</label>
                 <Select
