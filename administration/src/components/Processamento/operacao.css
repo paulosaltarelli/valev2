@@ -170,6 +170,30 @@
 .op-branch-progress progress {
   height: 4px;
 }
+
+.op-overall-progress h2 {
+  margin-bottom: 4px;
+}
+
+.op-overall-percent {
+  color: var(--op-blue);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.op-overall-activity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  color: var(--op-muted);
+}
+
+.op-overall-activity .btn {
+  font-size: inherit;
+}
 .op-toolbar,
 .op-actions,
 .op-selection {

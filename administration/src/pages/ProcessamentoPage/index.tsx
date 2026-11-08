@@ -38,7 +38,13 @@ export function ProcessamentoPage() {
   const history = params.get("visao") === "historico";
   const fetcher = useCallback(() => OperacaoApi.summary(periodo), [periodo]);
   const query = useOperationQuery(fetcher);
-  const queueFetcher = useCallback(() => ExecucaoApi.getCreateQueueItems(), []);
+  const queueFetcher = useCallback(async () => {
+    const [items, failures] = await Promise.all([
+      ExecucaoApi.getCreateQueueItems(),
+      ExecucaoApi.getCreateQueueErrors(200),
+    ]);
+    return { items, failures };
+  }, []);
   const creation = useOperationQuery(queueFetcher);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
@@ -125,7 +131,7 @@ export function ProcessamentoPage() {
   );
   const branchNeedle = branchSearch.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const activeBranches = filiais.filter((f) => f.ativa);
-  const activeCreation = (creation.data ?? []).filter((q) =>
+  const activeCreation = (creation.data?.items ?? []).filter((q) =>
     ["PENDENTE", "PROCESSANDO"].includes(q.status),
   );
   const existingBranches = new Set((query.data?.rows ?? []).map((r) => r.filialId));
@@ -147,6 +153,35 @@ export function ProcessamentoPage() {
     }),
     { total: 0, variaveis: 0, valores: 0, rm: 0 },
   );
+  const inScope = (item: { periodoId: number; filialId: number }) =>
+    item.periodoId === query.data?.periodo?.periodo_id && (!filial || item.filialId === Number(filial));
+  const preparing = activeCreation.filter(inScope);
+  const creationFailures = new Set((creation.data?.failures ?? [])
+    .filter((item) => item.status === "ERRO" && inScope(item) &&
+      !existingBranches.has(item.filialId) && !queuedBranches.has(item.filialId))
+    .map((item) => item.filialId));
+  const activity = [...current, ...previousActive];
+  const processingJobs = activity.reduce((sum, row) => sum + row.processing, 0);
+  const pendingJobs = activity.reduce((sum, row) => sum + row.pending, 0);
+  const attention = current.reduce((sum, row) => sum + row.errors, 0);
+  const paused = activity.some((row) => row.controleFila === "PAUSADA" && row.pending > 0);
+  const cancelled = current.some((row) => row.controleFila === "CANCELADA" && row.valores < row.total);
+  const queueKnown = !!creation.data && !creation.error && !query.error;
+  const calculationActive = activity.some((row) => (row.pending > 0 || row.processing > 0) &&
+    row.etapas.some((stage) => stage === "VARIAVEIS" || stage === "VALORES"));
+  const percent = totals.total ? Math.floor(100 * totals.valores / totals.total) : null;
+  const showPercent = queueKnown && !preparing.length && !(calculationActive && percent === 100) && percent !== null;
+  const progressStatus = !queueKnown ? "Aguardando atualização da fila"
+    : preparing.length ? "Preparando execuções"
+    : percent === 100 && !calculationActive && processingJobs ? "Cálculo concluído · envio ao RM em andamento"
+    : percent === 100 && !calculationActive && pendingJobs && !paused ? "Cálculo concluído · envio ao RM na fila"
+    : processingJobs ? "Processamento em andamento"
+    : paused ? "Fila com execuções pausadas"
+    : pendingJobs ? "Aguardando a fila"
+    : attention || creationFailures.size || cancelled ? "Fila encerrada com pendências"
+    : totals.total > 0 && totals.valores === totals.total ? "Cálculo concluído"
+    : totals.total ? "Sem tarefas na fila · cálculo pendente"
+    : "Nenhuma execução neste recorte";
   const filialOptions = Array.from(
     new Map(
       (query.data?.rows ?? []).map((r) => [r.filialId, r.filial]),
@@ -255,7 +290,7 @@ export function ProcessamentoPage() {
           )}
           <button
             className="btn btn-outline-secondary"
-            onClick={query.refresh}
+            onClick={() => { query.refresh(); creation.refresh(); }}
             disabled={query.loading}
           >
             Atualizar
@@ -277,6 +312,37 @@ export function ProcessamentoPage() {
       )}
       {query.data && (
         <>
+          {!history && (
+            <section className="op-panel op-stage op-overall-progress mb-3" aria-labelledby="op-overall-heading">
+              <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
+                <div>
+                  <h2 id="op-overall-heading">Progresso geral do cálculo</h2>
+                  <p className="op-muted mb-2">Da consulta de variáveis até o cálculo dos valores.</p>
+                </div>
+                {showPercent && <strong className="op-overall-percent">{percent}%</strong>}
+              </div>
+              <div role="status">
+                <strong>{progressStatus}</strong>
+                <p className="mb-2">
+                  {totals.valores.toLocaleString("pt-BR")} de {totals.total.toLocaleString("pt-BR")} funcionários com valores calculados
+                  {preparing.length > 0 && " nas execuções já criadas"}
+                </p>
+                {queueKnown && (preparing.length > 0 || pendingJobs > 0 || processingJobs > 0 || attention > 0 || creationFailures.size > 0) && (
+                  <ul className="op-overall-activity">
+                    {preparing.length > 0 && <li>Filiais em preparação <strong>{preparing.length}</strong></li>}
+                    {processingJobs > 0 && <li>Tarefas em andamento <strong>{processingJobs}</strong></li>}
+                    {pendingJobs > 0 && <li>Tarefas na fila <strong>{pendingJobs}</strong></li>}
+                    {attention > 0 && <li>Funcionários que exigem ação <strong>{attention}</strong></li>}
+                    {creationFailures.size > 0 && <li><button type="button" className="btn btn-link p-0" onClick={() => void openErrors()}>
+                      Filiais com falha na criação ({creationFailures.size})
+                    </button></li>}
+                  </ul>
+                )}
+              </div>
+              {showPercent && <progress aria-label="Percentual de funcionários com valores calculados"
+                max={100} value={percent} />}
+            </section>
+          )}
           {!history && previousActive.length > 0 && (
             <div className="op-notice" role="status">
               <strong>Execuções anteriores ainda na fila</strong>
