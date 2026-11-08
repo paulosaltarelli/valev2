@@ -141,6 +141,7 @@ export function UsuariosPage() {
                       <Button
                         variant="outline-primary"
                         className="ve-icon-action"
+                        aria-label={`Editar usuário ${row.nome}`}
                         onClick={() => handleEditUsuario(row)}
                       >
                         <Icon
@@ -155,6 +156,7 @@ export function UsuariosPage() {
                       <Button
                         variant="outline-danger"
                         className="ve-icon-action"
+                        aria-label={`Excluir usuário ${row.nome}`}
                         onClick={() => handleDeleteUsuario(row)}
                       >
                         <Icon

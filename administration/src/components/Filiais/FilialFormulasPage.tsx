@@ -344,10 +344,11 @@ export function FilialFormulasPage() {
         onHide={() => setShowEditFormulaModal(false)}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Editar Formula</Modal.Title>
+          <Modal.Title>Editar fórmula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form.Label className="mb-2">Variaveis</Form.Label>
+          <details className="ve-indicator-details mb-3">
+          <summary>Inserir variável na expressão</summary>
 
           <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
             {variaveis.map((variavel) => (
@@ -366,6 +367,7 @@ export function FilialFormulasPage() {
               </Button>
             ))}
           </div>
+          </details>
           <Form>
             <div className="row">
               <div className="col-12 mb-2">
@@ -581,11 +583,12 @@ export function FilialFormulasPage() {
         }}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Criar Formula</Modal.Title>
+          <Modal.Title>Criar fórmula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {/* Itera pelas variaveis e cria um botãozinho badge para cada uma com seunome e valor. */}
-          <Form.Label className="mb-2">Variaveis</Form.Label>
+          <details className="ve-indicator-details mb-3">
+          <summary>Inserir variável na expressão</summary>
 
           <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
             {variaveis.map((variavel) => (
@@ -602,6 +605,7 @@ export function FilialFormulasPage() {
               </Button>
             ))}
           </div>
+          </details>
           <Form id="createFormulaForm" onSubmit={handleInsertFormula}>
             <div className="row">
               <div className="col-12 mb-2">
