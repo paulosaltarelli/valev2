@@ -9,5 +9,6 @@ import { OperationalReportsService } from './operational-reports.service';
   imports: [PrismaModule],
   providers: [DashService, OperationalReportsService],
   controllers: [DashController, OperationalReportsController],
+  exports: [DashService, OperationalReportsService],
 })
 export class DashModule {}

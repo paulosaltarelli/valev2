@@ -17,6 +17,7 @@ import {
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import { filialApi } from "../../utils/api/filialApi";
 import type { Filial } from "../../models/FilialModel";
+import { AssistenteVale } from "../../components/Processamento/AssistenteVale";
 import {
   dateTime,
   etapaLabel,
@@ -247,6 +248,13 @@ export function ProcessamentoPage() {
         title="Processamentos"
         description="Acompanhe cada etapa e avance com o contexto da competência."
         actions={(
+          <>
+          <AssistenteVale
+            periodo={query.data?.periodo ?? null}
+            filialId={Number(filial)}
+            periodos={query.data?.periodos ?? []}
+            filiais={filialOptions.map(([filial_id, nome]) => ({ filial_id, nome }))}
+          />
           <button
             className="btn btn-primary"
             disabled={!query.data?.periodo?.ativo || Boolean(query.error)}
@@ -254,6 +262,7 @@ export function ProcessamentoPage() {
           >
             Nova execução
           </button>
+          </>
         )}
       />
       <section className="op-context" aria-label="Contexto da operação">

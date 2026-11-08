@@ -14,6 +14,7 @@ import {
 } from "../../utils/api/operacaoApi";
 import api from "../../utils/api/Api";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
+import { AssistenteVale } from "./AssistenteVale";
 import {
   dateTime,
   errorMessage,
@@ -556,13 +557,23 @@ export function ProcessamentoDetalhesPage() {
               : "Carregando identificação…"}
           </p>
         </div>
-        <button
-          className="btn btn-outline-secondary"
-          onClick={refresh}
-          disabled={query.loading}
-        >
-          Atualizar
-        </button>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          {exec && (
+            <AssistenteVale
+              periodo={exec.periodo}
+              filialId={exec.filial.filial_id}
+              periodos={[exec.periodo]}
+              filiais={[exec.filial]}
+            />
+          )}
+          <button
+            className="btn btn-outline-secondary"
+            onClick={refresh}
+            disabled={query.loading}
+          >
+            Atualizar
+          </button>
+        </div>
       </header>
       <QueryNotice {...query} />
       {notice && (
