@@ -134,3 +134,16 @@
   outline: 2px solid var(--op-blue);
   outline-offset: 2px;
 }
+
+/* Relatórios recolhíveis; operação e cadastros permanecem visíveis. */
+.sidebar .ve-analysis-toggle { display:flex; align-items:center; gap:12px; width:100%; padding:12px; border:0; border-radius:8px; background:transparent; color:var(--op-text); text-align:left; font:inherit; cursor:pointer; }
+.sidebar .ve-analysis-toggle:hover, .sidebar .ve-analysis-toggle.is-current { background:var(--op-blue-soft); color:var(--op-blue); }
+.sidebar .ve-analysis-toggle:focus-visible { outline:2px solid var(--op-blue); outline-offset:2px; }
+.sidebar .ve-analysis-toggle .menu-icon { flex-shrink:0; font-size:22px; }
+.sidebar .ve-menu-chevron { margin-left:auto; flex-shrink:0; }
+.sidebar .ve-analysis-submenu { margin-left:14px; border-left:1px solid var(--op-line); padding-left:8px; }
+.sidebar .ve-analysis-submenu[hidden] { display:none !important; }
+.sidebar .ve-analysis-submenu a { font-size:13px; }
+.sidebar.active:not(:hover):not(.sidebar-open) .ve-analysis-toggle span,
+.sidebar.active:not(:hover):not(.sidebar-open) .ve-menu-chevron,
+.sidebar.active:not(:hover):not(.sidebar-open) .ve-analysis-submenu { display: none; }
