@@ -7,7 +7,7 @@ import { PeriodoApi } from "../../utils/api/periodoApi";
 import { Icon } from "@iconify/react";
 import "datatables.net-dt";
 
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../../components/utils/Button";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import { Form } from "react-bootstrap";
@@ -277,7 +277,7 @@ export function PeriodoPage() {
         </div>
       </div>
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Editar Competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -371,7 +371,7 @@ export function PeriodoPage() {
         </Modal.Footer>
       </Modal>
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Cadastrar Competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>

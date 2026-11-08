@@ -3,7 +3,8 @@ import { safeReturn } from "../../utils/safeReturn";
 import { Icon } from "@iconify/react";
 import { Button } from "../../components/utils/Button";
 import { Link, useLocation } from "react-router";
-import { Alert, Form, Modal, Table } from "react-bootstrap";
+import { Alert, Form, Table } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import Select, { type SingleValue } from "../../shared/components/Select";
 import type { Filial } from "../../models/FilialModel";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -582,7 +583,7 @@ export function GestaoKmPage() {
         size="lg"
         centered
       >
-        <Modal.Header closeButton>
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>
             Endereço de <Limited limit={10}>{funToShowAddress?.NOME}</Limited>
           </Modal.Title>
@@ -617,7 +618,7 @@ export function GestaoKmPage() {
         size="xl"
         centered
       >
-        <Modal.Header closeButton className="bg-danger text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Erros / logs da fila GEO</Modal.Title>
         </Modal.Header>
         <Modal.Body>

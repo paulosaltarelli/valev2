@@ -11,19 +11,20 @@ const createDefaultStyles = <
 >(): StylesConfig<Option, IsMulti, Group> => ({
   control: (base, state) => ({
     ...base,
-    backgroundColor: "var(--input-bg)",
-    borderColor: state.isFocused ? "var(--brand)" : "var(--input-stroke)",
-    boxShadow: state.isFocused ? "0 0 0 0.2rem var(--primary-light)" : "none",
+    backgroundColor: "var(--op-surface)",
+    borderColor: state.isFocused ? "var(--op-blue)" : "var(--op-line)",
+    boxShadow: state.isFocused ? "0 0 0 0.2rem var(--op-blue-soft)" : "none",
     ":hover": {
-      borderColor: "var(--brand)",
+      borderColor: "var(--op-blue)",
     },
-    color: "var(--text-primary-light)",
-    minHeight: 38,
+    color: "var(--op-text)",
+    minHeight: "var(--ve-control-height)",
+    borderRadius: "var(--ve-control-radius)",
   }),
   menu: (base) => ({
     ...base,
-    backgroundColor: "var(--white)",
-    border: "1px solid var(--border-color)",
+    backgroundColor: "var(--op-surface)",
+    border: "1px solid var(--op-line)",
     zIndex: 9999,
   }),
   menuPortal: (base) => ({
@@ -33,38 +34,38 @@ const createDefaultStyles = <
   option: (base, state) => ({
     ...base,
     backgroundColor: state.isSelected
-      ? "var(--primary-50)"
+      ? "var(--op-blue-soft)"
       : state.isFocused
-        ? "var(--primary-50)"
+        ? "var(--op-blue-soft)"
         : "transparent",
-    color: "var(--text-primary-light)",
+    color: "var(--op-text)",
     ":active": {
-      backgroundColor: "var(--primary-100)",
+      backgroundColor: "var(--op-blue-soft)",
     },
   }),
   singleValue: (base) => ({
     ...base,
-    color: "var(--text-primary-light)",
+    color: "var(--op-text)",
   }),
   placeholder: (base) => ({
     ...base,
-    color: "var(--text-secondary-light)",
+    color: "var(--op-muted)",
   }),
   input: (base) => ({
     ...base,
-    color: "var(--text-primary-light)",
+    color: "var(--op-text)",
   }),
   multiValue: (base) => ({
     ...base,
-    backgroundColor: "var(--primary-50)",
+    backgroundColor: "var(--op-blue-soft)",
   }),
   multiValueLabel: (base) => ({
     ...base,
-    color: "var(--text-primary-light)",
+    color: "var(--op-text)",
   }),
   multiValueRemove: (base) => ({
     ...base,
-    color: "var(--text-secondary-light)",
+    color: "var(--op-muted)",
     ":hover": {
       backgroundColor: "var(--danger-100)",
       color: "var(--danger-main)",
@@ -72,20 +73,20 @@ const createDefaultStyles = <
   }),
   indicatorSeparator: (base) => ({
     ...base,
-    backgroundColor: "var(--border-color)",
+    backgroundColor: "var(--op-line)",
   }),
   dropdownIndicator: (base) => ({
     ...base,
-    color: "var(--text-secondary-light)",
+    color: "var(--op-muted)",
     ":hover": {
-      color: "var(--text-primary-light)",
+      color: "var(--op-text)",
     },
   }),
   clearIndicator: (base) => ({
     ...base,
-    color: "var(--text-secondary-light)",
+    color: "var(--op-muted)",
     ":hover": {
-      color: "var(--text-primary-light)",
+      color: "var(--op-text)",
     },
   }),
 });

@@ -1,3 +1,4 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import {
   useCallback,
   useEffect,
@@ -6,7 +7,7 @@ import {
   type FormEvent,
 } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import {
   OperacaoApi,
 } from "../../utils/api/operacaoApi";
@@ -170,20 +171,20 @@ export function ProcessamentoPage() {
   const returnTo = `/processamento?${params}`;
   return (
     <div className="op-page">
-      <header className="op-page-head">
-        <div>
-          <p className="op-eyebrow">Operação diária</p>
-          <h1>Processamentos</h1>
-          <p>Acompanhe cada etapa e avance com o contexto da competência.</p>
-        </div>
-        <button
-          className="btn btn-primary"
-          disabled={!query.data?.periodo?.ativo || Boolean(query.error)}
-          onClick={() => void openCreate()}
-        >
-          Nova execução
-        </button>
-      </header>
+      <PageHeading
+        area="Operação diária"
+        title="Processamentos"
+        description="Acompanhe cada etapa e avance com o contexto da competência."
+        actions={(
+          <button
+            className="btn btn-primary"
+            disabled={!query.data?.periodo?.ativo || Boolean(query.error)}
+            onClick={() => void openCreate()}
+          >
+            Nova execução
+          </button>
+        )}
+      />
       <section className="op-context" aria-label="Contexto da operação">
         <label>
           Competência
@@ -522,7 +523,7 @@ export function ProcessamentoPage() {
         }}
         centered
         scrollable
-        className="op-modal op-create-modal"
+        className="op-create-modal"
       >
         <form onSubmit={(e) => void submitCreate(e)}>
           <Modal.Header closeButton closeLabel="Fechar nova execução">
@@ -613,7 +614,6 @@ export function ProcessamentoPage() {
         show={showErrors}
         onHide={() => setShowErrors(false)}
         size="lg"
-        className="op-modal"
       >
         <Modal.Header closeButton closeLabel="Fechar falhas">
           <Modal.Title>Falhas de criação</Modal.Title>

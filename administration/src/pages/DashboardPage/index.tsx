@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Badge, Modal, Spinner, Table } from "react-bootstrap";
+import { Alert, Badge, Spinner, Table } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Icon } from "@iconify/react";
 import Select, { type SingleValue } from "../../shared/components/Select";
 import {
@@ -1225,7 +1226,7 @@ export function DashboardPage() {
               size="xl"
               centered
             >
-              <Modal.Header closeButton>
+              <Modal.Header closeButton closeLabel="Fechar janela">
                 <Modal.Title>
                   {activeIndicator?.title ?? "Detalhes"}
                 </Modal.Title>

@@ -6,7 +6,8 @@ import "datatables.net-responsive-bs5";
 import "datatables.net-dt";
 import type { Usuario } from "../../models/UsuariosModel";
 import { UsuariosApi } from "../../utils/api/usuariosApi";
-import { Button, Form, Modal } from "react-bootstrap";
+import { Button, Form } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Icon } from "@iconify/react";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import Swal from "sweetalert2";
@@ -209,7 +210,7 @@ export function UsuariosPage() {
         show={showEditUsuarioModal}
         onHide={() => setShowEditUsuarioModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Editar Usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -299,7 +300,7 @@ export function UsuariosPage() {
         show={showCreateUsuarioModal}
         onHide={() => setShowCreateUsuarioModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Criar Usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>

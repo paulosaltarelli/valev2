@@ -1,6 +1,7 @@
 import { createBrowserRouter, redirect, type LoaderFunctionArgs, Link } from "react-router";
 import { safeReturn } from '../utils/safeReturn';
 import { AdminLayout } from "../layouts/AdminLayout";
+import { PageHeading } from "../shared/components/PageHeading";
 import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
 import { authApi } from "../shared/lib/http";
@@ -59,7 +60,17 @@ export const router = createBrowserRouter([
     loader: requireAuth,
     element: <AdminLayout />,
     children: [
-      { path: 'acesso-restrito', element: <section><h1>Acesso restrito</h1><p>Esta área exige perfil de administrador.</p><Link to="/processamento">Voltar à operação</Link></section> },
+      {
+        path: "acesso-restrito",
+        element: (
+          <PageHeading
+            area="Conta"
+            title="Acesso restrito"
+            description="Esta área exige perfil de administrador."
+            actions={<Link to="/processamento" className="btn btn-primary">Voltar à operação</Link>}
+          />
+        ),
+      },
       {
         index: true,
         loader: () => {

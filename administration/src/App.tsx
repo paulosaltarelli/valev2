@@ -4,6 +4,7 @@ import { AuthProvider } from "./app/providers/AuthProvider";
 import { BlockUiProvider } from "./app/providers/BlockUiProvider";
 import { ThemeContextProvider } from "./contexts/ThemeContext/ThemeContextProvider";
 import { AppContextProvider } from "./contexts/AppContext/AppContextProvider";
+import "./layouts/design-system.css";
 // import { PrimeReactProvider, PrimeReactContext } from 'primereact/api';
 
 function App() {

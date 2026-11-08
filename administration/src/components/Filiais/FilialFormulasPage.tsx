@@ -1,7 +1,8 @@
 import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
-import { Modal, Form, Badge } from "react-bootstrap";
+import { Form, Badge } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../utils/Button";
 import { Link, useParams } from "react-router";
 import type { Filial } from "../../models/FilialModel";
@@ -356,7 +357,7 @@ export function FilialFormulasPage() {
         show={showEditFormulaModal}
         onHide={() => setShowEditFormulaModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Editar Formula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -593,7 +594,7 @@ export function FilialFormulasPage() {
           setFormulaToInsert(undefined);
         }}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Criar Formula</Modal.Title>
         </Modal.Header>
         <Modal.Body>

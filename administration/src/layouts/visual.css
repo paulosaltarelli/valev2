@@ -24,7 +24,7 @@
   color: var(--op-text);
   background: var(--op-surface);
   border: 1px solid var(--op-line);
-  border-radius: 12px;
+  border-radius: var(--ve-radius);
   box-shadow: none;
 }
 
@@ -37,45 +37,19 @@
   --bs-table-color: var(--op-text);
   --bs-table-bg: var(--op-surface);
   --bs-table-border-color: var(--op-line);
-  font-size: 13px !important;
+  font-size: 14px !important;
+}
+
+.ve-page .table > :is(thead, tbody) > tr > * {
+  padding: var(--ve-table-cell-padding);
+  vertical-align: middle;
 }
 
 .ve-page .table > thead > tr > th {
   background: var(--op-soft);
   color: var(--op-muted);
+  font-size: var(--ve-table-heading-size);
   font-weight: 600;
-}
-
-.ve-page .form-control,
-.ve-page .form-select {
-  background-color: var(--op-surface);
-  border-color: var(--op-line);
-  color: var(--op-text);
-  border-radius: 7px;
-}
-
-.ve-page .btn,
-.ve-auth .btn {
-  border-radius: 7px;
-}
-
-.ve-page .btn-primary,
-.ve-auth .btn-primary {
-  background: #195caa;
-  border-color: #195caa;
-  color: white;
-}
-
-.ve-page .btn-primary:hover,
-.ve-auth .btn-primary:hover {
-  background: #164f9d;
-  border-color: #164f9d;
-}
-
-.ve-page :is(button, a, input, select):focus-visible,
-.ve-auth :is(button, a, input):focus-visible {
-  outline: 3px solid #3279cc;
-  outline-offset: 2px;
 }
 
 .ve-filter-bar {

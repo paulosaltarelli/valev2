@@ -8,7 +8,7 @@ import type { Filial } from "../../models/FilialModel";
 import { Icon } from "@iconify/react";
 import "datatables.net-dt";
 
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../../components/utils/Button";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import { useNavigate } from "react-router";
@@ -240,7 +240,7 @@ export function FilialPage() {
         </div>
       </div>
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Editar Filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -359,7 +359,7 @@ export function FilialPage() {
         </Modal.Footer>
       </Modal>
       <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Cadastrar Filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>

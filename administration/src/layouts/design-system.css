@@ -1,0 +1,120 @@
+/* Referência visual: Processamentos. Os tokens também atendem aos portais. */
+:root {
+  --op-text: #1d2a3b;
+  --op-muted: #526176;
+  --op-line: #d5dce5;
+  --op-surface: #fff;
+  --op-soft: #f3f6fa;
+  --op-blue: #164f9d;
+  --op-blue-soft: #edf4ff;
+  --op-danger: #a02026;
+  --op-warning: #795100;
+  --op-success: #176441;
+  --ve-primary: #195ca9;
+  --ve-radius: 12px;
+  --ve-control-radius: 7px;
+  --ve-control-height: 42px;
+  --ve-table-cell-padding: 16px 14px;
+  --ve-table-heading-size: 13px;
+}
+
+:root:is([data-theme="dark"], [data-bs-theme="dark"]),
+:is([data-theme="dark"], [data-bs-theme="dark"]) {
+  --op-text: #ecf0f6;
+  --op-muted: #b7c3d4;
+  --op-line: #465569;
+  --op-surface: #202b3b;
+  --op-soft: #172130;
+  --op-blue: #9fc7ff;
+  --op-blue-soft: #243c59;
+  --op-danger: #ffadb1;
+  --op-warning: #f2cc79;
+  --op-success: #8ed6b2;
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) {
+  --h1: 28px;
+  --h2: 20px;
+  --h3: 17px;
+  --h4: 18px;
+  --h5: 16px;
+  --h6: 15px;
+  color: var(--op-text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) .btn {
+  border-radius: var(--ve-control-radius);
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) .btn-primary {
+  background: var(--ve-primary);
+  border-color: var(--ve-primary);
+  color: #fff;
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) .btn-primary:hover {
+  background: #164f9d;
+  border-color: #164f9d;
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) .btn-outline-primary {
+  border-color: var(--op-blue);
+  color: var(--op-blue);
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) .btn-outline-primary:hover {
+  background: var(--op-blue-soft);
+}
+
+:is(.op-page, .ve-page, .op-modal, .ve-auth) :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--op-blue);
+  outline-offset: 3px;
+}
+
+.ve-modal.modal {
+  overflow-y: hidden !important;
+}
+
+.ve-modal .modal-content {
+  background: var(--op-surface);
+  color: var(--op-text);
+  border: 1px solid var(--op-line);
+  border-radius: var(--ve-radius);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 12%);
+}
+
+.ve-modal .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ve-modal :is(.modal-header, .modal-footer) {
+  border-color: var(--op-line);
+}
+
+.ve-modal .modal-body {
+  overflow-wrap: anywhere;
+}
+
+:is(.ve-page, .ve-modal, .ve-auth) :is(.form-control, .form-select) {
+  min-height: var(--ve-control-height);
+  border-color: var(--op-line);
+  border-radius: var(--ve-control-radius);
+  color: var(--op-text);
+  background-color: var(--op-surface);
+}
+
+.ve-auth {
+  min-height: 100dvh;
+  background: var(--op-soft) !important;
+}
+
+.ve-auth .card {
+  background: var(--op-surface);
+  border: 1px solid var(--op-line);
+  border-radius: var(--ve-radius);
+  box-shadow: none;
+}

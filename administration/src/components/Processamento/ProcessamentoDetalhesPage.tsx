@@ -5,7 +5,7 @@ import {
   type FormEvent,
 } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import {
   OperacaoApi,
   type BaseRow,
@@ -949,7 +949,7 @@ export function ProcessamentoDetalhesPage() {
         show={Boolean(memoryPerson || resultId)}
         onHide={() => memoryPerson ? setMemoryPerson(null) : setContext({ resultado: "" }, false)}
         aria-labelledby="op-result-title"
-        className={memoryPerson ? "op-modal op-detail-modal op-employee-variables" : "op-modal op-detail-modal"}
+        className={memoryPerson ? "op-detail-modal op-employee-variables" : "op-detail-modal"}
         size="lg"
         centered
         scrollable

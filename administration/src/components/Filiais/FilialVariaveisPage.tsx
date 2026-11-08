@@ -1,7 +1,8 @@
 import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
-import { Button, Modal, Form } from "react-bootstrap";
+import { Button, Form } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Link, useParams } from "react-router";
 import type { Filial } from "../../models/FilialModel";
 import { filialApi } from "../../utils/api/filialApi";
@@ -251,7 +252,7 @@ export function FilialVariaveisPage() {
         show={showEditVariavelModal}
         onHide={() => setShowEditVariavelModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Editar Variavel</Modal.Title>
         </Modal.Header>
         <Modal.Body>
@@ -382,7 +383,7 @@ export function FilialVariaveisPage() {
         show={showInsertVariavelModal}
         onHide={() => setShowInsertVariavelModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Criar Variavel</Modal.Title>
         </Modal.Header>
         <Modal.Body>
