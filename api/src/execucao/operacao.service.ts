@@ -278,6 +278,14 @@ export class OperacaoService {
     const base = await this.prisma.execucao_funcionario_base.findFirst({
       where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
       select: {
+        status: true,
+        funcionario_id_rm: true,
+        execucao_queue: {
+          where: { tipo: 'VARIAVEIS' },
+          orderBy: { queue_id: 'desc' },
+          take: 1,
+          select: { status: true, last_error: true },
+        },
         execucao_funcionario: {
           select: {
             formula: { select: { nome: true } },
@@ -287,7 +295,29 @@ export class OperacaoService {
       },
     });
     if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
-    return base.execucao_funcionario;
+    const job = base.execucao_queue[0];
+    const failed = base.status === 'ERRO_VARIAVEIS' || job?.status === 'ERRO';
+    let error: string | null = null;
+    if (failed) {
+      const lines = job?.last_error?.split(/\r?\n|\\n/).filter((line) => line.trim()) ?? [];
+      const specific = lines.filter((line) => line.includes('[ERRO_VARIAVEIS]')).pop();
+      const legacy = specific ? null : await this.prisma.log_execucao.findFirst({
+        where: {
+          execucao_id: execucaoId,
+          nivel: 'ERROR',
+          mensagem: {
+            startsWith: 'Erro RM variavel ',
+            contains: ` para funcionário ${base.funcionario_id_rm}:`,
+          },
+        },
+        orderBy: { log_id: 'desc' },
+        select: { mensagem: true },
+      });
+      error = specific?.split('[ERRO_VARIAVEIS] ')[1] ?? legacy?.mensagem ??
+        (lines.length ? lines[lines.length - 1] : null) ??
+        'A consulta de variáveis falhou. Este registro não tem detalhe individual.';
+    }
+    return { results: base.execucao_funcionario, error };
   }
 
   async sendScope(pedido: PedidoOperacao) {

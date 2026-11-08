@@ -1489,32 +1489,28 @@ export class ExecucaoService {
               timing.totalMs += elapsedMs;
               timing.maxMs = Math.max(timing.maxMs, elapsedMs);
               timings.set(variavel.sql_codigo_rm, timing);
-              if (!resultadoConsulta.status) {
-                funcionarioOk = false;
-                this.logger.error(
-                  `Erro RM variavel ${variavel.codigo} (${variavel.sql_codigo_rm}) para funcionário ${funcionarioBase.funcionario_id_rm}: ${resultadoConsulta.message}`,
-                );
-                await this.prisma.log_execucao.create({
-                  data: {
-                    execucao_id: execucaoId,
-                    nivel: 'ERROR',
-                    mensagem: `Erro RM variavel ${variavel.codigo} (${variavel.sql_codigo_rm}) para funcionário ${funcionarioBase.funcionario_id_rm}: ${resultadoConsulta.message}`,
-                  },
-                });
-                break;
-              }
-
-              const valorFinal = readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data);
+              const valorFinal = resultadoConsulta.status
+                ? readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data)
+                : NaN;
               if (!Number.isFinite(valorFinal)) {
                 funcionarioOk = false;
-                this.logger.error(
-                  `Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`,
-                );
+                const reason = resultadoConsulta.status
+                  ? 'Dado ausente ou inválido no RM.'
+                  : resultadoConsulta.message;
+                const message = `${variavel.codigo} (${variavel.sql_codigo_rm}): ${reason}`;
+                this.logger.error(message);
+                await this.appendExecucaoQueueLastError({
+                  execucaoId,
+                  execucaoFuncionarioBaseId: funcionarioBase.execucao_funcionario_base_id,
+                  tipo: 'VARIAVEIS',
+                  line: formatQueueErrorLine({ code: 'ERRO_VARIAVEIS', message }),
+                  onlyProcessing: true,
+                });
                 await this.prisma.log_execucao.create({
                   data: {
                     execucao_id: execucaoId,
                     nivel: 'ERROR',
-                    mensagem: `Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`,
+                    mensagem: `Erro RM variavel ${variavel.codigo} (${variavel.sql_codigo_rm}) para funcionário ${funcionarioBase.funcionario_id_rm}: ${reason}`,
                   },
                 });
                 break;
@@ -2081,6 +2077,7 @@ export class ExecucaoService {
     execucaoFuncionarioBaseId: number;
     tipo: 'VARIAVEIS' | 'VALORES' | 'ENVIAR_RM';
     line: string;
+    onlyProcessing?: boolean;
   }): Promise<void> {
     const { execucaoId, execucaoFuncionarioBaseId, tipo, line } = params;
     if (!execucaoId || !execucaoFuncionarioBaseId || !tipo) return;
@@ -2095,7 +2092,8 @@ export class ExecucaoService {
         updated_at = SYSDATETIME()
       WHERE execucao_id = ${execucaoId}
         AND execucao_funcionario_base_id = ${execucaoFuncionarioBaseId}
-        AND tipo = ${tipo};
+        AND tipo = ${tipo}
+        ${params.onlyProcessing ? Prisma.sql`AND status = 'PROCESSANDO'` : Prisma.empty};
     `,
     );
   }

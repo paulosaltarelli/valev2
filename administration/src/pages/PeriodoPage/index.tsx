@@ -1,3 +1,4 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState, type FormEvent } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -9,7 +10,6 @@ import "datatables.net-dt";
 import { Modal } from "react-bootstrap";
 import { Button } from "../../components/utils/Button";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
-import { useNavigate } from "react-router";
 import { Form } from "react-bootstrap";
 
 import type { Periodo } from "../../models/PeriodoModel";
@@ -25,7 +25,6 @@ import { useBlockUi } from "../../app/providers/blockUiContext";
 DataTable.use(DataTablesCore);
 
 export function PeriodoPage() {
-  const navigate = useNavigate();
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
   useEffect(() => {
@@ -183,35 +182,24 @@ export function PeriodoPage() {
 
   return (
     <>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Competências"
+        description="Consulte e cadastre as competências usadas em Processamentos."
+        actions={(
+          <Button
+            tooltip="Criar nova competência"
+            variant="primary"
+            onClick={openCreateModal}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Nova competência</span>
+          </Button>
+        )}
+      />
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <div><p className="op-eyebrow">Regras e cadastros</p><h1 className="m-0">Competências</h1></div>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                tooltip="Criar nova competência"
-                variant="primary"
-                onClick={openCreateModal}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Nova competência</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list">
             <DataTable
               className="table striped-table mb-0"
               options={{

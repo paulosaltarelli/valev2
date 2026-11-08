@@ -1,8 +1,8 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import { safeReturn } from "../../utils/safeReturn";
 import { Icon } from "@iconify/react";
 import { Button } from "../../components/utils/Button";
-import { useLocation, useNavigate } from "react-router";
-import { Tooltip } from "../../components/Tooltip";
+import { Link, useLocation } from "react-router";
 import { Alert, Form, Modal, Table } from "react-bootstrap";
 import Select, { type SingleValue } from "../../shared/components/Select";
 import type { Filial } from "../../models/FilialModel";
@@ -33,7 +33,6 @@ import { Limited } from "../../components/utils/Limited";
 DataTable.use(DataTablesCore);
 
 export function GestaoKmPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [filialId, setFilialId] = useState<number>(0);
   const [filiais, setFiliais] = useState<Filial[]>([]);
@@ -351,115 +350,91 @@ export function GestaoKmPage() {
 
   return (
     <>
+      <Link className="op-back" to={safeReturn(new URLSearchParams(location.search).get("retorno"))}>
+        ← Voltar à operação
+      </Link>
+      <PageHeading
+        area="Operação diária"
+        title="Gestão de KM"
+        description="Consulte e calcule a distância entre a residência e a unidade de trabalho."
+      />
+    <div className="op-context ve-filter-bar ve-km-filters">
+      <div className="ve-km-branch">
+        <Form.Label htmlFor="filialIdFilter">Filial</Form.Label>
+        {(() => {
+          type FilialOption = { value: number; label: string };
+
+          const options: FilialOption[] = [
+            { value: 0, label: "Todas as filiais" },
+            ...filiais.map((filial) => ({
+              value: filial.filial_id,
+              label: filial.nome,
+            })),
+          ];
+
+          const value: FilialOption =
+            options.find((opt) => opt.value === filialId) ?? options[0];
+
+          return (
+            <Select<FilialOption, false>
+              inputId="filialIdFilter"
+              options={options}
+              value={value}
+              onChange={(opt: SingleValue<FilialOption>) => {
+                const nextFilialId = opt?.value ?? 0;
+                setFilialId(nextFilialId);
+              }}
+            />
+          );
+        })()}
+      </div>
+      <Button
+        variant="outline-primary"
+        onClick={() => handleBuscarFuncionarios()}
+        disabled={isGeoRunning}
+      >
+        <Icon icon="gravity-ui:person-magnifier" width={20} height={20} />
+        <span className="ms-1">Buscar funcionários</span>
+      </Button>
+      {funcionarios.length > 0 && (
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <Button
+            variant="outline-success"
+            onClick={() => handleCalcularTodosKm()}
+            disabled={isGeoRunning}
+            >
+            <Icon
+              icon="solar:calculator-bold-duotone"
+              width={20}
+              height={20}
+              />
+            <span className="ms-1">Calcular KM da lista</span>
+          </Button>
+          <Button
+            variant="outline-danger"
+            onClick={() => setShowGeoErrorsModal(true)}
+            disabled={isGeoRunning || filialId === 0 || funcionarios.length === 0}
+            tooltip="Ver erros/logs recentes da fila GEO desta filial"
+            >
+            <Icon
+              icon="solar:danger-circle-bold-duotone"
+              width={20}
+              height={20}
+              />
+            <span className="ms-1">Ver erros</span>
+          </Button>
+        </div>
+      )}
+    </div>
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                aria-label="Voltar ao contexto anterior"
-                onClick={() => navigate(safeReturn(new URLSearchParams(location.search).get("retorno")))}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <div>
-              <p className="op-eyebrow">Operação diária</p>
-              <h1 className="m-0 d-flex align-items-center gap-1">
-                Gestão de KM{" "}
-                <Tooltip
-                  title="Gerencia a distância entre a casa dos funcionários e o local de trabalho."
-                  placement="right"
-                >
-                  <Icon
-                    icon="solar:info-circle-linear"
-                    width={20}
-                    height={20}
-                  />
-                </Tooltip>
-              </h1>
-              </div>
-            </div>
-          </div>
-          <div className="d-flex flex-wrap align-items-end justify-content-start gap-2 mb-3">
-            <div className="col-md-4 col-12">
-              <Form.Label>Filial</Form.Label>
-              {(() => {
-                type FilialOption = { value: number; label: string };
-
-                const options: FilialOption[] = [
-                  { value: 0, label: "Todas as filiais" },
-                  ...filiais.map((filial) => ({
-                    value: filial.filial_id,
-                    label: filial.nome,
-                  })),
-                ];
-
-                const value: FilialOption =
-                  options.find((opt) => opt.value === filialId) ?? options[0];
-
-                return (
-                  <Select<FilialOption, false>
-                    inputId="filialIdFilter"
-                    options={options}
-                    value={value}
-                    onChange={(opt: SingleValue<FilialOption>) => {
-                      const nextFilialId = opt?.value ?? 0;
-                      setFilialId(nextFilialId);
-                    }}
-                  />
-                );
-              })()}
-            </div>
-            <Button
-              variant="outline-primary"
-              onClick={() => handleBuscarFuncionarios()}
-              disabled={isGeoRunning}
-            >
-              <Icon icon="gravity-ui:person-magnifier" width={20} height={20} />
-              <span className="ms-1">Buscar Funcionários</span>
-            </Button>
-            {funcionarios.length > 0 && (
-              <div className="d-flex align-items-center justify-content-between gap-2">
-                <Button
-                  variant="outline-success"
-                  onClick={() => handleCalcularTodosKm()}
-                  disabled={isGeoRunning}
-                  >
-                  <Icon
-                    icon="solar:calculator-bold-duotone"
-                    width={20}
-                    height={20}
-                    />
-                  <span className="ms-1">Calcular Todos os Km</span>
-                </Button>
-                <Button
-                  variant="outline-danger"
-                  onClick={() => setShowGeoErrorsModal(true)}
-                  disabled={isGeoRunning || filialId === 0 || funcionarios.length === 0}
-                  tooltip="Ver erros/logs recentes da fila GEO desta filial"
-                  >
-                  <Icon
-                    icon="solar:danger-circle-bold-duotone"
-                    width={20}
-                    height={20}
-                    />
-                  <span className="ms-1">Ver erros</span>
-                </Button>
-              </div>
-            )}
-          </div>
           {filialId !== 0 && geoStatus?.hasRunning && (
             <div className="alert alert-info py-2 px-3 mb-2">
               Calculando geolocalizações... Pendentes: {geoStatus.pending} /
               Processando: {geoStatus.processing}
             </div>
           )}
-          <div className=" p-2 w-100">
+          <div className="ve-table-list">
             <DataTable
               className="table striped-table mb-0"
               ref={tableRef}

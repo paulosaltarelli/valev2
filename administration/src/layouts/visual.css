@@ -98,3 +98,24 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+.ve-page .op-back {
+  color: var(--op-blue);
+}
+
+.ve-table-list {
+  min-width: 0;
+}
+
+.ve-table-list .dt-layout-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ve-table-list .dt-layout-row {
+  flex-wrap: wrap;
+}
+
+.ve-km-filters > .ve-km-branch {
+  flex: 1 1 260px;
+}

@@ -497,7 +497,8 @@ export function ProcessamentoPage() {
           if (!saving) setCreate(false);
         }}
         centered
-        className="op-modal"
+        scrollable
+        className="op-modal op-create-modal"
       >
         <form onSubmit={(e) => void submitCreate(e)}>
           <Modal.Header closeButton closeLabel="Fechar nova execução">

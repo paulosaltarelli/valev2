@@ -409,8 +409,6 @@ small {
   font-weight: 400 !important;
 }
 .op-choices {
-  max-height: 330px;
-  overflow: auto;
   padding: 0 8px;
 }
 .op-choices legend {
@@ -430,6 +428,35 @@ small {
 .op-modal .modal-content {
   background: var(--op-surface);
   color: var(--op-text);
+}
+.op-detail-modal,
+.op-create-modal {
+  overflow-y: hidden !important;
+}
+.op-create-modal .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.op-detail-modal .modal-body,
+.op-create-modal .modal-body {
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.op-detail-page .op-scroll,
+.op-detail-modal .op-scroll {
+  overflow: visible;
+}
+.op-detail-page .op-table,
+.op-detail-modal .op-table {
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+}
+.op-employee-variables .op-table th:first-child {
+  width: 45%;
+}
+.op-employee-variables .op-table th:nth-child(2) {
+  width: 19%;
 }
 .op-modal .modal-title {
   color: var(--op-text);

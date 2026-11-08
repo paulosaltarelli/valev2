@@ -46,11 +46,13 @@ export class OperacaoController {
   }
   @Get(':id/pessoas/:base/variaveis')
   @Header('Cache-Control', 'no-store')
-  employeeVariables(
+  async employeeVariables(
     @Param('id', ParseIntPipe) id: number,
     @Param('base', ParseIntPipe) base: number,
+    @Query('incluirFalhas') incluirFalhas?: string,
   ) {
-    return this.service.employeeVariables(id, base);
+    const detail = await this.service.employeeVariables(id, base);
+    return incluirFalhas === '1' ? detail : detail.results;
   }
   @Post('escopo-envio')
   @Header('Cache-Control', 'no-store')

@@ -1,3 +1,4 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -7,7 +8,6 @@ import type { Usuario } from "../../models/UsuariosModel";
 import { UsuariosApi } from "../../utils/api/usuariosApi";
 import { Button, Form, Modal } from "react-bootstrap";
 import { Icon } from "@iconify/react";
-import { useNavigate } from "react-router";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import Swal from "sweetalert2";
 import { SwalHelper } from "../../utils/swalHelper";
@@ -19,7 +19,6 @@ import { FunctionsHelper } from "../../utils/functionsHelper";
 DataTable.use(DataTablesCore);
 export function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const navigate = useNavigate();
   const [usuarioToEdit, setUsuarioToEdit] = useState<Usuario | null>(null);
   const [usuarioToCreate, setUsuarioToCreate] = useState<Partial<Usuario>>({
     ativo: true,
@@ -89,34 +88,23 @@ export function UsuariosPage() {
   };
   return (
     <>
+      <PageHeading
+        area="Administração"
+        title="Usuários e acesso"
+        description="Gerencie os perfis e o acesso ao Vale Expresso."
+        actions={(
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateUsuarioModal(true)}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Novo Usuário</span>
+          </Button>
+        )}
+      />
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <div><p className="op-eyebrow">Administração</p><h1 className="m-0">Usuários e acesso</h1></div>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="primary"
-                onClick={() => setShowCreateUsuarioModal(true)}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Novo Usuário</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list">
             <DataTable
               className="table striped-table mb-0"
               options={{

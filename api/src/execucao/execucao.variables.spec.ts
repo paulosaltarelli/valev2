@@ -42,6 +42,7 @@ function fixture(concurrency: number, failEmployee?: string) {
       createMany: jest.fn(({ data }) => { memory.push(...data); return Promise.resolve({ count: data.length }); }),
     },
     log_execucao: { create: jest.fn().mockResolvedValue({}) },
+    $executeRaw: jest.fn().mockResolvedValue(1),
   };
   let active = 0;
   let peak = 0;

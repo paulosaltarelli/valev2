@@ -1,3 +1,4 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -137,35 +138,24 @@ export function FilialPage() {
 
   return (
     <>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Filiais e regras"
+        description="Consulte as filiais e acesse suas fórmulas e variáveis."
+        actions={(
+          <Button
+            tooltip="Criar nova filial"
+            variant="primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Nova Filial</span>
+          </Button>
+        )}
+      />
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <div><p className="op-eyebrow">Regras e cadastros</p><h1 className="m-0">Filiais e regras</h1></div>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                tooltip="Criar nova filial"
-                variant="primary"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Nova Filial</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list">
             <DataTable
               className="table striped-table mb-0"
               options={{

@@ -112,7 +112,7 @@ function VariableTable({ rows }: { rows: VariableRow[] }) {
 
 function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person: BaseRow }) {
   const fetcher = useCallback(async () => {
-    const results = await OperacaoApi.employeeVariables(execucaoId, person.execucao_funcionario_base_id);
+    const { results, error } = await OperacaoApi.employeeVariables(execucaoId, person.execucao_funcionario_base_id);
     const grouped = new Map<string, Map<string, Required<VariableRow>>>();
     for (const result of results) {
       const formula = result.formula.nome;
@@ -129,28 +129,35 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
         }
       }
     }
-    return Array.from(grouped.values()).flatMap((variants) =>
+    const rows = Array.from(grouped.values()).flatMap((variants) =>
       Array.from(variants.values(), (row) => ({
         ...row,
         formulas: variants.size > 1 ? row.formulas : undefined,
       })),
     ).sort((a, b) => a.entry.variavel_nome.localeCompare(b.entry.variavel_nome, "pt-BR"));
+    return { rows, error };
   }, [execucaoId, person.execucao_funcionario_base_id]);
   const query = useOperationQuery(fetcher, 0);
   return (
     <>
       <p><strong>{person.nome_funcionario}</strong> · {person.funcionario_id_rm}</p>
       <QueryNotice {...query} />
+      {query.data?.error && (
+        <div className="op-notice op-error" role="alert">
+          <strong>Falha na consulta de variáveis</strong>
+          <div>{query.data.error}</div>
+        </div>
+      )}
       {query.error && (
         <button type="button" className="btn btn-outline-primary" onClick={query.refresh}>
           Tentar novamente
         </button>
       )}
-      {query.data?.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "REGRA_PGTO" && Number(entry.valor) === 3) &&
-        query.data.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "KM_FUNC" && Number(entry.valor) === 0) && (
+      {query.data?.rows.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "REGRA_PGTO" && Number(entry.valor) === 3) &&
+        query.data.rows.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "KM_FUNC" && Number(entry.valor) === 0) && (
           <p className="op-notice op-warning">KM zerado. A regra de pagamento usa a quilometragem. Confira o cadastro no RM antes de enviar.</p>
         )}
-      {query.data && <VariableTable rows={query.data} />}
+      {query.data && <VariableTable rows={query.data.rows} />}
     </>
   );
 }
@@ -534,7 +541,7 @@ export function ProcessamentoDetalhesPage() {
     Boolean(summary.error) ||
     (selecting && !selected.length);
   return (
-    <div className="op-page">
+    <div className="op-page op-detail-page">
       <Link className="op-back" to={returnTo}>
         ← Voltar à operação
       </Link>
@@ -942,7 +949,7 @@ export function ProcessamentoDetalhesPage() {
         show={Boolean(memoryPerson || resultId)}
         onHide={() => memoryPerson ? setMemoryPerson(null) : setContext({ resultado: "" }, false)}
         aria-labelledby="op-result-title"
-        className="op-modal"
+        className={memoryPerson ? "op-modal op-detail-modal op-employee-variables" : "op-modal op-detail-modal"}
         size="lg"
         centered
         scrollable

@@ -153,10 +153,13 @@ export type OperationPreview = {
 };
 export const OperacaoApi = {
   employeeVariables: (id: number, base: number) =>
-    api.get(`/operacao/${id}/pessoas/${base}/variaveis`) as Promise<Array<{
-      formula: { nome: string };
-      memoria_calculo: ResultDetail["memoria_calculo"];
-    }>>,
+    api.get(`/operacao/${id}/pessoas/${base}/variaveis?incluirFalhas=1`) as Promise<{
+      results: Array<{
+        formula: { nome: string };
+        memoria_calculo: ResultDetail["memoria_calculo"];
+      }>;
+      error: string | null;
+    }>,
   sendScope: (execucaoIds: number[], baseIds?: number[]) =>
     api.post("/operacao/escopo-envio", { execucaoIds, baseIds }) as Promise<{
       eligible: number;

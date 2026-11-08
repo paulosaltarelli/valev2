@@ -1,7 +1,8 @@
+import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
 import { Button, Modal, Form } from "react-bootstrap";
-import { useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type { Filial } from "../../models/FilialModel";
 import { filialApi } from "../../utils/api/filialApi";
 import { VariavelApi } from "../../utils/api/variavelApi";
@@ -24,7 +25,6 @@ DataTable.use(DataTablesCore);
 export function FilialVariaveisPage() {
   const { filialId } = useParams<{ filialId: string }>();
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
-  const navigate = useNavigate();
   const [filial, setFilial] = useState<Filial | null>(null);
   const [variaveis, setVariaveis] = useState<Variavel[]>([]);
   const [showEditVariavelModal, setShowEditVariavelModal] = useState(false);
@@ -158,28 +158,23 @@ export function FilialVariaveisPage() {
   };
 
   return (
-    <div className="card card-body">
-      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-        <div className="d-flex align-items-center gap-2">
+    <div>
+      <Link to="/filial" className="op-back">← Filiais e regras</Link>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Variáveis"
+        description={filial?.nome}
+        actions={(
           <Button
-            variant="outline-secondary"
-            className="m-0 px-1 py-1 border-0"
-            onClick={() => navigate(`/filial`)}
-          >
-            <Icon icon="solar:alt-arrow-left-linear" width={20} height={20} />
-          </Button>
-          <div><p className="op-eyebrow">Regras e cadastros</p><h1 className="m-0">Variáveis</h1><p className="mb-0">{filial?.nome}</p></div>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="primary"
-            onClick={() => setShowInsertVariavelModal(true)}
-          >
-            <Icon icon="tabler:plus" width={20} height={20} />
-            <span className="ms-1">Nova variável</span>
-          </Button>
-        </div>
-      </div>
+          variant="primary"
+          onClick={() => setShowInsertVariavelModal(true)}
+        >
+          <Icon icon="tabler:plus" width={20} height={20} />
+          <span className="ms-1">Nova variável</span>
+        </Button>
+        )}
+      />
+      <div className="card card-body ve-table-list">
       <DataTable
         className="table striped-table mb-0"
         options={{
@@ -250,6 +245,7 @@ export function FilialVariaveisPage() {
           </tr>
         </thead>
       </DataTable>
+      </div>
 
       <Modal
         show={showEditVariavelModal}
