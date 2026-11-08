@@ -17,12 +17,10 @@ function chaveDoVale(provedor: ProvedorExterno) {
     : process.env.ANTHROPIC_API_KEY;
 }
 
-export type ChavesPessoais = Partial<Record<ProvedorExterno, string>>;
-
-export function provedores(pessoais: ChavesPessoais = {}) {
+export function provedores() {
   return provedoresExternos.map((id) => ({
     id,
-    origem: pessoais[id] ? 'pessoal' : chaveDoVale(id) ? 'vale' : null,
+    disponivel: Boolean(chaveDoVale(id)),
   }));
 }
 
@@ -51,25 +49,14 @@ export function intencaoLocal(texto: string): Intent {
 
 export async function selecionarConsulta(
   input: AssistenteDto,
-  pessoais: ChavesPessoais = {},
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
   if (provedor === 'local') return local;
-  const chave = pessoais[provedor] ?? chaveDoVale(provedor);
-  if (
-    input.origemProvedor &&
-    input.origemProvedor !== (pessoais[provedor] ? 'pessoal' : 'vale')
-  ) {
-    throw new BadRequestException(
-      'A conexão com o provedor mudou. Reabra o assistente e selecione a conexão desejada.',
-    );
-  }
+  const chave = chaveDoVale(provedor);
   if (!chave)
-    throw new BadRequestException(
-      'Conecte uma chave de API para usar este provedor.',
-    );
+    throw new BadRequestException('Este provedor está indisponível no Vale.');
   const instructions =
     'Classifique a pergunta sobre o Vale Expresso. Responda com exatamente uma opção: ' +
     intents.join(', ') +

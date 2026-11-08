@@ -22,7 +22,7 @@ const sugestoes = [
 
 type Provedor = "local" | "gpt" | "claude";
 type ProvedorExterno = Exclude<Provedor, "local">;
-type Conexoes = { id: ProvedorExterno; origem: "pessoal" | "vale" | null }[];
+type Conexoes = { id: ProvedorExterno; disponivel: boolean }[];
 const nomeProvedor = {
   local: "Consultas do Vale",
   gpt: "GPT",
@@ -73,12 +73,7 @@ export function AssistenteVale() {
   const location = useLocation();
   const [estado, setEstado] = useState<Estado>();
   const [contexto, setContexto] = useState<Contexto>();
-  const [configurando, setConfigurando] = useState(false);
-  const [provedorChave, setProvedorChave] = useState<ProvedorExterno>("gpt");
-  const [chave, setChave] = useState("");
-  const [salvando, setSalvando] = useState(false);
   const [carregandoContexto, setCarregandoContexto] = useState(false);
-  const [aviso, setAviso] = useState("");
   const [aberto, setAberto] = useState(false);
   const [pergunta, setPergunta] = useState("");
   const [provedor, setProvedor] = useState<Provedor>("local");
@@ -109,7 +104,6 @@ export function AssistenteVale() {
     setPergunta("");
     setResposta(undefined);
     setErro("");
-    setAviso("");
     setAberto(true);
     setCarregandoContexto(true);
     try {
@@ -119,7 +113,7 @@ export function AssistenteVale() {
       ]);
       setEstado(sessao);
       setProvedor((atual) =>
-        sessao.provedores.some((p) => p.id === atual && p.origem)
+        sessao.provedores.some((p) => p.id === atual && p.disponivel)
           ? atual
           : "local",
       );
@@ -148,46 +142,7 @@ export function AssistenteVale() {
     }
   };
 
-  const fechar = () => {
-    setAberto(false);
-    setConfigurando(false);
-    setChave("");
-  };
-
-  const alterarChave = async (id: ProvedorExterno, novaChave?: string) => {
-    setErro("");
-    setAviso("");
-    setSalvando(true);
-    setChave("");
-    try {
-      const { data } = novaChave
-        ? await http.post<Pick<Estado, "provedores">>(
-            "/assistente/provedores",
-            { provedor: id, chave: novaChave },
-          )
-        : await http.delete<Pick<Estado, "provedores">>(
-            `/assistente/provedores/${id}`,
-          );
-      setEstado((atual) => atual && { ...atual, provedores: data.provedores });
-      setProvedor((atual) => (novaChave ? id : atual === id ? "local" : atual));
-      setAviso(
-        novaChave
-          ? "Chave adicionada a esta sessão."
-          : "Chave pessoal removida desta sessão.",
-      );
-    } catch (e) {
-      const mensagem = isAxiosError<{ message?: unknown }>(e)
-        ? e.response?.data?.message
-        : undefined;
-      setErro(
-        typeof mensagem === "string"
-          ? mensagem
-          : "Não foi possível atualizar a conexão.",
-      );
-    } finally {
-      setSalvando(false);
-    }
-  };
+  const fechar = () => setAberto(false);
 
   const enviar = async (texto: string, consulta?: string) => {
     if (!texto.trim() || ocupado) return;
@@ -221,9 +176,6 @@ export function AssistenteVale() {
           pergunta: texto,
           consulta,
           provedor,
-          origemProvedor:
-            estado?.provedores.find((p) => p.id === provedor)?.origem ??
-            undefined,
           periodoId: competencia ? Number(competencia) : undefined,
           filialId: filial ? Number(filial) : undefined,
           matricula: matricula.trim() || undefined,
@@ -337,92 +289,9 @@ export function AssistenteVale() {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div className="d-flex justify-content-end mb-3">
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              onClick={() => {
-                setConfigurando(!configurando);
-                setChave("");
-              }}
-              aria-expanded={configurando}
-            >
-              Conexões de IA
-            </Button>
-          </div>
-          {configurando && (
-            <Form
-              className="vale-ia-conexoes mb-3"
-              aria-label="Conexões de IA"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (chave.trim() && !salvando)
-                  void alterarChave(provedorChave, chave.trim());
-              }}
-            >
-              <p className="small mb-2">
-                Use uma chave da sua conta de API. Ela vale para esta sessão e o
-                uso é cobrado no projeto da chave.
-              </p>
-              <fieldset disabled={salvando || ocupado}>
-                <div className="row g-2 align-items-end">
-                  <Form.Group
-                    className="col-sm-3"
-                    controlId="vale-ia-chave-provedor"
-                  >
-                    <Form.Label>Provedor</Form.Label>
-                    <Form.Select
-                      value={provedorChave}
-                      onChange={(e) => {
-                        setProvedorChave(e.target.value as ProvedorExterno);
-                        setChave("");
-                      }}
-                    >
-                      <option value="gpt">GPT</option>
-                      <option value="claude">Claude</option>
-                    </Form.Select>
-                  </Form.Group>
-                  <Form.Group className="col-sm" controlId="vale-ia-chave">
-                    <Form.Label>Chave de API pessoal</Form.Label>
-                    <Form.Control
-                      type="password"
-                      autoComplete="off"
-                      spellCheck={false}
-                      maxLength={512}
-                      value={chave}
-                      onChange={(e) => setChave(e.target.value)}
-                    />
-                  </Form.Group>
-                  <div className="col-sm-auto">
-                    <Button type="submit" size="sm" disabled={!chave.trim()}>
-                      {salvando ? "Salvando…" : "Usar nesta sessão"}
-                    </Button>
-                  </div>
-                </div>
-                {estado.provedores
-                  .filter((p) => p.origem === "pessoal")
-                  .map((p) => (
-                    <Button
-                      key={p.id}
-                      variant="link"
-                      size="sm"
-                      type="button"
-                      onClick={() => void alterarChave(p.id)}
-                    >
-                      Remover chave pessoal de {nomeProvedor[p.id]}
-                    </Button>
-                  ))}
-              </fieldset>
-            </Form>
-          )}
-          {aviso && (
-            <p className="small" role="status">
-              {aviso}
-            </p>
-          )}
           {carregandoContexto && <p role="status">Carregando opções…</p>}
           <Form onSubmit={submit}>
-            <fieldset disabled={ocupado || carregandoContexto || salvando}>
+            <fieldset disabled={ocupado || carregandoContexto}>
               <div className="row g-2 mb-3">
                 <Form.Group
                   className="col-sm-4"
@@ -485,7 +354,7 @@ export function AssistenteVale() {
                   </Button>
                 ))}
               </div>
-              {estado.provedores.some((p) => p.origem) && (
+              {estado.provedores.some((p) => p.disponivel) && (
                 <Form.Group className="mb-2" controlId="assistente-provedor">
                   <Form.Label>Provedor para interpretar a pergunta</Form.Label>
                   <Form.Select
@@ -494,13 +363,10 @@ export function AssistenteVale() {
                   >
                     <option value="local">{nomeProvedor.local}</option>
                     {estado.provedores
-                      .filter((p) => p.origem)
-                      .map(({ id, origem }) => (
+                      .filter((p) => p.disponivel)
+                      .map(({ id }) => (
                         <option key={id} value={id}>
-                          {nomeProvedor[id]} ·{" "}
-                          {origem === "pessoal"
-                            ? "chave pessoal"
-                            : "projeto do Vale"}
+                          {nomeProvedor[id]} · projeto do Vale
                         </option>
                       ))}
                   </Form.Select>

@@ -19,7 +19,9 @@ As consultas de KM usam os registros da execução. O cadastro de fórmulas segu
 
 O login do Vale identifica o operador. O servidor revalida a sessão e o perfil atual e mantém até oito interações por sessão, em memória, por até 30 minutos de inatividade. Há um limite de oito consultas por minuto por usuário, uma consulta simultânea por usuário e quatro por instância. Os limites reiniciam junto com a instância.
 
-Depois de entrar no Vale, o operador pode abrir **Conexões de IA** e informar uma chave pessoal de API do GPT ou Claude. O servidor guarda a chave em memória durante a sessão, sem devolver seu valor ao navegador. O operador pode remover a chave, e o uso é cobrado no projeto que a emitiu. Se houver chave institucional, a seleção indica quando o provedor usa o projeto do Vale.
+O fluxo desejado para a conta pessoal começa no botão **Entrar com ChatGPT**. O Vale abre a página de autorização da OpenAI e, depois do retorno autorizado, associa a conexão à sessão já autenticada do operador. A competência, a filial e a tela de origem vêm do contexto do Vale. O assistente recebe os dados necessários para a pergunta por consultas de leitura autorizadas pelo perfil do operador.
+
+A ativação desse fluxo hospedado depende do registro OAuth do Vale e da autorização para usar o plano ChatGPT do operador. O cadastro precisa incluir o callback HTTPS de produção e solicitar expressamente o uso do plano. A OpenAI fornece o identificador do cliente, o método de autenticação e as permissões concedidas. [Registro OAuth](https://developers.openai.com/siwc/request-client-id) · [Uso do plano em aplicações hospedadas](https://developers.openai.com/siwc/token-sharing-open-source)
 
 GPT e Claude classificam a pergunta em um catálogo fechado. O Vale executa a consulta parametrizada e monta as tabelas, indicadores, links e arquivos. O histórico, os filtros estruturados, os registros e as credenciais do banco ficam no Vale. O usuário pode selecionar **Consultas do Vale** para interpretação local. Ao escolher um modelo externo, envie apenas a pergunta sem dados pessoais e use o campo de matrícula para identificar funcionários.
 
