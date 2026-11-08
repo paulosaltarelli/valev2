@@ -103,6 +103,13 @@ export class OperacaoController {
   preview(@Body() body: PedidoOperacao) {
     return this.service.preview(body, this.user.getJwtPayload().usuarioId);
   }
+  @Post(':id/fila/:acao')
+  controlQueue(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('acao') action: string,
+  ) {
+    return this.service.controlQueue(id, action, this.user.getJwtPayload().sessionId);
+  }
   @Post('executar')
   execute(@Body() body: PedidoOperacao) {
     const u = this.user.getJwtPayload();

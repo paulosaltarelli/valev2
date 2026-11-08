@@ -1,6 +1,8 @@
 -- Migração aditiva e reexecutável. Não apagar estas colunas em um rollback de aplicação.
 SET XACT_ABORT ON;
 BEGIN TRANSACTION;
+IF COL_LENGTH('dbo.execucao','controle_fila') IS NULL
+  ALTER TABLE dbo.execucao ADD controle_fila VARCHAR(12) NULL;
 IF COL_LENGTH('dbo.execucao_funcionario','revisao') IS NULL
   ALTER TABLE dbo.execucao_funcionario ADD revisao INT NOT NULL CONSTRAINT DF_resultado_revisao DEFAULT 1;
 IF COL_LENGTH('dbo.execucao_funcionario','conferido_revisao') IS NULL

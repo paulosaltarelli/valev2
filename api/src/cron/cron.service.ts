@@ -35,12 +35,13 @@ export class CronService {
       // 0) Destrava locks antigos (caso de crash/restart)
       await this.prisma.$executeRaw(
         Prisma.sql`
-        UPDATE dbo.execucao_queue
+        UPDATE q
         SET
-          status = CASE WHEN tentativas + 1 >= ${this.maxAttempts} THEN 'ERRO' ELSE 'PENDENTE' END,
+          status = CASE WHEN e.controle_fila = 'CANCELADA' THEN 'CANCELADO'
+                        WHEN tentativas + 1 >= ${this.maxAttempts} THEN 'ERRO' ELSE 'PENDENTE' END,
           tentativas = tentativas + 1,
           next_run_at = CASE
-            WHEN tentativas + 1 >= ${this.maxAttempts} THEN NULL
+            WHEN e.controle_fila = 'CANCELADA' OR tentativas + 1 >= ${this.maxAttempts} THEN NULL
             ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
           END,
           last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
@@ -53,15 +54,21 @@ export class CronService {
           lock_owner = NULL,
           locked_at = NULL,
           updated_at = SYSDATETIME()
-        WHERE status = 'PROCESSANDO'
+        FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+        WHERE q.status = 'PROCESSANDO'
           AND locked_at IS NOT NULL
           AND locked_at < DATEADD(MINUTE, -${this.staleLockMinutes}, SYSDATETIME());
+
+        UPDATE q SET status = 'CANCELADO', next_run_at = NULL, updated_at = SYSDATETIME()
+        FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+        WHERE q.status = 'PENDENTE' AND e.controle_fila = 'CANCELADA';
         `,
       );
 
       const runnable = Prisma.sql`
         q.status = 'PENDENTE'
         AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME())
+        AND EXISTS (SELECT 1 FROM dbo.execucao e WHERE e.execucao_id = q.execucao_id AND e.controle_fila IS NULL)
         AND NOT EXISTS (
           SELECT 1 FROM dbo.execucao_queue anterior
           WHERE anterior.execucao_id = q.execucao_id
@@ -113,11 +120,17 @@ export class CronService {
       }
 
       // 3) Claim (lock) de um batch de itens para esta execução/tipo
-      const claimed = await this.prisma.$queryRaw<
+      const claimed = await this.prisma.$transaction(async (tx) => {
+        const [{ controle_fila }] = await tx.$queryRaw<Array<{ controle_fila: string | null }>>(
+          Prisma.sql`SELECT controle_fila FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${execucaoId}`,
+        );
+        if (controle_fila) return [];
+        const rows = await tx.$queryRaw<
         Array<{
           queue_id: number;
           execucao_funcionario_base_id: number;
           session_id: string | null;
+          revisao_payload: string | null;
         }>
       >(
         Prisma.sql`
@@ -127,13 +140,22 @@ export class CronService {
           lock_owner = ${this.lockOwner},
           locked_at = SYSDATETIME(),
           updated_at = SYSDATETIME()
-        OUTPUT inserted.queue_id, inserted.execucao_funcionario_base_id, inserted.session_id
+        OUTPUT inserted.queue_id, inserted.execucao_funcionario_base_id, inserted.session_id, inserted.revisao_payload
         FROM dbo.execucao_queue q
         WHERE q.execucao_id = ${execucaoId}
           AND q.tipo = ${tipo}
           AND ${runnable};
         `,
       );
+        if (tipo !== 'ENVIAR_RM') {
+          const baseIds = rows.filter((row) => row.revisao_payload).map((row) => row.execucao_funcionario_base_id);
+          if (baseIds.length) await tx.execucao_funcionario.updateMany({
+            where: { execucao_funcionario_base_id: { in: baseIds } },
+            data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
+          });
+        }
+        return rows;
+      });
 
       if (!claimed || claimed.length === 0) {
         await this.syncExecucaoStatus(execucaoId);
@@ -731,6 +753,11 @@ export class CronService {
   }
 
   private async syncExecucaoStatus(execucaoId: number) {
+    await this.prisma.$executeRaw`
+      UPDATE q SET status = 'CANCELADO', next_run_at = NULL, updated_at = SYSDATETIME()
+      FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+      WHERE q.execucao_id = ${execucaoId} AND q.status = 'PENDENTE' AND e.controle_fila = 'CANCELADA'
+    `;
     const pendingCount = await this.prisma.$queryRaw<Array<{ cnt: number }>>(
       Prisma.sql`
       SELECT COUNT(1) as cnt

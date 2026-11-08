@@ -102,5 +102,53 @@ async function rejects(fn, status) { await assert.rejects(fn, e=>e.getStatus?.()
     assert.equal(after.excluded['Aguardando confirmação do RM'],1);
     await rejects(()=>service.execute(scope,uid,'sessao-ficticia'),400);
   });
+  const { CronService } = require('../dist/src/cron/cron.service');
+  const otherBase = await prisma.execucao_funcionario_base.create({ data: {
+    execucao_id: other.execucao_id, funcionario_id_rm: 'FICTICIO4', nome_funcionario: 'Pessoa fictícia',
+    codcoligada: 1, codfilial: 1, status: 'VARIAVEIS_PROCESSADAS',
+  } });
+  const visits = [];
+  const cron = new CronService(prisma, {
+    processarValoresBatch: async (id, rows) => {
+      visits.push(id);
+      await prisma.execucao_funcionario_base.updateMany({
+        where: { execucao_funcionario_base_id: { in: rows.map((row) => row.execucao_funcionario_base_id) } },
+        data: { status: 'RESULTADOS_PROCESSADOS' },
+      });
+      return {};
+    },
+  }, null);
+  const redo = { etapa: 'VALORES', execucaoIds: [eid], baseIds: [freshBase.execucao_funcionario_base_id], recalcular: true };
+  await check('pausar deixa outra execução avançar e retomar atualiza a sessão', async () => {
+    await service.execute(redo, uid, 'sessao-antiga');
+    await service.controlQueue(eid, 'pausar', 'sessao-antiga');
+    await rejects(() => service.execute(redo, uid, 'sessao-antiga'), 400);
+    await service.execute({ etapa: 'VALORES', execucaoIds: [other.execucao_id], baseIds: [otherBase.execucao_funcionario_base_id] }, uid, 'sessao-outra');
+    await cron.handleCheckVariablesToProcessExecution();
+    assert.deepEqual(visits, [other.execucao_id]);
+    assert.equal((await service.summary(period.periodo_id)).rows.find((r) => r.id === eid).situacao, 'pausada');
+    await service.controlQueue(eid, 'retomar', 'sessao-nova');
+    const pending = await prisma.execucao_queue.findFirstOrThrow({ where: { execucao_id: eid, status: 'PENDENTE' } });
+    assert.equal(pending.session_id, 'sessao-nova');
+    await cron.handleCheckVariablesToProcessExecution();
+    assert.deepEqual(visits, [other.execucao_id, eid]);
+  });
+  await check('cancelar preserva o resultado anterior do item pendente e permite novo agendamento', async () => {
+    await prisma.execucao_funcionario.update({
+      where: { execucao_funcionario_id: fresh.execucao_funcionario_id },
+      data: { status: 'PROCESSADO' },
+    });
+    await service.execute(redo, uid, 'sessao-nova');
+    await service.controlQueue(eid, 'cancelar', 'sessao-nova');
+    await cron.handleCheckVariablesToProcessExecution();
+    assert.equal(visits.length, 2);
+    assert.equal(await prisma.execucao_queue.count({ where: { execucao_id: eid, status: 'CANCELADO' } }), 1);
+    assert.equal((await prisma.execucao_funcionario.findUniqueOrThrow({
+      where: { execucao_funcionario_id: fresh.execucao_funcionario_id },
+    })).status, 'PROCESSADO');
+    await service.execute(redo, uid, 'sessao-nova');
+    await cron.handleCheckVariablesToProcessExecution();
+    assert.equal(visits.length, 3);
+  });
   console.log(`PASS ${passed} cenários de integração; nenhuma chamada ao RM.`);
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>prisma.$disconnect());

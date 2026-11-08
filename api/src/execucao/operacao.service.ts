@@ -49,6 +49,40 @@ export class OperacaoService {
     }
   }
 
+  async controlQueue(id: number, action: string, sessionId: string) {
+    if (!['pausar', 'retomar', 'cancelar'].includes(action))
+      throw new BadRequestException('Comando de fila inválido.');
+    return this.prisma.$transaction(async (tx) => {
+      await this.lock(tx, [id]);
+      const where = { execucao_id: id };
+      const execution = await tx.execucao.findUniqueOrThrow({ where });
+      const pending = { ...where, status: 'PENDENTE' };
+      if (action === 'retomar') {
+        if (execution.controle_fila !== 'PAUSADA')
+          throw new ConflictException('A execução precisa estar pausada para retomar.');
+        await tx.execucao_queue.updateMany({ where: pending, data: { session_id: sessionId } });
+        await tx.execucao.update({ where, data: { controle_fila: null } });
+        return { message: 'A execução voltou à fila.' };
+      }
+      if (execution.controle_fila === 'CANCELADA' ||
+          !(await tx.execucao_queue.count({ where: { ...where, status: { in: ativos } } })))
+        throw new ConflictException('A execução não tem trabalho disponível para este comando.');
+      if (action === 'cancelar') {
+        await tx.execucao_queue.updateMany({
+          where: pending,
+          data: { status: 'CANCELADO', next_run_at: null, updated_at: new Date() },
+        });
+      }
+      await tx.execucao.update({
+        where,
+        data: { controle_fila: action === 'pausar' ? 'PAUSADA' : 'CANCELADA' },
+      });
+      return { message: action === 'pausar'
+        ? 'Pausa registrada. O lote em andamento pode terminar.'
+        : 'Cancelamento registrado. O lote em andamento pode terminar.' };
+    });
+  }
+
   async summary(periodoId?: number) {
     const periodos = await this.prisma.periodo.findMany({
       orderBy: { data_inicio: 'desc' },
@@ -151,7 +185,11 @@ export class OperacaoService {
                 b.execucao_funcionario_base_id,
             ),
         ).length;
-        const situacao = errors
+        const situacao = e.controle_fila === 'PAUSADA'
+          ? (processing ? 'pausando' : 'pausada')
+          : e.controle_fila === 'CANCELADA'
+            ? (processing ? 'cancelando' : 'cancelada')
+            : errors
           ? 'acao'
           : processing
             ? 'andamento'
@@ -179,6 +217,7 @@ export class OperacaoService {
           errors,
           processing,
           pending,
+          controleFila: e.controle_fila,
           nextRunAt,
           lastActivityAt: jobs.reduce<Date | null>((last, q) =>
             !last || q.updated_at > last ? q.updated_at : last, null),
@@ -642,11 +681,24 @@ export class OperacaoService {
         })
       : [];
     const started = new Set(pendingReceipts.map((row) => row.resultado_id));
+    const draining = new Set((await tx.execucao_queue.findMany({
+      where: {
+        execucao_id: { in: p.execucaoIds },
+        status: { in: ativos },
+        execucao: { controle_fila: 'CANCELADA' },
+      },
+      select: { execucao_id: true },
+      distinct: ['execucao_id'],
+    })).map((q) => q.execucao_id));
     return bases.map((b) => {
       const results = b.execucao_funcionario;
-      let reason = b.execucao_queue.length
-        ? 'Etapa já agendada ou em andamento'
-        : '';
+      let reason = b.execucao.controle_fila === 'PAUSADA'
+        ? 'Retome ou cancele a fila pausada desta execução'
+        : draining.has(b.execucao_id)
+          ? 'Aguarde o lote em andamento encerrar'
+          : b.execucao_queue.length
+            ? 'Etapa já agendada ou em andamento'
+            : '';
       if (
         !reason &&
         p.etapa === 'VARIAVEIS' &&
@@ -777,12 +829,6 @@ export class OperacaoService {
       const eligible = items.filter(i => !i.reason);
       if (!eligible.length) throw new BadRequestException(items[0]?.reason || 'Nenhuma pessoa disponível para esta etapa.');
       for (const item of eligible) {
-        if (p.etapa !== 'ENVIAR_RM') {
-          await tx.execucao_funcionario.updateMany({
-            where: { execucao_funcionario_base_id: item.baseId },
-            data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
-          });
-        }
         await tx.execucao_queue.create({ data: {
           execucao_id: item.execucaoId,
           execucao_funcionario_base_id: item.baseId,
@@ -791,7 +837,7 @@ export class OperacaoService {
           revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos }),
         } });
       }
-      await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO' } });
+      await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO', controle_fila: null } });
       return { status: true, message: `${eligible.length} pessoa(s) na fila de ${p.etapa === 'VARIAVEIS' ? 'variáveis' : p.etapa === 'VALORES' ? 'valores' : 'envio ao RM'}.${items.length > eligible.length ? ` ${items.length - eligible.length} fora da fila por etapa concluída, incompleta ou já agendada.` : ''}` };
     }, { timeout: 60000 });
   }
@@ -831,17 +877,6 @@ export class OperacaoService {
             }
             continue;
           }
-          if (p.etapa !== 'ENVIAR_RM') {
-            await tx.execucao_funcionario.updateMany({
-              where: { execucao_funcionario_base_id: item.baseId },
-              data: {
-                status: 'PREVIA',
-                conferido_revisao: null,
-                conferido_por: null,
-                conferido_em: null,
-              },
-            });
-          }
           await tx.execucao_queue.create({
             data: {
               execucao_id: item.execucaoId,
@@ -862,7 +897,7 @@ export class OperacaoService {
               in: [...new Set(eligible.map((i) => i.execucaoId))],
             },
           },
-          data: { status: 'EM_PROCESSAMENTO' },
+          data: { status: 'EM_PROCESSAMENTO', controle_fila: null },
         });
         await tx.operacao_previa.update({
           where: { id },
@@ -889,6 +924,9 @@ export class OperacaoService {
     return this.prisma.$transaction(
       async (tx) => {
         await this.lock(tx, [execucaoId]);
+        const execution = await tx.execucao.findUniqueOrThrow({ where: { execucao_id: execucaoId } });
+        if (execution.controle_fila === 'CANCELADA')
+          return { status: true, message: 'Fila inicial cancelada.' };
         const bases = await tx.execucao_funcionario_base.findMany({
           where: {
             execucao_id: execucaoId,

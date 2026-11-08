@@ -26,6 +26,7 @@ model execucao {
   formula_id                Int?
   usuario_execucao          Int
   status                    String                      @db.VarChar(30)
+  controle_fila             String?                     @db.VarChar(12)
   data_execucao             DateTime                    @default(dbgenerated("sysdatetime()"), map: "DF__execucao__data_e__4F7CD00D")
   filial                    filial                      @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_execucao_filial")
   formula                   formula?                    @relation(fields: [formula_id], references: [formula_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_execucao_formula")

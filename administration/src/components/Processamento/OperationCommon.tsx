@@ -113,6 +113,10 @@ export const situacoes: Record<
     tone: "info",
     tab: "acompanhamento",
   },
+  pausando: { label: "Pausando após o lote", action: "Acompanhar", tone: "warning", tab: "acompanhamento" },
+  pausada: { label: "Fila pausada", action: "Abrir execução", tone: "warning", tab: "acompanhamento" },
+  cancelando: { label: "Cancelando após o lote", action: "Acompanhar", tone: "warning", tab: "acompanhamento" },
+  cancelada: { label: "Fila cancelada", action: "Abrir execução", tone: "neutral", tab: "acompanhamento" },
   conferencia: {
     label: "Valores calculados",
     action: "Ver resultados",
