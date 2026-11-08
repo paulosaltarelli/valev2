@@ -97,6 +97,12 @@
   background: var(--op-blue-soft);
   color: var(--op-blue);
 }
+.ve-report-table { font-variant-numeric: tabular-nums; }
+.ve-report-table th:first-child { min-width: 220px; }
+.ve-report-table :is(td, th) { overflow-wrap: anywhere; }
+.ve-report-table .ve-report-number { text-align: right; white-space: nowrap; }
+.ve-report-table details { min-width: 130px; max-width: 270px; }
+.ve-report-table small { display: block; color: var(--op-muted); }
 .ve-page .ve-icon-action {
   min-width: 36px;
   min-height: 36px;

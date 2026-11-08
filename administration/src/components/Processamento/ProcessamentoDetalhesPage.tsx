@@ -514,8 +514,8 @@ export function ProcessamentoDetalhesPage() {
   }, [query.data]);
   const exec = query.data?.execucao;
   const rawReturn = params.get("retorno");
-  const fromFailureReport = rawReturn === "/falhas-por-causa" || rawReturn?.startsWith("/falhas-por-causa?");
-  const returnTo = rawReturn && (rawReturn.startsWith("/processamento?") || fromFailureReport)
+  const reportReturn = ["/falhas-por-causa", "/fechamento", "/variacao-competencias"].some(path => rawReturn === path || rawReturn?.startsWith(path + "?"));
+  const returnTo = rawReturn && (rawReturn.startsWith("/processamento?") || reportReturn)
     ? rawReturn
     : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;
   const command = useOperationAction(setNotice, () => {
@@ -544,7 +544,7 @@ export function ProcessamentoDetalhesPage() {
   return (
     <div className="op-page op-detail-page">
       <Link className="op-back" to={returnTo}>
-        ← {fromFailureReport ? "Voltar a Falhas por causa" : "Voltar à operação"}
+        ← {reportReturn ? "Voltar ao relatório" : "Voltar à operação"}
       </Link>
       <header className="op-page-head">
         <div>
