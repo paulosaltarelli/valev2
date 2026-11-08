@@ -123,6 +123,7 @@
 }
 .op-page input[type="checkbox"],
 .op-modal input[type="checkbox"] {
+  appearance: auto;
   width: 19px;
   height: 19px;
   flex-shrink: 0;
@@ -410,6 +411,17 @@ small {
 }
 .op-choices legend {
   font-size: 16px;
+}
+.op-choices .op-check {
+  margin: 4px 0;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.op-choices .op-check:has(input:checked) {
+  border-color: var(--op-blue);
+  background: var(--op-blue-soft);
 }
 .op-modal .modal-content {
   background: var(--op-surface);

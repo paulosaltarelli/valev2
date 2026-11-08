@@ -546,7 +546,11 @@ export function ProcessamentoPage() {
               className="btn btn-primary"
               disabled={saving || !createIds.length}
             >
-              {saving ? "Agendando…" : `Criar ${createIds.length} execuções`}
+              {saving
+                ? "Agendando…"
+                : createIds.length > 1
+                  ? `Criar ${createIds.length} execuções`
+                  : "Criar execução"}
             </button>
           </Modal.Footer>
         </form>
