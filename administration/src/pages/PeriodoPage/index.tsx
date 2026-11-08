@@ -247,14 +247,12 @@ export function PeriodoPage() {
                     </Button>
                   </div>
                 ),
-                data_inicio: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
-                data_fim: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
+                data_inicio: (data: unknown, type: string, _row: Periodo) => type === "display" || type === "filter"
+                  ? FunctionsHelper.formatDateOnlyPtBr(data) : String(data ?? ""),
+                data_fim: (data: unknown, type: string, _row: Periodo) => type === "display" || type === "filter"
+                  ? FunctionsHelper.formatDateOnlyPtBr(data) : String(data ?? ""),
                 ativo: (ativo: boolean) => (
-                  <span className={`ve-state ${ativo ? "ve-state-active" : ""}`}>{ativo ? "Ativa" : "Encerrada"}</span>
+                  <span className={`ve-state ${ativo ? "ve-state-active" : ""}`}>{ativo ? "Ativa" : "Inativa"}</span>
                 ),
               }}
             >

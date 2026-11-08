@@ -174,12 +174,12 @@ export function FilialPage() {
               data={filiais}
               columns={columns}
               slots={{
-                nome: (nome: string, row: Filial) => (
+                nome: (nome: string, type: string, row: Filial) => type === "display" ? (
                   <div><span>{nome}</span><div className="ve-row-links">
                     <button type="button" onClick={() => handleVariaveisFilial(row.filial_id)} aria-label={`Variáveis de ${nome}`}><Icon icon="hugeicons:variable" width={16} />Variáveis</button>
                     <button type="button" onClick={() => handleFormulasFilial(row.filial_id)} aria-label={`Fórmulas de ${nome}`}><Icon icon="hugeicons:function-square" width={16} />Fórmulas</button>
                   </div></div>
-                ),
+                ) : nome,
                 actions: (row: Filial) => (
                   <div>
                     <Button
