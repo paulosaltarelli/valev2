@@ -185,10 +185,12 @@ export function StageCount({
   label,
   value,
   total,
+  showBar = true,
 }: {
   label: string;
   value: number;
   total: number;
+  showBar?: boolean;
 }) {
   return (
     <div className="op-stage">
@@ -197,11 +199,11 @@ export function StageCount({
         {value.toLocaleString("pt-BR")}{" "}
         <span>/ {total.toLocaleString("pt-BR")}</span>
       </span>
-      <progress
+      {showBar && <progress
         aria-label={`${label}: ${value} de ${total} funcionários`}
         value={value}
         max={total || 1}
-      />
+      />}
     </div>
   );
 }

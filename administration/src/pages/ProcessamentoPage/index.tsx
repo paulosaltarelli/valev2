@@ -15,6 +15,7 @@ import { filialApi } from "../../utils/api/filialApi";
 import type { Filial } from "../../models/FilialModel";
 import {
   dateTime,
+  etapaLabel,
   errorMessage,
   useOperationAction,
   QueryNotice,
@@ -368,6 +369,17 @@ export function ProcessamentoPage() {
                   {rows.map((r) => {
                     const s = situacoes[r.situacao] ?? situacoes.inicio;
                     const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, retorno: returnTo })}`;
+                    // A fila pode incluir a próxima etapa; só nomeie a etapa se o tipo for único.
+                    const singleStage = r.etapas.length === 1 ? r.etapas[0] : null;
+                    const stageDone = singleStage === "VARIAVEIS" ? r.variaveis
+                      : singleStage === "VALORES" ? r.valores
+                      : singleStage === "ENVIAR_RM" ? r.rm
+                      : null;
+                    const progressMax = r.total * (stageDone === null ? 3 : 1);
+                    const progressValue = stageDone ?? (r.variaveis + r.valores + r.rm);
+                    const progressLabel = stageDone === null
+                      ? "Avanço da execução"
+                      : etapaLabel(singleStage!);
                     return (
                       <tr key={r.id}>
                         <th scope="row">
@@ -391,6 +403,16 @@ export function ProcessamentoPage() {
                           <small>
                             {r.total} funcionários · execução #{r.id}
                           </small>
+                          {r.processing > 0 && progressMax > 0 && (
+                            <div className="op-branch-progress">
+                              <span>{progressLabel}</span>
+                              <progress
+                                aria-label={`${progressLabel} · ${r.filial}`}
+                                value={progressValue}
+                                max={progressMax}
+                              />
+                            </div>
+                          )}
                           {history && (
                             <small>
                               {dateTime(r.createdAt)} ·{" "}
@@ -403,6 +425,7 @@ export function ProcessamentoPage() {
                             label="Variáveis"
                             value={r.variaveis}
                             total={r.total}
+                            showBar={false}
                           />
                         </td>
                         <td data-label="Valores">
@@ -410,10 +433,11 @@ export function ProcessamentoPage() {
                             label="Valores"
                             value={r.valores}
                             total={r.total}
+                            showBar={false}
                           />
                         </td>
                         <td data-label="RM">
-                          <StageCount label="RM" value={r.rm} total={r.total} />
+                          <StageCount label="RM" value={r.rm} total={r.total} showBar={false} />
                         </td>
                         <td>
                           <span className={`op-status op-${s.tone}`}>
