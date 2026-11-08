@@ -515,7 +515,7 @@ export function ProcessamentoDetalhesPage() {
   const exec = query.data?.execucao;
   const rawReturn = params.get("retorno");
   const fromFailureReport = rawReturn === "/falhas-por-causa" || rawReturn?.startsWith("/falhas-por-causa?");
-  const returnTo = rawReturn?.startsWith("/processamento?") || fromFailureReport
+  const returnTo = rawReturn && (rawReturn.startsWith("/processamento?") || fromFailureReport)
     ? rawReturn
     : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;
   const command = useOperationAction(setNotice, () => {

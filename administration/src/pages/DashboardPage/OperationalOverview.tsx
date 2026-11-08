@@ -34,7 +34,11 @@ export function OperationalOverview({ activePeriodIds, branches }: {
   const running = rows.filter((row) => row.processing > 0 || row.pending > 0);
   const ready = rows.filter((row) => row.latest && row.situacao === "envio");
   const occupied = new Set(rows.map((row) => `${row.periodoId}:${row.filialId}`));
-  const queued = new Set((query.data?.creation ?? []).map((item) => `${item.periodoId}:${item.filialId}`));
+  const activePeriods = new Map((query.data?.summaries ?? []).flatMap(({ periodo }) =>
+    periodo?.ativo ? [[periodo.periodo_id, periodo.competencia] as const] : []));
+  const creating = (query.data?.creation ?? []).filter((item) => activePeriods.has(item.periodoId) &&
+    !occupied.has(`${item.periodoId}:${item.filialId}`));
+  const queued = new Set(creating.map((item) => `${item.periodoId}:${item.filialId}`));
   const missing = (query.data?.summaries ?? []).flatMap(({ periodo }) =>
     periodo?.ativo ? branches.filter((branch) => {
       const key = `${periodo.periodo_id}:${branch.filialId}`;
@@ -105,7 +109,17 @@ export function OperationalOverview({ activePeriodIds, branches }: {
             ) : <p className="mb-0">Nenhuma execução neste recorte.</p>}
             </div>
             <h3 className="ve-section-title">Andamento da fila</h3>
-            {running.length ? <ul className="ve-operation-list" aria-label="Execuções na fila">
+            {running.length || creating.length ? <ul className="ve-operation-list" aria-label="Execuções na fila">
+              {creating.map((item) => <li key={`criacao-${item.queueId}`}>
+                <div>
+                  <Link to={`/processamento?periodo=${item.periodoId}`}>
+                    {branches.find((branch) => branch.filialId === item.filialId)?.nome ?? `Filial #${item.filialId}`}
+                  </Link>
+                  <small>{activePeriods.get(item.periodoId)} · Criação da execução</small>
+                  {item.nextRunAt && <small>Próxima tentativa {dateTime(item.nextRunAt)}</small>}
+                </div>
+                <span>{item.status === "PROCESSANDO" ? "Em andamento" : "Na fila"}</span>
+              </li>)}
               {running.map((row) => <li key={row.id}>
                 <div>
                   <Link to={`/processamento/${row.id}?aba=acompanhamento`}>{row.filial}</Link>
