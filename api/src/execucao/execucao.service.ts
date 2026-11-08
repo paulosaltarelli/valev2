@@ -12,6 +12,7 @@ import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
 import { OperacaoService } from './operacao.service';
+import { readRmVariable } from './rm-variable-result';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
 
 @Injectable()
@@ -1206,8 +1207,7 @@ export class ExecucaoService {
                   });
                   continue;
                 }
-                const raw = resultadoConsulta.data?.[0]?.RESULTADO;
-                const valorFinal = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+                const valorFinal = readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data);
                 if (!Number.isFinite(valorFinal)) {
                   throw new Error(`Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`);
                 }
@@ -1504,8 +1504,7 @@ export class ExecucaoService {
                 break;
               }
 
-              const raw = resultadoConsulta.data?.[0]?.RESULTADO;
-              const valorFinal = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+              const valorFinal = readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data);
               if (!Number.isFinite(valorFinal)) {
                 funcionarioOk = false;
                 this.logger.error(
