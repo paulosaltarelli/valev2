@@ -57,6 +57,15 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
   currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = []): VariationRow[] {
   const now = new Map(current.map(p => [personKey(p), p]));
   const before = new Map(previous.map(p => [personKey(p), p]));
+  const duplicates = new Set<string>();
+  for (const people of [current, previous]) {
+    const seen = new Set<string>();
+    for (const person of people) {
+      const key = personKey(person);
+      if (seen.has(key)) duplicates.add(key);
+      seen.add(key);
+    }
+  }
   const knownFormulas = (people: ReportPerson[], configured: ReportFormula[] = []) => {
     const formulas = new Map(configured.map(f => [formulaKey(f), f]));
     for (const person of people) for (const result of person.execucao_funcionario) {
@@ -96,7 +105,10 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
         anterior: old && hasCalculatedValue(old) ? old.valor_calculado!.toString() : null,
         diferenca: null, percentual: null, situacao: '', observacao: '',
       };
-      if (currentResults.length > 1 || previousResults.length > 1) {
+      if (duplicates.has(key)) {
+        row.atual = row.anterior = null;
+        row.situacao = 'Matrícula duplicada'; row.observacao = 'Há mais de um registro desta matrícula e coligada na execução. Consulte a origem antes de comparar.';
+      } else if (currentResults.length > 1 || previousResults.length > 1) {
         row.atual = row.anterior = null;
         row.situacao = 'Fórmula ambígua'; row.observacao = 'Mais de uma fórmula com o mesmo nome, evento, tipo e polaridade. Consulte o extrato.';
       } else if (!currentExists || !previousExists) {

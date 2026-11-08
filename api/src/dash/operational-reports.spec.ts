@@ -60,4 +60,8 @@ describe('operational reports',()=>{
     expect(rows).toHaveLength(1);expect(rows[0].formula).toBe('Valor futuro');
     expect(rows[0].atual).toBeNull();expect(rows[0].situacao).toBe('Erro de cálculo');
   });
+  it('flags duplicated employee identities instead of choosing one value silently',()=>{
+    const row=variationRows([person([result('10')]),person([result('20')])],[person([result('5')])],true,true)[0];
+    expect(row.situacao).toBe('Matrícula duplicada');expect(row.atual).toBeNull();expect(row.diferenca).toBeNull();
+  });
 });
