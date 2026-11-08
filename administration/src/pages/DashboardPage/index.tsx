@@ -721,6 +721,7 @@ export function DashboardPage() {
       {summary && (
         <OperationalOverview
           activePeriodIds={summary.periodos.filter((p) => p.ativo).map((p) => p.periodoId)}
+          branches={summary.filiais}
         />
       )}
       <div>

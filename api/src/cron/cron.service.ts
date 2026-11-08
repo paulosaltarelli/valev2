@@ -658,9 +658,11 @@ export class CronService {
           result = { status: false, message: msg };
         }
 
-        if (result?.status) {
+        const alreadyExists = typeof result?.data === 'object' && result.data !== null &&
+          'alreadyExists' in result.data && result.data.alreadyExists === true;
+        if (result?.status || alreadyExists) {
           // Auto-enfileira VARIAVEIS + VALORES (todos) quando o flag estiver ligado
-          const shouldAutoEnqueue = Boolean(item.processar_variaveis_valores);
+          const shouldAutoEnqueue = !alreadyExists && Boolean(item.processar_variaveis_valores);
           const createdId =
             result &&
             typeof result.data === 'object' &&

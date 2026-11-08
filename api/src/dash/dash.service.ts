@@ -79,6 +79,94 @@ export type DashSummary = {
 export class DashService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getFailureReport(periodoId?: number) {
+    const periodos = await this.prisma.periodo.findMany({
+      orderBy: [{ ativo: 'desc' }, { data_inicio: 'desc' }],
+      select: { periodo_id: true, competencia: true, ativo: true },
+    });
+    const periodo = periodoId ?? periodos[0]?.periodo_id ?? null;
+    if (periodo !== null && !periodos.some((item) => item.periodo_id === periodo)) {
+      throw new NotFoundException('Competência não encontrada.');
+    }
+    const executions = periodo === null ? [] : await this.prisma.execucao.findMany({
+      where: { periodo_id: periodo },
+      orderBy: { execucao_id: 'desc' },
+      select: { execucao_id: true, filial_id: true, filial: { select: { nome: true } } },
+    });
+    const latest = new Map<number, (typeof executions)[number]>();
+    for (const item of executions) {
+      if (!latest.has(item.filial_id)) latest.set(item.filial_id, item);
+    }
+    const byId = new Map([...latest.values()].map((item) => [item.execucao_id, item]));
+    const failures = byId.size === 0 ? [] : await this.prisma.execucao_funcionario_base.findMany({
+      where: {
+        execucao_id: { in: [...byId.keys()] },
+        status: { in: ['ERRO_VARIAVEIS', 'ERRO_RESULTADOS', 'RESULTADOS_PARCIAL', 'ERRO_RM'] },
+        execucao_queue: { none: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } },
+      },
+      select: {
+        execucao_id: true,
+        funcionario_id_rm: true,
+        status: true,
+        execucao_queue: {
+          where: { status: 'ERRO', last_error: { not: null } },
+          orderBy: { queue_id: 'desc' },
+          select: { tipo: true, last_error: true },
+        },
+        execucao_funcionario: {
+          where: { status: 'ERRO' },
+          select: { formula: { select: { nome: true } } },
+        },
+      },
+    });
+    const groups = new Map<string, {
+      stage: string;
+      cause: string;
+      executions: Map<number, { filial: string; people: Set<string> }>;
+    }>();
+    for (const failure of failures) {
+      const execution = byId.get(failure.execucao_id)!;
+      let stage = 'Cálculo';
+      let causes = [...new Set(failure.execucao_funcionario.map(({ formula }) => formula.nome))];
+      if (failure.status === 'ERRO_VARIAVEIS') {
+        stage = 'Variáveis';
+        const error = failure.execucao_queue.find((job) => job.tipo === 'VARIAVEIS')?.last_error;
+        const detail = (error ?? '').split(/\r?\n|\\n/u)
+          .map((line) => /\[ERRO_VARIAVEIS\]\s+([\w.-]+)\s*\(([^)]*)\)/u.exec(line))
+          .findLast((match) => match !== null);
+        causes = [detail ? `${detail[1]} · ${detail[2]}` : 'Consulta de variáveis sem causa registrada'];
+      } else if (failure.status === 'ERRO_RM') {
+        stage = 'Envio ao RM';
+        const error = failure.execucao_queue.find((job) => job.tipo === 'ENVIAR_RM')?.last_error ?? '';
+        causes = [/timeout|ETIMEDOUT|tempo limite/iu.test(error) ? 'Tempo limite no RM'
+          : /sessão|\b40[13]\b/iu.test(error) ? 'Sessão ou acesso ao RM' : 'Falha no envio ao RM'];
+      } else if (!causes.length) {
+        causes = ['Cálculo incompleto ou sem fórmula identificada'];
+      }
+      for (const cause of causes) {
+        const key = JSON.stringify([stage, cause]);
+        const group = groups.get(key) ?? { stage, cause, executions: new Map() };
+        const affected = group.executions.get(execution.execucao_id) ?? {
+          filial: execution.filial.nome,
+          people: new Set<string>(),
+        };
+        affected.people.add(failure.funcionario_id_rm);
+        group.executions.set(execution.execucao_id, affected);
+        groups.set(key, group);
+      }
+    }
+    return {
+      periodos,
+      periodo,
+      groups: [...groups.entries()].map(([id, group]) => {
+        const affected = [...group.executions.entries()].map(([execucaoId, item]) => ({
+          execucaoId, filial: item.filial, count: item.people.size,
+        })).sort((a, b) => b.count - a.count || a.filial.localeCompare(b.filial, 'pt-BR'));
+        return { id, stage: group.stage, cause: group.cause, affected, count: affected.reduce((sum, item) => sum + item.count, 0) };
+      }).sort((a, b) => b.count - a.count || a.cause.localeCompare(b.cause, 'pt-BR')),
+    };
+  }
+
   async getProcessamentoOptions(periodoId?: number) {
     const periodos = await this.prisma.periodo.findMany({
       where: { OR: [{ ativo: true }, { execucao: { some: {} } }] },

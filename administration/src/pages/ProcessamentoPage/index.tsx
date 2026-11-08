@@ -125,6 +125,17 @@ export function ProcessamentoPage() {
   );
   const branchNeedle = branchSearch.trim().normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
   const activeBranches = filiais.filter((f) => f.ativa);
+  const activeCreation = (creation.data ?? []).filter((q) =>
+    ["PENDENTE", "PROCESSANDO"].includes(q.status),
+  );
+  const existingBranches = new Set((query.data?.rows ?? []).map((r) => r.filialId));
+  const queuedBranches = new Set(activeCreation
+    .filter((item) => item.periodoId === query.data?.periodo?.periodo_id)
+    .map((item) => item.filialId));
+  const eligibleBranches = activeBranches.filter((f) =>
+    !existingBranches.has(f.filial_id) && !queuedBranches.has(f.filial_id));
+  const eligibleIds = new Set(eligibleBranches.map((f) => f.filial_id));
+  const selectedCreationIds = createIds.filter((id) => eligibleIds.has(id));
   const visibleBranches = activeBranches.filter((f) =>
     f.nome.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().includes(branchNeedle));
   const totals = current.reduce(
@@ -141,9 +152,6 @@ export function ProcessamentoPage() {
       (query.data?.rows ?? []).map((r) => [r.filialId, r.filial]),
     ).entries(),
   ).sort((a, b) => a[1].localeCompare(b[1]));
-  const activeCreation = (creation.data ?? []).filter((q) =>
-    ["PENDENTE", "PROCESSANDO"].includes(q.status),
-  );
   const openCreate = async () => {
     setCreate(true);
     setCreateError("");
@@ -157,12 +165,12 @@ export function ProcessamentoPage() {
   };
   const submitCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (!query.data?.periodo) return;
+    if (!query.data?.periodo || !selectedCreationIds.length) return;
     setSaving(true);
     setCreateError("");
     try {
       const r = await ExecucaoApi.enqueueCreateExecucaoBatch({
-        filialIds: createIds,
+        filialIds: selectedCreationIds,
         periodoId: query.data.periodo.periodo_id,
         processarVariaveisEValores: automatic,
       });
@@ -616,8 +624,7 @@ export function ProcessamentoPage() {
               </div>
             )}
             <p>
-              Selecione as filiais para esta competência. Execuções anteriores
-              permanecem no histórico.
+              Cada filial tem uma execução por competência. Para retomar uma etapa, abra a execução existente.
             </p>
             <label className="op-check">
               <input
@@ -641,21 +648,21 @@ export function ProcessamentoPage() {
               <button
                 type="button"
                 className="btn btn-outline-primary btn-sm"
-                disabled={saving || !activeBranches.some((f) => !createIds.includes(f.filial_id))}
-                onClick={() => setCreateIds(activeBranches.map((f) => f.filial_id))}
+                disabled={saving || !eligibleBranches.some((f) => !createIds.includes(f.filial_id))}
+                onClick={() => setCreateIds([...eligibleIds])}
               >
-                Selecionar todas as filiais
+                Selecionar filiais disponíveis
               </button>
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
-                disabled={saving || !createIds.length}
+                disabled={saving || !selectedCreationIds.length}
                 onClick={() => setCreateIds([])}
               >
                 Limpar seleção
               </button>
               <span className="op-muted" role="status">
-                {createIds.length === 1 ? "1 filial selecionada" : `${createIds.length} filiais selecionadas`}
+                {selectedCreationIds.length === 1 ? "1 filial selecionada" : `${selectedCreationIds.length} filiais selecionadas`}
               </span>
             </div>
             <fieldset className="op-choices">
@@ -665,7 +672,8 @@ export function ProcessamentoPage() {
                   <label className="op-check" key={f.filial_id}>
                     <input
                       type="checkbox"
-                      checked={createIds.includes(f.filial_id)}
+                      checked={eligibleIds.has(f.filial_id) && createIds.includes(f.filial_id)}
+                      disabled={saving || !eligibleIds.has(f.filial_id)}
                       onChange={(e) =>
                         setCreateIds((p) =>
                           e.target.checked
@@ -676,9 +684,8 @@ export function ProcessamentoPage() {
                     />
                     <span>
                       {f.nome}
-                      {current.some((r) => r.filialId === f.filial_id) && (
-                        <small>Já possui execução nesta competência</small>
-                      )}
+                      {existingBranches.has(f.filial_id) ? <small>Já tem execução nesta competência</small>
+                        : queuedBranches.has(f.filial_id) ? <small>Na fila de criação</small> : null}
                     </span>
                   </label>
                 ))}
@@ -695,12 +702,12 @@ export function ProcessamentoPage() {
             </button>
             <button
               className="btn btn-primary"
-              disabled={saving || !createIds.length}
+              disabled={saving || !selectedCreationIds.length}
             >
               {saving
                 ? "Agendando…"
-                : createIds.length > 1
-                  ? `Criar ${createIds.length} execuções`
+                : selectedCreationIds.length > 1
+                  ? `Criar ${selectedCreationIds.length} execuções`
                   : "Criar execução"}
             </button>
           </Modal.Footer>

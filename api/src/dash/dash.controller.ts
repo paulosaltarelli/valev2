@@ -15,6 +15,17 @@ import { DashService, type DashSummary } from './dash.service';
 export class DashController {
   constructor(private readonly dashService: DashService) {}
 
+  @Get('reports/falhas')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  getFailureReport(@Query('periodoId') periodoId?: string) {
+    const id = periodoId === undefined ? undefined : Number(periodoId);
+    if (id !== undefined && (!Number.isSafeInteger(id) || id < 1)) {
+      throw new BadRequestException('Competência inválida.');
+    }
+    return this.dashService.getFailureReport(id);
+  }
+
   @Get('reports/processamento/opcoes')
   @UseGuards(JwtAuthGuard)
   @Header('Cache-Control', 'no-store')

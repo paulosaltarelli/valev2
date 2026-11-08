@@ -320,7 +320,7 @@ export class ExecucaoService {
     return execucoes;
   }
 
-  async getExecucaoById(execucaoId: number): Promise<
+  async getExecucaoById(execucaoId: number, db: Prisma.TransactionClient = this.prisma): Promise<
     Prisma.execucaoGetPayload<{
       include: {
         filial: {
@@ -344,7 +344,7 @@ export class ExecucaoService {
       };
     }>
   > {
-    const execucao = await this.prisma.execucao.findUnique({
+    const execucao = await db.execucao.findUnique({
       where: { execucao_id: execucaoId },
       include: {
         filial: {
@@ -377,6 +377,17 @@ export class ExecucaoService {
     return execucao;
   }
 
+  private async lockCreation(tx: Prisma.TransactionClient, filialId: number, periodoId: number) {
+    const resource = `vale:execucao:${filialId}:${periodoId}`;
+    const [lock] = await tx.$queryRaw<Array<{ result: number }>>`
+      DECLARE @result int;
+      EXEC @result = sp_getapplock @Resource = ${resource}, @LockMode = 'Exclusive',
+        @LockOwner = 'Transaction', @LockTimeout = 5000;
+      SELECT @result AS result;
+    `;
+    if (!lock || lock.result < 0) throw new Error('Outra criação está em andamento. Tente novamente.');
+  }
+
   async createExecucao(
     filialId: number,
     execucao: Partial<execucao>,
@@ -384,61 +395,44 @@ export class ExecucaoService {
     sessionId: string,
   ): Promise<{ status: boolean; message: string; data?: unknown }> {
     try {
-      // Validação: precisa existir ao menos 1 fórmula ativa na filial
-      const formulaAtiva =
-        await this.formulaService.getActiveFormulaByFilialId(filialId);
-      if (!formulaAtiva) throw new NotFoundException('Formula not found');
-
-      const newExecucao = {
-        filial_id: filialId,
-        periodo_id: execucao.periodo_id,
-        // Multi-fórmula: sempre usar as fórmulas ativas atuais da filial no processamento.
-        // Mantemos o campo apenas por compatibilidade, mas gravamos NULL.
-        formula_id: null,
-        status: 'AGUARDANDO',
-        data_execucao: new Date(),
-        usuario_execucao: usuarioId,
-      } as Prisma.execucaoUncheckedCreateInput;
-
-      const createdExecucao = await this.prisma.execucao.create({
-        data: newExecucao,
-      });
-      if (!createdExecucao) throw new Error('Erro ao criar execucao');
-
-      const createdExecfuncResult = await this.createExecucaoFuncionarioBase(
-        createdExecucao.execucao_id,
-        sessionId,
-      );
-      if (!createdExecfuncResult.status) {
-        //se deu erro ao criar a execucao funcionario base, deleta a execucao criada
-        await this.prisma.execucao.delete({
-          where: { execucao_id: createdExecucao.execucao_id },
-        });
-        return {
-          status: false,
-          message: createdExecfuncResult.message,
-          data: createdExecfuncResult.data,
-        };
+      filialId = Number(filialId);
+      const periodoId = Number(execucao.periodo_id);
+      if (![filialId, periodoId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+        return { status: false, message: 'Filial ou competência inválida.' };
       }
-      const createdFuncExecResult = await this.createExecucaoFuncionarios(
-        createdExecucao.execucao_id,
-      );
-      if (!createdFuncExecResult.status) {
-        //se deu erro ao criar a execucao funcionarios, deleta a execucao criada
-        await this.prisma.execucao.delete({
-          where: { execucao_id: createdExecucao.execucao_id },
+      return await this.prisma.$transaction(async (tx) => {
+        await this.lockCreation(tx, filialId, periodoId);
+        const existing = await tx.execucao.findFirst({
+          where: { filial_id: filialId, periodo_id: periodoId },
+          orderBy: { execucao_id: 'desc' },
+          select: { execucao_id: true },
         });
-        return {
+        if (existing) return {
           status: false,
-          message: createdFuncExecResult.message,
-          data: createdFuncExecResult.data,
+          message: 'Esta filial já tem execução nesta competência. Use a execução existente.',
+          data: { execucaoId: existing.execucao_id, alreadyExists: true },
         };
-      }
-      return {
-        status: true,
-        message: 'Execucao criada com sucesso',
-        data: { execucaoId: createdExecucao.execucao_id },
-      };
+        if (!await this.formulaService.getActiveFormulaByFilialId(filialId)) {
+          throw new NotFoundException('Formula not found');
+        }
+        const created = await tx.execucao.create({ data: {
+          filial_id: filialId,
+          periodo_id: periodoId,
+          formula_id: null,
+          status: 'AGUARDANDO',
+          data_execucao: new Date(),
+          usuario_execucao: usuarioId,
+        } });
+        const bases = await this.createExecucaoFuncionarioBase(created.execucao_id, sessionId, tx);
+        if (!bases.status) throw new Error(bases.message);
+        const results = await this.createExecucaoFuncionarios(created.execucao_id, tx);
+        if (!results.status) throw new Error(results.message);
+        return {
+          status: true,
+          message: 'Execucao criada com sucesso',
+          data: { execucaoId: created.execucao_id },
+        };
+      }, { timeout: 120_000 });
     } catch (error) {
       if (error instanceof Error) {
         return {
@@ -456,9 +450,10 @@ export class ExecucaoService {
   async createExecucaoFuncionarioBase(
     execucaoId: number,
     sessionId: string,
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<{ status: boolean; message: string; data?: unknown }> {
     try {
-      const execucao = await this.getExecucaoById(execucaoId);
+      const execucao = await this.getExecucaoById(execucaoId, db);
       const codSentenca = execucao.filial.sql_codigo_rm; //SQL codigo RM da filial que traz os funcionarios
       if (!codSentenca) throw new NotFoundException('SQL codigo RM not found');
 
@@ -519,7 +514,7 @@ export class ExecucaoService {
       }
 
       const createdFuncBase =
-        await this.prisma.execucao_funcionario_base.createMany({
+        await db.execucao_funcionario_base.createMany({
           data: newFuncBaseData,
         });
       if (!createdFuncBase || Number(createdFuncBase.count ?? 0) === 0) {
@@ -531,7 +526,7 @@ export class ExecucaoService {
       }
 
       // Garante que todos os funcionários base comecem em PREVIA (mesmo que o default do banco mude futuramente)
-      await this.prisma.execucao_funcionario_base.updateMany({
+      await db.execucao_funcionario_base.updateMany({
         where: { execucao_id: execucaoId },
         data: { status: ExecucaoService.STATUS_FUNC_BASE.PREVIA },
       });
@@ -553,9 +548,10 @@ export class ExecucaoService {
 
   async createExecucaoFuncionarios(
     execucaoId: number,
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<{ status: boolean; message: string; data?: unknown }> {
     try {
-      const execucao = await this.getExecucaoById(execucaoId);
+      const execucao = await this.getExecucaoById(execucaoId, db);
       if (!execucao) throw new NotFoundException('Execucao not found');
       if (
         !execucao.execucao_funcionario_base ||
@@ -585,7 +581,7 @@ export class ExecucaoService {
           });
         }
       }
-      const createdFuncExec = await this.prisma.execucao_funcionario.createMany(
+      const createdFuncExec = await db.execucao_funcionario.createMany(
         {
           data: newFuncExecData,
         },
@@ -2118,60 +2114,42 @@ export class ExecucaoService {
         sessionId,
         processarVariaveisEValores,
       } = params;
-      if (!filialIds || filialIds.length === 0) {
+      if (!Array.isArray(filialIds) || filialIds.length === 0 ||
+          filialIds.some((id) => !Number.isSafeInteger(id) || id < 1)) {
         return { status: false, message: 'Nenhuma filial selecionada' };
       }
-      if (!periodoId) {
+      if (!Number.isSafeInteger(periodoId) || periodoId < 1) {
         return { status: false, message: 'Período inválido' };
       }
 
       let inserted = 0;
-      for (const filialId of filialIds) {
-        if (!filialId) continue;
-        const result = await this.prisma.$executeRaw(
-          Prisma.sql`
-          IF NOT EXISTS (
-            SELECT 1
-            FROM dbo.execucao_create_queue
-            WHERE filial_id = ${filialId}
-              AND periodo_id = ${periodoId}
-              AND status IN ('PENDENTE','PROCESSANDO')
-          )
-          BEGIN
-            INSERT INTO dbo.execucao_create_queue (
-              filial_id,
-              periodo_id,
-              usuario_execucao,
-              session_id,
-              processar_variaveis_valores,
-              status,
-              tentativas,
-              next_run_at,
-              created_at,
-              updated_at
-            ) VALUES (
-              ${filialId},
-              ${periodoId},
-              ${usuarioId},
-              ${sessionId},
-              ${processarVariaveisEValores ? 1 : 0},
-              'PENDENTE',
-              0,
-              NULL,
-              SYSDATETIME(),
-              SYSDATETIME()
-            )
-          END
-          `,
-        );
-        // $executeRaw retorna número de linhas afetadas; para IF/INSERT pode retornar 0/1
-        inserted += Number(result ?? 0);
+      const uniqueFiliais = [...new Set(filialIds)];
+      for (const filialId of uniqueFiliais) {
+        const queued = await this.prisma.$transaction(async (tx) => {
+          await this.lockCreation(tx, filialId, periodoId);
+          const scope = { filial_id: filialId, periodo_id: periodoId };
+          if (await tx.execucao.findFirst({ where: scope, select: { execucao_id: true } })) return false;
+          if (await tx.execucao_create_queue.findFirst({
+            where: { ...scope, status: { in: ['PENDENTE', 'PROCESSANDO'] } },
+            select: { queue_id: true },
+          })) return false;
+          await tx.execucao_create_queue.create({ data: {
+            ...scope,
+            usuario_execucao: usuarioId,
+            session_id: sessionId,
+            processar_variaveis_valores: Boolean(processarVariaveisEValores),
+          } });
+          return true;
+        }, { timeout: 15_000 });
+        if (queued) inserted++;
       }
 
       return {
-        status: true,
-        message: 'Processos iniciados com sucesso',
-        data: { inserted },
+        status: inserted > 0,
+        message: inserted === 0
+          ? 'As filiais selecionadas já têm execução ou estão na fila de criação.'
+          : `${inserted} execução(ões) agendada(s).${inserted < uniqueFiliais.length ? ' As demais filiais já têm execução ou estão na fila.' : ''}`,
+        data: { inserted, skipped: uniqueFiliais.length - inserted },
       };
     } catch (error) {
       console.error(error);

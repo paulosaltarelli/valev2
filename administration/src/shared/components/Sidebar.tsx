@@ -20,6 +20,7 @@ const navigation = [
     links: [
       ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"],
       ["/extrato-processamento", "Extrato de processamento", "mdi:table-large"],
+      ["/falhas-por-causa", "Falhas por causa", "mdi:alert-circle-outline"],
     ],
   },
   {
