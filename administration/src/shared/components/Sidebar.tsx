@@ -1,4 +1,4 @@
-import { NavLink, Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { Icon } from "@iconify/react";
 import { useThemeContext } from "../../contexts/ThemeContext/useThemeContext";
 import { ThemeActionsTypes } from "../../contexts/ThemeContext/themeActions";
@@ -7,38 +7,17 @@ import expressoLogo from "../../assets/images/expresso.png";
 import expressoLogoWhite from "../../assets/images/expresso_w.png";
 
 const navigation = [
-  {
-    label: "Operação",
-    links: [
-      ["/dashboard", "Visão geral", "mdi:home-outline"],
-      ["/processamento", "Operação por competência", "mdi:clipboard-list-outline"],
-      ["/gestao-km", "Gestão de KM", "mdi:map-marker-distance"],
-    ],
-  },
-  {
-    label: "Análise",
-    links: [
-        ["/fechamento", "Fechamento por filial", "mdi:clipboard-check-outline"],
-        ["/variacao-competencias", "Variação entre competências", "mdi:compare-horizontal"],
-      ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"],
-      ["/extrato-processamento", "Extrato de processamento", "mdi:table-large"],
-      ["/falhas-por-causa", "Falhas por causa", "mdi:alert-circle-outline"],
-    ],
-  },
-  {
-    label: "Regras e cadastros",
-    adminOnly: true,
-    links: [
-      ["/filial", "Filiais e regras", "mdi:store-outline"],
-      ["/periodo", "Competências", "mdi:calendar-month-outline"],
-    ],
-  },
-  { label: 'Administração', adminOnly: true, links: [['/usuarios', 'Usuários e acesso', 'mdi:account-outline']] },
+  { path: "/dashboard", label: "Visão geral", icon: "mdi:home-outline", sections: ["dashboard"] },
+  { path: "/processamento", label: "Processamentos", icon: "mdi:clipboard-list-outline", sections: ["processamento"] },
+  { path: "/gestao-km", label: "Gestão de KM", icon: "mdi:map-marker-distance", sections: ["gestao-km"] },
+  { path: "/fechamento", label: "Análise", icon: "mdi:chart-box-outline", sections: ["fechamento", "variacao-competencias", "relatorios", "extrato-processamento", "falhas-por-causa"] },
+  { path: "/filial", label: "Cadastros", icon: "mdi:store-outline", sections: ["filial", "periodo", "usuarios"], adminOnly: true },
 ];
 
 export function Sidebar() {
   const { state, dispatch } = useThemeContext();
   const { state: appState } = useAppContext();
+  const section = useLocation().pathname.split("/")[1];
   const closeMobileMenu = () => {
     if (state.mobileMenu) dispatch({ type: ThemeActionsTypes.TOGGLE_MOBILE_MENU });
   };
@@ -68,24 +47,22 @@ export function Sidebar() {
       <nav className="sidebar-menu-area" aria-label="Menu principal">
         <ul className="sidebar-menu" id="sidebar-menu">
           {navigation
-            .filter((group) => !group.adminOnly || appState.user.perfil === "admin")
-            .flatMap(({ label, links }) => [
-              <li key={label} className="sidebar-menu-group-title">{label}</li>,
-              ...links.map(([path, name, icon]) => (
+            .filter((item) => !item.adminOnly || appState.user.perfil === "admin")
+            .map(({ path, label, icon, sections }) => (
                 <li key={path}>
-                  <NavLink
+                  <Link
                     to={path}
-                    title={name}
-                    aria-label={name}
+                    title={label}
+                    aria-label={label}
+                    aria-current={sections.includes(section) ? "location" : undefined}
                     onClick={closeMobileMenu}
-                    className={({ isActive }) => isActive ? "active-page" : ""}
+                    className={sections.includes(section) ? "active-page" : ""}
                   >
                     <Icon icon={icon} className="menu-icon" aria-hidden="true" />
-                    <span>{name}</span>
-                  </NavLink>
+                    <span>{label}</span>
+                  </Link>
                 </li>
-              )),
-            ])}
+              ))}
         </ul>
       </nav>
     </aside>
