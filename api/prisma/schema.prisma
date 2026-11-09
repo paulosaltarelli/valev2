@@ -12,6 +12,7 @@ model assistente_configuracao {
   claude_ativo  Boolean  @default(false)
   claude_modelo String   @db.VarChar(80)
   atualizado_em DateTime @updatedAt
+  claude_chave  String?  @db.VarChar(Max)
 }
 
 model ajuste_manual {

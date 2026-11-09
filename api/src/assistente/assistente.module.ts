@@ -14,6 +14,7 @@ import {
   Put,
   Req,
   Query,
+  ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -24,6 +25,8 @@ import { DashModule } from '../dash/dash.module';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { ExecucaoModule } from '../execucao/execucao.module';
 import { PrismaService } from '../prisma/prisma.service';
+import { CryptoModule } from '../security/crypto.module';
+import { CryptoService } from '../security/crypto.service';
 import { AssistenteConsultas } from './assistente-consultas';
 import { AssistenteConfiguracaoDto, AssistenteDto } from './assistente.dto';
 import { provedores, selecionarConsulta } from './assistente-intencao';
@@ -98,6 +101,7 @@ export class AssistenteController {
     private readonly sessoes: AssistenteSessoes,
     private readonly consultas: AssistenteConsultas,
     private readonly relatorios: OperationalReportsService,
+    private readonly crypto: CryptoService,
   ) {}
 
   private async autorizar(req: Request, apenasAdmin = false) {
@@ -137,13 +141,13 @@ export class AssistenteController {
   @Header('Cache-Control', 'no-store')
   async estado(@Req() req: Request) {
     const usuario = await this.autorizar(req);
-    const config = process.env.ANTHROPIC_API_KEY
-      ? await this.prisma.assistente_configuracao.findUnique({
-          where: { id: 1 },
-        })
-      : null;
+    const config = await this.prisma.assistente_configuracao.findUnique({
+      where: { id: 1 },
+    });
     return {
-      provedores: provedores(config?.claude_ativo),
+      provedores: provedores(
+        Boolean(config?.claude_ativo && config.claude_chave),
+      ),
       historico: this.sessoes.ler(usuario.chave),
     };
   }
@@ -158,7 +162,7 @@ export class AssistenteController {
     return {
       ativo: config.claude_ativo,
       modelo: config.claude_modelo,
-      credencialConfigurada: Boolean(process.env.ANTHROPIC_API_KEY),
+      credencialConfigurada: Boolean(config.claude_chave),
     };
   }
 
@@ -170,15 +174,28 @@ export class AssistenteController {
   ) {
     await this.autorizar(req, true);
     this.validarOrigem(req);
-    if (input.ativo && !process.env.ANTHROPIC_API_KEY)
-      throw new BadRequestException(
-        'Configure a credencial institucional no servidor antes de ativar Claude.',
-      );
-    await this.prisma.assistente_configuracao.update({
+    const config = await this.prisma.assistente_configuracao.findUniqueOrThrow({
       where: { id: 1 },
-      data: { claude_ativo: input.ativo, claude_modelo: input.modelo },
     });
-    return { salvo: true };
+    if (input.ativo && !input.chave && !config.claude_chave)
+      throw new BadRequestException(
+        'Cadastre a chave da Anthropic antes de ativar Claude.',
+      );
+    const salva = await this.prisma.assistente_configuracao.update({
+      where: { id: 1 },
+      data: {
+        claude_ativo: input.ativo,
+        claude_modelo: input.modelo,
+        ...(input.chave && {
+          claude_chave: this.crypto.encryptJson(input.chave),
+        }),
+      },
+    });
+    return {
+      ativo: salva.claude_ativo,
+      modelo: salva.claude_modelo,
+      credencialConfigurada: Boolean(salva.claude_chave),
+    };
   }
 
   @Post('configuracao/testar')
@@ -190,13 +207,33 @@ export class AssistenteController {
     const usuario = await this.autorizar(req, true);
     this.validarOrigem(req);
     return this.sessoes.consultar(usuario.id, async () => {
+      const config =
+        await this.prisma.assistente_configuracao.findUniqueOrThrow({
+          where: { id: 1 },
+        });
+      const chave = input.chave ?? this.lerChaveClaude(config.claude_chave);
+      if (!chave)
+        throw new BadRequestException(
+          'Informe a chave da Anthropic para testar.',
+        );
       await selecionarConsulta(
         { provedor: 'claude', pergunta: 'Como funciona o Vale Expresso?' },
-        input.modelo,
+        { modelo: input.modelo, chave },
         true,
       );
       return { conectado: true };
     });
+  }
+
+  private lerChaveClaude(credencial: string | null | undefined) {
+    if (!credencial) return undefined;
+    try {
+      return this.crypto.decryptJson<string>(credencial);
+    } catch {
+      throw new ServiceUnavailableException(
+        'Não foi possível ler a chave cadastrada. Cadastre-a novamente.',
+      );
+    }
   }
 
   private validarOrigem(req: Request) {
@@ -246,9 +283,13 @@ export class AssistenteController {
               where: { id: 1 },
             })
           : null;
+      const chave = config?.claude_ativo
+        ? this.lerChaveClaude(config.claude_chave)
+        : undefined;
       const intent = await selecionarConsulta(
         input,
-        config?.claude_ativo ? config.claude_modelo : undefined,
+        config && chave ? { modelo: config.claude_modelo, chave } : undefined,
+        input.provedor === 'claude',
       );
       if (
         input.matricula &&
@@ -275,7 +316,7 @@ export class AssistenteController {
 }
 
 @Module({
-  imports: [ExecucaoModule, DashModule],
+  imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [AssistenteSessoes, AssistenteConsultas],
 })

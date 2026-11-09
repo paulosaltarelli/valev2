@@ -7,20 +7,14 @@ import {
   AssistenteDto,
   Intent,
   intents,
-  ProvedorExterno,
   provedoresExternos,
 } from './assistente.dto';
 
-function chaveDoVale(provedor: ProvedorExterno) {
-  return provedor === 'gpt'
-    ? process.env.OPENAI_API_KEY
-    : process.env.ANTHROPIC_API_KEY;
-}
-
-export function provedores(claudeAtivo = false) {
+export function provedores(claudeDisponivel = false) {
   return provedoresExternos.map((id) => ({
     id,
-    disponivel: Boolean(chaveDoVale(id)) && (id !== 'claude' || claudeAtivo),
+    disponivel:
+      id === 'claude' ? claudeDisponivel : Boolean(process.env.OPENAI_API_KEY),
   }));
 }
 
@@ -49,16 +43,17 @@ export function intencaoLocal(texto: string): Intent {
 
 export async function selecionarConsulta(
   input: AssistenteDto,
-  modeloClaude?: string,
-  teste = false,
+  claude?: { modelo: string; chave: string },
+  exigirRespostaDoProvedor = false,
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
+  if (provedor === 'claude' && !claude)
+    throw new BadRequestException('Claude está desativado no Vale.');
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
   if (provedor === 'local') return local;
-  if (provedor === 'claude' && !modeloClaude)
-    throw new BadRequestException('Claude está desativado no Vale.');
-  const chave = chaveDoVale(provedor);
+  const chave =
+    provedor === 'claude' ? claude?.chave : process.env.OPENAI_API_KEY;
   if (!chave)
     throw new BadRequestException('Este provedor está indisponível no Vale.');
   const instructions =
@@ -97,7 +92,7 @@ export async function selecionarConsulta(
                 max_output_tokens: 32,
               }
             : {
-                model: modeloClaude,
+                model: claude?.modelo,
                 system: instructions,
                 messages: [{ role: 'user', content: input.pergunta }],
                 thinking: { type: 'disabled' },
@@ -130,14 +125,14 @@ export async function selecionarConsulta(
     if (intents.includes(answer as Intent)) return answer as Intent;
   } catch (error) {
     if (error instanceof ForbiddenException) throw error;
-    if (!teste && local !== 'esclarecer') return local;
+    if (!exigirRespostaDoProvedor && local !== 'esclarecer') return local;
     throw new ServiceUnavailableException(
       'O provedor está indisponível. Selecione uma consulta sugerida.',
     );
   }
-  if (teste)
+  if (exigirRespostaDoProvedor)
     throw new ServiceUnavailableException(
-      'Claude não retornou uma resposta válida para o teste.',
+      'Claude não retornou uma classificação válida.',
     );
   return local;
 }

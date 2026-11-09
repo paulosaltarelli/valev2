@@ -33,6 +33,13 @@ export class AssistenteConfiguracaoDto {
   @IsString()
   @Matches(/^claude-[a-z0-9-]{2,73}$/)
   modelo!: string;
+
+  @IsOptional()
+  @Length(16, 512, { message: 'Chave da Anthropic inválida.' })
+  @Matches(/^sk-ant-[a-zA-Z0-9_-]+$/, {
+    message: 'Chave da Anthropic inválida.',
+  })
+  chave?: string;
 }
 
 export class AssistenteDto {

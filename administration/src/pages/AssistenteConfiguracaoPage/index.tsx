@@ -15,6 +15,7 @@ export function AssistenteConfiguracaoPage() {
   const [acao, setAcao] = useState<"salvar" | "testar">();
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
+  const [chave, setChave] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -35,14 +36,22 @@ export function AssistenteConfiguracaoPage() {
     setAcao(operacao);
     setErro("");
     setMensagem("");
-    const dados = { ativo: config.ativo, modelo: config.modelo.trim() };
+    const dados = {
+      ativo: config.ativo,
+      modelo: config.modelo.trim(),
+      chave: chave.trim() || undefined,
+    };
     try {
       if (operacao === "testar") {
         await http.post("/assistente/configuracao/testar", dados);
         setMensagem("Claude respondeu à pergunta de teste.");
       } else {
-        await http.put("/assistente/configuracao", dados);
-        setConfig({ ...config, ...dados });
+        const { data } = await http.put<Configuracao>(
+          "/assistente/configuracao",
+          dados,
+        );
+        setConfig(data);
+        setChave("");
         setMensagem("Configuração salva.");
       }
     } catch (falha) {
@@ -84,10 +93,25 @@ export function AssistenteConfiguracaoPage() {
           <Form onSubmit={salvar}>
             <p>
               {config.credencialConfigurada
-                ? "Credencial institucional disponível no servidor."
-                : "Cadastre a credencial institucional nos segredos do servidor para habilitar Claude."}
+                ? "Chave da Anthropic cadastrada."
+                : "Cadastre a chave da Anthropic para habilitar Claude."}
             </p>
             <fieldset disabled={Boolean(acao)}>
+              <Form.Group controlId="vale-claude-chave" className="mb-3">
+                <Form.Label>Chave da API da Anthropic</Form.Label>
+                <Form.Control
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={512}
+                  value={chave}
+                  onChange={(event) => setChave(event.target.value)}
+                />
+                {config.credencialConfigurada && (
+                  <Form.Text>
+                    Preencha apenas para substituir a chave cadastrada.
+                  </Form.Text>
+                )}
+              </Form.Group>
               <Form.Group controlId="vale-claude-modelo" className="mb-3">
                 <Form.Label>Identificador do modelo</Form.Label>
                 <Form.Control
@@ -105,7 +129,11 @@ export function AssistenteConfiguracaoPage() {
                 className="mb-3"
                 label="Disponibilizar Claude no Vale IA"
                 checked={config.ativo}
-                disabled={!config.credencialConfigurada && !config.ativo}
+                disabled={
+                  !config.credencialConfigurada &&
+                  !chave.trim() &&
+                  !config.ativo
+                }
                 onChange={(event) =>
                   setConfig({ ...config, ativo: event.target.checked })
                 }
@@ -118,7 +146,7 @@ export function AssistenteConfiguracaoPage() {
                   type="button"
                   variant="outline-primary"
                   disabled={
-                    !config.credencialConfigurada ||
+                    (!config.credencialConfigurada && !chave.trim()) ||
                     !/^claude-[a-z0-9-]{2,73}$/.test(config.modelo.trim())
                   }
                   onClick={() => void executar("testar")}

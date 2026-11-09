@@ -9,6 +9,7 @@ import { DashService } from '../dash/dash.service';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { ExecucaoService } from '../execucao/execucao.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CryptoService } from '../security/crypto.service';
 import {
   AssistenteConsultas,
   classificarLog,
@@ -21,6 +22,7 @@ describe('Assistente do Vale', () => {
   let app: INestApplication;
   let jwt: JwtService;
   let ativo: string | undefined;
+  let chaveDeCriptografia: string | undefined;
   const consultas = {
     consultar: jest.fn().mockResolvedValue({ texto: 'Resultado verificado' }),
   };
@@ -32,6 +34,7 @@ describe('Assistente do Vale', () => {
     },
     rm_sessao: { findUnique: jest.fn() },
     assistente_configuracao: {
+      findUnique: jest.fn().mockResolvedValue(null),
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         claude_ativo: false,
         claude_modelo: 'claude-haiku-5-5',
@@ -42,6 +45,10 @@ describe('Assistente do Vale', () => {
 
   beforeAll(async () => {
     ativo = process.env.VALE_ASSISTENTE_ATIVO;
+    chaveDeCriptografia = process.env.CREDENTIALS_ENCRYPTION_KEY;
+    process.env.CREDENTIALS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString(
+      'base64',
+    );
     process.env.VALE_ASSISTENTE_ATIVO = 'true';
     jwt = new JwtService({
       secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
@@ -52,6 +59,7 @@ describe('Assistente do Vale', () => {
       providers: [
         JwtStrategy,
         AssistenteSessoes,
+        CryptoService,
         { provide: PrismaService, useValue: prisma },
         { provide: AssistenteConsultas, useValue: consultas },
         {
@@ -89,6 +97,9 @@ describe('Assistente do Vale', () => {
   afterAll(async () => {
     if (ativo === undefined) delete process.env.VALE_ASSISTENTE_ATIVO;
     else process.env.VALE_ASSISTENTE_ATIVO = ativo;
+    if (chaveDeCriptografia === undefined)
+      delete process.env.CREDENTIALS_ENCRYPTION_KEY;
+    else process.env.CREDENTIALS_ENCRYPTION_KEY = chaveDeCriptografia;
     await app.close();
   });
 
@@ -123,7 +134,7 @@ describe('Assistente do Vale', () => {
     expect(leitura.body).toEqual({
       ativo: false,
       modelo: 'claude-haiku-5-5',
-      credencialConfigurada: Boolean(process.env.ANTHROPIC_API_KEY),
+      credencialConfigurada: false,
     });
     prisma.usuario.findUnique.mockResolvedValueOnce({
       ativo: true,
@@ -138,6 +149,32 @@ describe('Assistente do Vale', () => {
       where: { id: 1 },
       data: { claude_ativo: false, claude_modelo: 'claude-haiku-5-5' },
     });
+  });
+
+  it('cadastra a chave cifrada sem devolver a credencial ao administrador', async () => {
+    const chave = 'sk-ant-credencial-de-teste';
+    const modelo = 'claude-haiku-5-5';
+    prisma.usuario.findUnique.mockResolvedValueOnce({
+      ativo: true,
+      perfil: 'admin',
+    });
+    prisma.assistente_configuracao.update.mockImplementationOnce(
+      ({ data }) => data,
+    );
+    const resposta = await request(app.getHttpServer())
+      .put('/assistente/configuracao')
+      .set('Cookie', cookie(12, 'admin-config'))
+      .send({ ativo: true, modelo, chave })
+      .expect(200);
+    expect(resposta.body).toEqual({
+      ativo: true,
+      modelo,
+      credencialConfigurada: true,
+    });
+    const { claude_chave } =
+      prisma.assistente_configuracao.update.mock.lastCall?.[0].data;
+    expect(claude_chave).not.toContain(chave);
+    expect(new CryptoService().decryptJson(claude_chave)).toBe(chave);
   });
 
   it('recusa chamadas anônimas e sessões expiradas', async () => {
@@ -341,8 +378,7 @@ describe('Consultas operacionais', () => {
 
 describe('Integração com provedor', () => {
   it('o teste do Claude confirma uma resposta válida e acusa falha sem recorrer ao modo local', async () => {
-    const key = process.env.ANTHROPIC_API_KEY;
-    process.env.ANTHROPIC_API_KEY = 'chave-de-teste';
+    const config = { chave: 'chave-de-teste', modelo: 'claude-haiku-5-5' };
     const fetchMock = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
@@ -359,12 +395,12 @@ describe('Integração com provedor', () => {
       await expect(selecionarConsulta(input)).rejects.toThrow(
         'Claude está desativado',
       );
-      await expect(
-        selecionarConsulta(input, 'claude-haiku-5-5', true),
-      ).resolves.toBe('ajuda');
-      await expect(
-        selecionarConsulta(input, 'claude-haiku-5-5', true),
-      ).rejects.toThrow('indisponível');
+      await expect(selecionarConsulta(input, config, true)).resolves.toBe(
+        'ajuda',
+      );
+      await expect(selecionarConsulta(input, config, true)).rejects.toThrow(
+        'indisponível',
+      );
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(
         JSON.parse(String(fetchMock.mock.calls[0][1]?.body)),
@@ -374,8 +410,6 @@ describe('Integração com provedor', () => {
       });
     } finally {
       fetchMock.mockRestore();
-      if (key === undefined) delete process.env.ANTHROPIC_API_KEY;
-      else process.env.ANTHROPIC_API_KEY = key;
     }
   });
 
