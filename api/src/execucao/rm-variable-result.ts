@@ -26,8 +26,8 @@ export function readRmVariable(query: string, rows: unknown): number {
   const row = rows[0];
   if (!row || typeof row !== 'object' || Array.isArray(row)) return NaN;
   const value: unknown = row.RESULTADO;
-  // SUM de afastamentos e atestados retorna NULL sem ocorrências.
-  if (value == null) return nullableAggregates.has(code) ? 0 : NaN;
+  if (value === null) return 0;
+  if (value === undefined) return nullableAggregates.has(code) ? 0 : NaN;
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return NaN;
   return Number(value);
 }
