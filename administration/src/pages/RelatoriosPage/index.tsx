@@ -7,7 +7,7 @@ export function RelatoriosPage() {
     <>
       <PageHeading
         area="Análise"
-        title="Relatórios financeiros"
+        title="Evolução financeira"
         description="Compare competências e consulte a evolução dos eventos por filial."
       />
       <AnalysisNav />

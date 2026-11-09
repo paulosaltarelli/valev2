@@ -23,8 +23,8 @@ const navigation = [
     links: [
         ["/fechamento", "Fechamento por filial", "mdi:clipboard-check-outline"],
         ["/variacao-competencias", "Variação entre competências", "mdi:compare-horizontal"],
-      ["/relatorios", "Relatórios financeiros", "mdi:chart-box-outline"],
-      ["/extrato-processamento", "Extrato de processamento", "mdi:table-large"],
+      ["/relatorios", "Evolução financeira", "mdi:chart-box-outline"],
+      ["/extrato-processamento", "Valores por funcionário", "mdi:table-large"],
       ["/falhas-por-causa", "Falhas por causa", "mdi:alert-circle-outline"],
     ],
   },

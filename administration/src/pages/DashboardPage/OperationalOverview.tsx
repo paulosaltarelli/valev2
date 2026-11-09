@@ -1,9 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { Link } from "react-router";
 import {
-  dateTime,
   QueryNotice,
-  situacoes,
   StageCount,
   useOperationQuery,
 } from "../../components/Processamento/OperationCommon";
@@ -14,7 +12,6 @@ export function OperationalOverview({ activePeriodIds, branches }: {
   activePeriodIds: number[];
   branches: { filialId: number; nome: string; ativa: boolean }[];
 }) {
-  const [view, setView] = useState<"falhas" | "envio" | "faltantes">("falhas");
   const periodKey = activePeriodIds.join(",");
   const fetcher = useCallback(async () => {
     if (!periodKey) return { summaries: [], creation: [] };
@@ -31,7 +28,7 @@ export function OperationalOverview({ activePeriodIds, branches }: {
       competencia: summary.periodo!.competencia,
     })) : [],
   );
-  const attention = rows.filter((row) => row.latest && row.errors > 0);
+  const attention = rows.filter((row) => row.latest && row.errors > 0).sort((a, b) => b.errors - a.errors || a.filial.localeCompare(b.filial));
   const running = rows.filter((row) => row.processing > 0 || row.pending > 0);
   const ready = rows.filter((row) => row.latest && row.situacao === "envio");
   const occupied = new Set(rows.map((row) => `${row.periodoId}:${row.filialId}`));
@@ -46,7 +43,6 @@ export function OperationalOverview({ activePeriodIds, branches }: {
       return branch.ativa && !occupied.has(key) && !queued.has(key);
     }).map((branch) => ({ ...branch, periodo })) : [],
   );
-  const links = view === "envio" ? ready : attention;
   const totals = rows.filter((row) => row.latest).reduce((sum, row) => ({
     variables: sum.variables + row.progresso.variaveisCalculadas,
     expectedVariables: sum.expectedVariables + row.progresso.variaveisPrevistas,
@@ -61,9 +57,10 @@ export function OperationalOverview({ activePeriodIds, branches }: {
       <div className="card-body">
         <div className="ve-operation-head">
           <div>
-            <h2 id="ve-operation-heading">Situação dos processamentos</h2>
+            <h2 id="ve-operation-heading">Situação das competências ativas</h2>
             <p className="op-muted mb-0">
               {activePeriodIds.length === 1 ? "1 competência ativa" : `${activePeriodIds.length} competências ativas`}
+              {activePeriods.size > 0 && ` · ${[...activePeriods.values()].join(", ")}`}
             </p>
           </div>
           <Link className="btn btn-primary" to="/processamento">
@@ -79,70 +76,29 @@ export function OperationalOverview({ activePeriodIds, branches }: {
               <StageCount label="Fórmulas calculadas" value={totals.formulas} total={totals.expectedFormulas} unit="fórmulas" />
               <StageCount label="Enviados ao RM" value={totals.rm} total={totals.employees} />
             </div>
-            <div className="ve-metrics ve-overview-actions" role="group" aria-label="Filtrar próximas ações">
-              {([
-                ["falhas", "Falhas a resolver", attention.length],
-                ["envio", "Prontos para enviar ao RM", ready.length],
-                ["faltantes", "Filiais sem execução", missing.length],
-              ] as const).map(([id, label, count]) => (
-                <button className="btn btn-outline-primary" key={id} type="button" aria-pressed={view === id}
-                  aria-controls="overview-actions" onClick={() => setView(id)}>
-                  {label}<strong>{count}</strong>
-                </button>
-              ))}
+            <div className="ve-home-alerts mt-3" aria-label="Alertas e próximas ações">
+              {attention.length > 0 && <div className="ve-home-alert ve-home-alert-danger">
+                <div><strong>Resolver falhas de cálculo ou envio</strong><p>{attention.length} filiais por competência exigem atenção. Consulte as causas e os funcionários afetados.</p></div>
+                <Link className="btn btn-outline-primary" to="/falhas-por-causa">Ver falhas</Link>
+              </div>}
+              {creating.some(item => item.status === "ERRO") && <div className="ve-home-alert ve-home-alert-danger">
+                <div><strong>Há falhas na criação de execuções</strong><p>Verifique a fila de criação antes de continuar.</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento">Ver pendências de criação</Link>
+              </div>}
+              {ready.length > 0 && <div className="ve-home-alert">
+                <div><strong>Há resultados prontos para enviar</strong><p>{ready.length} filiais por competência aguardam sua ação.</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento?situacao=envio">Conferir e enviar ao RM</Link>
+              </div>}
+              {missing.length > 0 && <div className="ve-home-alert">
+                <div><strong>Há filiais sem execução</strong><p>{missing.length} filiais por competência ainda precisam iniciar o processamento.</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento">Iniciar processamento</Link>
+              </div>}
+              <div className="ve-home-alert">
+                <div><strong>{running.length || creating.some(item => item.status !== "ERRO") ? "Há processamento em andamento ou na fila" : "Fila de cálculo encerrada"}</strong>
+                  <p>{running.length || creating.some(item => item.status !== "ERRO") ? "Acompanhe o avanço e as próximas tentativas em Processamentos." : attention.length || creating.some(item => item.status === "ERRO") ? "O processamento parou com pendências. Resolva os alertas acima para concluir." : "Não há tarefas de cálculo em andamento. Confira os envios e as competências ativas."}</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento">Acompanhar</Link>
+              </div>
             </div>
-            <div id="overview-actions">
-              {view === "falhas" && <Link className="op-back mb-2" to="/falhas-por-causa">Abrir Falhas por causa</Link>}
-              {view === "faltantes" ? (missing.length ? (
-                <ul className="ve-operation-list" aria-label="Filiais sem execução">
-                  {missing.map(({ filialId, nome, periodo }) => (
-                    <li key={`${periodo.periodo_id}:${filialId}`}>
-                      <span>{nome} · {periodo.competencia}</span>
-                      <Link to={`/processamento?periodo=${periodo.periodo_id}`}>Abrir competência</Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="mb-0">Nenhuma filial ativa sem execução ou agendamento.</p>) : links.length > 0 ? (
-              <ul className="ve-operation-list" aria-label={view === "falhas" ? "Falhas a resolver" : "Prontos para envio"}>
-                {links.map((row) => {
-                  const situation = situacoes[row.situacao] ?? situacoes.inicio;
-                  const details = new URLSearchParams({ aba: situation.tab, retorno: `/processamento?periodo=${row.periodoId}` });
-                  return (
-                    <li key={row.id}>
-                      <div>
-                        <Link to={`/processamento/${row.id}?${details}`}>{row.filial}</Link>
-                        <span className="op-muted"> · {row.competencia} · #{row.id}{row.latest ? "" : " · anterior"}</span>
-                        {row.errors > 0 && <small>{row.errors} pessoas exigem ação</small>}
-                        {row.nextRunAt && <small>Próxima tentativa: {dateTime(row.nextRunAt)}</small>}
-                      </div>
-                      <span className={`op-status op-${situation.tone}`}>{situation.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : <p className="mb-0">Nenhuma execução neste recorte.</p>}
-            </div>
-            <h3 className="ve-section-title">Andamento da fila</h3>
-            {running.length || creating.length ? <ul className="ve-operation-list" aria-label="Execuções na fila">
-              {creating.map((item) => <li key={`criacao-${item.queueId}`}>
-                <div>
-                  <Link to={`/processamento?periodo=${item.periodoId}`}>
-                    {branches.find((branch) => branch.filialId === item.filialId)?.nome ?? `Filial #${item.filialId}`}
-                  </Link>
-                  <small>{activePeriods.get(item.periodoId)} · Criação da execução</small>
-                  {item.nextRunAt && <small>Próxima tentativa {dateTime(item.nextRunAt)}</small>}
-                </div>
-                <span>{item.status === "PROCESSANDO" ? "Em andamento" : "Na fila"}</span>
-              </li>)}
-              {running.map((row) => <li key={row.id}>
-                <div>
-                  <Link to={`/processamento/${row.id}?aba=acompanhamento`}>{row.filial}</Link>
-                  <small>{row.competencia} · {row.etapas.map((stage) => stage === "VARIAVEIS" ? "Variáveis" : stage === "VALORES" ? "Cálculo" : "Envio ao RM").join(", ")}</small>
-                  {row.nextRunAt && <small>Próxima tentativa {dateTime(row.nextRunAt)}</small>}
-                </div>
-                <span>{row.processing} em andamento · {row.pending} na fila</span>
-              </li>)}
-            </ul> : <p className="mb-0">Nenhum processamento em andamento.</p>}
           </>
         )}
       </div>

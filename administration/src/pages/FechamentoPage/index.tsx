@@ -11,6 +11,7 @@ export function FechamentoPage() {
   const period=params.get('periodo') ?? '';
   const search=params.get('busca') ?? '';
   const situation=params.get('situacao') ?? '';
+  const [showDetails, setShowDetails] = useState(false);
   const [page,setPage]=useState(1);
   const [exporting,setExporting]=useState(false),[exportError,setExportError]=useState('');
   const fetcher=useCallback(()=>OperationalReportsApi.closing(period),[period]);
@@ -50,15 +51,16 @@ export function FechamentoPage() {
     {query.data && <>
       <p className="op-muted">{rows.length} filiais · Atualizado em {dateTime(query.data.updatedAt)}. “—” indica ausência de execução.</p>
       <details className="mb-3"><summary>Como ler as contagens</summary><p className="op-muted mt-2">Completo, parcial e sem cálculo dividem os funcionários da execução. “Com erro” pode incluir pessoas com resultados parciais ou falha de envio. As colunas de envio são um recorte dos cálculos completos. Filiais sem execução não têm quantidade de funcionários conhecida.</p></details>
+      <label className="ve-check-filter mb-3"><input type="checkbox" checked={showDetails} onChange={e=>setShowDetails(e.target.checked)}/> Exibir todas as contagens</label>
       {rows.length ? <div className="op-table-wrap"><div className="op-scroll" tabIndex={0} role="region" aria-label="Fechamento das filiais">
         <table className="op-table ve-report-table"><thead><tr>
-          {['Filial','Funcionários','Completos','Parciais','Sem cálculo','Com erro','Aguardando envio','Enviados','Situação'].map(h=><th scope="col" key={h}>{h}</th>)}
+          {['Filial','Situação','Funcionários',...(showDetails ? ['Cálculo completo','Cálculo parcial','Sem cálculo'] : []),'Com erro','Aguardando envio',...(showDetails ? ['Enviados ao RM'] : [])].map(h=><th scope="col" key={h}>{h}</th>)}
         </tr></thead><tbody>{rows.slice((currentPage-1)*25,currentPage*25).map(r=><tr key={r.filialId}>
           <th scope="row">{r.execucaoId?<Link to={href(r.execucaoId,'acompanhamento')}>{r.filial}</Link>:<Link to={`/processamento?periodo=${query.data?.periodo}`}>{r.filial}</Link>}{!r.ativa && <small>Inativa atualmente</small>}</th>
-          <td>{r.counts?.total ?? '—'}</td><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td>
+          <td>{r.situacao}</td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
           <td>{r.execucaoId && r.counts?.comErro ? <Link className="op-danger" to={href(r.execucaoId,'pendencias')}>{r.counts.comErro} · Ver</Link>:r.counts?.comErro ?? '—'}</td>
           <td>{r.execucaoId && r.counts?.aguardandoEnvio ? <Link to={href(r.execucaoId,'envios')}>{r.counts.aguardandoEnvio} · Ver</Link>:r.counts?.aguardandoEnvio ?? '—'}</td>
-          <td>{r.counts?.enviados ?? '—'}</td><td>{r.situacao}</td>
+          {showDetails && <td>{r.counts?.enviados ?? '—'}</td>}
         </tr>)}</tbody></table>
       </div></div>:<p>Nenhuma filial encontrada com estes filtros.</p>}
       <ReportPagination page={currentPage} total={rows.length} onPage={setPage}/>

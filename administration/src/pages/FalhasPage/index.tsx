@@ -31,6 +31,7 @@ export function FalhasPage() {
   const data = query.data;
   const current = data && (!periodo || String(data.periodo) === periodo) ? data : undefined;
   const groups = current?.groups.filter((group) => !stage || group.stage === stage) ?? [];
+  groups.sort((a,b) => b.count - a.count);
   const returnTo = `/falhas-por-causa?periodo=${current?.periodo ?? ""}`;
 
   return (
@@ -60,6 +61,7 @@ export function FalhasPage() {
         </label>
       </section>
       <QueryNotice {...query} />
+      {current && <p className="op-muted">Ordenado por pessoas afetadas. A mesma pessoa pode aparecer em mais de uma causa; não some as linhas como um total de pessoas.</p>}
       {current && (groups.length ? (
         <div className="op-table-wrap">
           <div className="op-scroll">
@@ -70,7 +72,7 @@ export function FalhasPage() {
               </tr></thead>
               <tbody>{groups.map((group) => (
                 <tr key={group.id}>
-                  <th scope="row">{group.cause}</th>
+                  <th scope="row">{group.stage === "Variáveis" ? "Variável com falha" : group.stage === "Cálculo" ? "Falha no cálculo" : "Falha no envio"}<small className="op-muted">{group.cause}</small></th>
                   <td>{group.stage}</td>
                   <td>{group.count}</td>
                   <td>

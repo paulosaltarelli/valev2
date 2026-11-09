@@ -138,7 +138,7 @@ export function ExtratoProcessamentoPage() {
     <div className="op-page">
       <PageHeading
         area="Análise"
-        title="Extrato de processamento"
+        title="Valores por funcionário"
         description="Consulte os valores calculados por funcionário e fórmula."
         actions={
           <button className="btn btn-primary" type="button" disabled={!employees.length || exporting} onClick={() => void exportExcel()}>
@@ -166,7 +166,7 @@ export function ExtratoProcessamentoPage() {
         </label>
         <label>
           Execução
-          <select value={executionId ?? ""} disabled={!executions.length}
+          {executions.length === 1 ? <span className="ve-readonly-value">#{executions[0].execucao_id} · {dateTime.format(new Date(executions[0].data_execucao))}</span> : <select value={executionId ?? ""} disabled={!executions.length}
             onChange={(event) => { setExecucao(Number(event.target.value)); setPage(1); }}>
             {!executions.length && <option value="">Nenhuma disponível</option>}
             {executions.map((item, index) => (
@@ -174,7 +174,7 @@ export function ExtratoProcessamentoPage() {
                 #{item.execucao_id} · {dateTime.format(new Date(item.data_execucao))}{index === 0 ? " · Mais recente" : ""}
               </option>
             ))}
-          </select>
+          </select>}
         </label>
         <label>
           Funcionário ou matrícula
@@ -210,7 +210,7 @@ export function ExtratoProcessamentoPage() {
                       {columns.map((column) => {
                         const cell = employee.resultados[column.formula_id];
                         return <td key={column.formula_id}>{
-                          cell?.erro ? <span className="op-danger">Erro · {cell.erro}</span> :
+                          cell?.erro ? <details className="ve-cell-error"><summary className="op-danger">Erro · {cell.erro.split(":")[0].slice(0, 32)}</summary><p className="mt-2 mb-0">{cell.erro}</p></details> :
                             cell?.valor == null ? <span className="op-muted">—</span> :
                               (column.tipo === "V" ? money : number).format(Number(cell.valor))
                         }</td>;

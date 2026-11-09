@@ -1,5 +1,6 @@
 export const defaultConfig = {
   language: {
+    aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
     search: "Buscar:",
     lengthMenu: "Mostrar _MENU_ registros",
     info: "_START_ a _END_ de _TOTAL_ registros",
@@ -10,7 +11,7 @@ export const defaultConfig = {
     loadingRecords: "Carregando…",
     processing: "Carregando…",
     paginate: { first: "Primeira", previous: "Anterior", next: "Próxima", last: "Última" },
-    select: { rows: { _: "%d selecionados", 1: "1 selecionado", 0: "" } },
+    select: { aria: { rowCheckbox: "Selecionar linha", headerCheckbox: "Selecionar linhas desta página" }, rows: { _: "%d selecionados", 1: "1 selecionado", 0: "" } },
   },
   // Ajuda em React 18 (StrictMode/HMR) a evitar "Cannot reinitialise DataTable"
   retrieve: true,
@@ -28,6 +29,7 @@ export const defaultConfig = {
 export const processamentoTableConfig = {
   ...defaultConfig,
   language: {
+    aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
     search: "Buscar:",
     lengthMenu: "Mostrar _MENU_ registros",
     info: "_START_ a _END_ de _TOTAL_ registros",

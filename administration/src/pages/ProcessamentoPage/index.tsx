@@ -323,7 +323,7 @@ export function ProcessamentoPage() {
               <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
                 <div>
                   <h2 id="op-overall-heading">Progresso geral do cálculo</h2>
-                  <p className="op-muted mb-2">Variáveis e fórmulas calculadas sobre o total previsto. Resultados parciais também contam; o envio ao RM é separado.</p>
+                  <details className="ve-progress-help"><summary>Como o progresso é calculado</summary><p className="op-muted mb-2">Variáveis e fórmulas calculadas sobre o total previsto. Resultados parciais também contam; o envio ao RM é separado.</p></details>
                 </div>
                 {showPercent && <strong className="op-overall-percent">{percent}%</strong>}
               </div>

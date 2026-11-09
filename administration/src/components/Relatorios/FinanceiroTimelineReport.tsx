@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Spinner, Table } from "react-bootstrap";
 import DataTable from "datatables.net-react";
@@ -390,8 +391,9 @@ export function FinanceiroTimelineReport() {
               <div><dt>Funcionários enviados ao RM</dt><dd>{data.totals.funcionarios}</dd></div>
             </dl>
 
+            {data.totals.funcionarios === 0 && <p className="op-notice" role="status">Nenhum funcionário enviado ao RM neste período. Os totais desta tela consideram envios, não resultados ainda em cálculo. <Link to="/extrato-processamento">Consultar valores calculados</Link></p>}
             <div className="row g-3">
-              <div className="col-12 col-xl-8">
+              {data.totals.funcionarios > 0 && <><div className="col-12 col-xl-8">
                 <div className="card h-100">
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
@@ -439,6 +441,7 @@ export function FinanceiroTimelineReport() {
                 </div>
               </div>
 
+              </>}
               <div className="col-12">
                 <div className="card">
                   <div className="card-body">

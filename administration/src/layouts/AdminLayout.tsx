@@ -11,7 +11,7 @@ export function AdminLayout() {
   const { state } = useThemeContext();
   const location = useLocation();
   const isProcessing = location.pathname.startsWith("/processamento");
-  useEffect(() => { const titles: Record<string,string> = { dashboard: "Visão geral", fechamento: "Fechamento por filial", "variacao-competencias": "Variação entre competências", relatorios: "Relatórios financeiros", "falhas-por-causa": "Falhas por causa", "extrato-processamento": "Extrato de processamento", filial: "Filiais e regras", periodo: "Competências", usuarios: "Usuários e acesso", "gestao-km": "Gestão de KM" }; document.title = `${titles[location.pathname.split("/")[1]] ?? "Processamentos"} | Vale Expresso`; }, [location.pathname]);
+  useEffect(() => { const titles: Record<string,string> = { dashboard: "Visão geral", fechamento: "Fechamento por filial", "variacao-competencias": "Variação entre competências", relatorios: "Evolução financeira", "falhas-por-causa": "Falhas por causa", "extrato-processamento": "Valores por funcionário", filial: "Filiais e regras", periodo: "Competências", usuarios: "Usuários e acesso", "gestao-km": "Gestão de KM" }; document.title = `${titles[location.pathname.split("/")[1]] ?? "Processamentos"} | Vale Expresso`; }, [location.pathname]);
   return (
     <section className={state.mobileMenu ? "overlay active" : "overlay "}>
       <a href="#conteudo-principal" className="visually-hidden-focusable">Ir para o conteúdo principal</a>

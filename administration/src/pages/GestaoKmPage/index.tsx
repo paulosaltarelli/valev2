@@ -43,7 +43,7 @@ export function GestaoKmPage() {
   const [funToShowAddress, setFunToShowAddress] =
     useState<FuncionarioRm | null>(null);
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
-  const [, setSelectedRows] = useState<FuncionarioRm[]>([]);
+  const [selectedRows, setSelectedRows] = useState<FuncionarioRm[]>([]);
   const tableRef = useRef<DataTableRef>(null);
   const filialIdRef = useRef<number>(0);
   const [geoStatus, setGeoStatus] = useState<{
@@ -102,6 +102,7 @@ export function GestaoKmPage() {
     try {
       blockUiShow("Buscando funcionários");
       const data = await filialApi.getFuncionariosRmByFilialId(fid);
+      setSelectedRows([]);
       setFuncionarios(data);
       // Busca os últimos logs/erros da fila GEO desta filial (não chama RM)
       try {
@@ -366,7 +367,7 @@ export function GestaoKmPage() {
           type FilialOption = { value: number; label: string };
 
           const options: FilialOption[] = [
-            { value: 0, label: "Todas as filiais" },
+            { value: 0, label: "Selecione uma filial" },
             ...filiais.map((filial) => ({
               value: filial.filial_id,
               label: filial.nome,
@@ -427,8 +428,9 @@ export function GestaoKmPage() {
         </div>
       )}
     </div>
-      <div className="card">
+      <div className={`card${funcionarios.length ? "" : " ve-table-empty"}`}>
         <div className="card-body">
+          {funcionarios.length > 0 && <p className="op-muted" role="status">{selectedRows.length} selecionados · O checkbox do cabeçalho seleciona apenas esta página.</p>}
           {filialId !== 0 && geoStatus?.hasRunning && (
             <div className="alert alert-info py-2 px-3 mb-2">
               Calculando geolocalizações... Pendentes: {geoStatus.pending} /
@@ -489,6 +491,7 @@ export function GestaoKmPage() {
                   style: "multi+shift",
                   // Padrão oficial: primeira coluna (onde fica o checkbox)
                   selector: "td:first-child",
+                  headerCheckbox: "select-page",
                 },
               }}
               data={funcionarios}

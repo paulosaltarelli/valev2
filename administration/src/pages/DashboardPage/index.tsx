@@ -725,7 +725,8 @@ export function DashboardPage() {
         />
       )}
       <div>
-            <h2 className="ve-section-title">Indicadores por competência</h2>
+            <h2 className="ve-section-title">Indicadores do recorte selecionado</h2>
+            <p className="op-muted">Os filtros abaixo afetam estes indicadores. O resumo acima acompanha todas as competências ativas.</p>
             <div className="op-context ve-filter-bar" aria-label="Filtros dos indicadores">
               <div>
                 <label htmlFor="dash-competencia">Competência</label>
@@ -797,10 +798,10 @@ export function DashboardPage() {
                           <div className="d-flex align-items-start justify-content-between gap-2">
                             <div>
                               <div className="text-secondary small">
-                                {i.title}
+                                {i.id === "erros_nao_resolvidos" ? "Ocorrências de erro" : i.title}
                               </div>
                               <div className="d-flex align-items-end gap-2 mt-1">
-                                <div className="h3 m-0">{i.value}</div>
+                                {i.id !== "erros_nao_resolvidos" && <div className="h3 m-0">{i.value}</div>}
                                 {i.running && (
                                   <Badge bg="warning" className="fw-semibold">
                                     em andamento
@@ -809,9 +810,7 @@ export function DashboardPage() {
                               </div>
                               {i.subtitle && (
                                 <div className="text-secondary small mt-1">
-                                  <Limited limit={60} tooltip>
-                                    {i.subtitle}
-                                  </Limited>
+                                  {i.subtitle}
                                 </div>
                               )}
                             </div>
@@ -842,92 +841,9 @@ export function DashboardPage() {
                 })}
             </div>
 
-            <div className="row g-3">
-              <div className="col-12 col-xl-6">
-                <div className="card h-100">
-                  <div className="card-body">
-                    <div className="d-flex align-items-center justify-content-between mb-2">
-                      <h2 className="h6 m-0">Ações rápidas</h2>
-                    </div>
-                    <div className="d-flex flex-column gap-2">
-                      <Link
-                        to={`/processamento?periodo=${selectedPeriodoId ?? ""}&filial=${selectedFilialId ?? ""}`}
-                        className="text-decoration-none"
-                      >
-                        <div className="ve-summary-row">
-                          <div className="d-flex align-items-center gap-2">
-                            <Icon
-                              icon="solar:diagram-up-bold-duotone"
-                              width={20}
-                              height={20}
-                            />
-                            <span>Ir para Processamentos</span>
-                          </div>
-                          <Icon
-                            icon="solar:alt-arrow-right-linear"
-                            width={18}
-                            height={18}
-                          />
-                        </div>
-                      </Link>
-                      <Link to="/gestao-km" className="text-decoration-none">
-                        <div className="ve-summary-row">
-                          <div className="d-flex align-items-center gap-2">
-                            <Icon
-                              icon="solar:map-point-bold-duotone"
-                              width={20}
-                              height={20}
-                            />
-                            <span>Ir para Gestão de Km</span>
-                          </div>
-                          <Icon
-                            icon="solar:alt-arrow-right-linear"
-                            width={18}
-                            height={18}
-                          />
-                        </div>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-12 col-xl-6">
-                <div className="card h-100">
-                  <div className="card-body">
-                    <details className="ve-indicator-details">
-                    <summary>Todos os indicadores</summary>
-                    <div className="text-secondary small mb-2">
-                      Selecione o período para ver pendências e alertas.
-                    </div>
-                    <div className="d-flex flex-column gap-2">
-                      {(summary?.indicators ?? []).map((i) => (
-                        <div
-                          className="ve-summary-row"
-                          key={i.id}
-                        >
-                          <div className="d-flex align-items-center gap-2">
-                            <span className="fw-semibold">{i.title}</span>
-                            {i.subtitle ? (
-                              <span className="text-secondary small">
-                                — {i.subtitle}
-                              </span>
-                            ) : null}
-                          </div>
-                          <Badge
-                            bg={severityToBootstrapVariant(i.severity)}
-                            className="fw-semibold"
-                          >
-                            {i.value}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                    </details>
-                  </div>
-                </div>
-              </div>
-
+            <details className="ve-secondary-panels">
+              <summary>Indicadores complementares, gráficos e financeiro</summary>
+            <div className="row g-3 mt-2">
               <div className="col-12 col-xl-4">
                 <div className="card h-100">
                   <div className="card-body">
@@ -1036,7 +952,7 @@ export function DashboardPage() {
                       )}
                     </div>
 
-                    {summary?.charts.impactoFinanceiroRm ? (
+                    {summary?.charts.impactoFinanceiroRm?.totals.funcionariosEnviados === 0 ? <p className="op-notice">Nenhum funcionário enviado ao RM neste recorte. <Link to="/extrato-processamento">Consultar valores calculados</Link></p> : summary?.charts.impactoFinanceiroRm ? (
                       <>
                         <div className="row g-3 mb-3">
                           <div className="col-12 col-md-4">
@@ -1223,6 +1139,7 @@ export function DashboardPage() {
               </div>
             </div>
 
+            </details>
             <Modal
               show={showDetailsModal}
               onHide={() => setShowDetailsModal(false)}
