@@ -1,3 +1,4 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
 import { VisualSummary } from "../../shared/components/VisualSummary";
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -36,7 +37,8 @@ export function FechamentoPage() {
     <PageHeading area="Análise" title="Fechamento por filial" description="Veja o que falta concluir em cada filial nesta competência."
       actions={<button className="btn btn-primary" disabled={!rows.length || query.loading || !!query.error || exporting} onClick={()=>void download()}>{exporting?'Gerando Excel…':'Exportar Excel'}</button>} />
     <AnalysisNav />
-    <section className="op-context mb-3" aria-label="Filtros do fechamento">
+    <ReportFilters summary={competencia + " · " + (search ? `Busca: ${search}` : "Todas as filiais") + (situation ? ` · ${situation}` : "")}>
+      <section className="op-context mb-3" aria-label="Filtros do fechamento">
       <label>Competência<select value={period || query.data?.periodo || ''} onChange={e=>change('periodo',e.target.value)} disabled={!query.data?.periodos.length}>
         {!query.data?.periodos.length && <option value="">Nenhuma disponível</option>}
         {query.data?.periodos.map(p=><option key={p.periodo_id} value={p.periodo_id}>{p.competencia}{p.ativo?' · Ativa':''}</option>)}
@@ -47,6 +49,7 @@ export function FechamentoPage() {
       </select></label>
       <button className="btn btn-outline-primary" disabled={query.loading} onClick={query.refresh}>Atualizar</button>
     </section>
+      </ReportFilters>
     <QueryNotice {...query} />
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
     {query.data && <>

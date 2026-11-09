@@ -1,3 +1,4 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
 import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Spinner, Table } from "react-bootstrap";
@@ -300,6 +301,7 @@ export function FinanceiroTimelineReport() {
 
   return (
     <>
+      <ReportFilters summary={`${startDate?.toLocaleDateString("pt-BR", {month:"2-digit",year:"numeric"}) ?? "—"} a ${endDate?.toLocaleDateString("pt-BR", {month:"2-digit",year:"numeric"}) ?? "—"} · ${selectedFilialOption?.label ?? "Todas as filiais"}`}>
       <section className="op-context ve-filter-bar ve-report-filters" aria-label="Filtros do relatório">
         <div>
           <label htmlFor="relatorio-inicio">Competência inicial</label>
@@ -356,6 +358,7 @@ export function FinanceiroTimelineReport() {
           />
         </div>
       </section>
+      </ReportFilters>
 
       <div className="ve-report-content">
         {error && (

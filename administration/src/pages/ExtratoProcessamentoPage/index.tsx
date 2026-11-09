@@ -1,3 +1,4 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
 import { VisualSummary } from "../../shared/components/VisualSummary";
 import { useEffect, useState } from "react";
 import { PageHeading } from "../../shared/components/PageHeading";
@@ -148,6 +149,7 @@ export function ExtratoProcessamentoPage() {
         }
       />
       <AnalysisNav />
+      <ReportFilters summary={`${options?.periodos.find(p => p.periodo_id === (periodo ?? options?.periodo))?.competencia ?? "—"} · ${branches.find(b => b.filial_id === branchId)?.nome ?? "Selecione a filial"}${executionId ? ` · #${executionId}` : ""}${search ? ` · Busca: ${search}` : ""}`}>
       <section className="op-context extrato-filtros" aria-label="Filtros do extrato">
         <label>
           Competência
@@ -183,6 +185,7 @@ export function ExtratoProcessamentoPage() {
             onChange={(event) => { setSearch(event.target.value); setPage(1); }} />
         </label>
       </section>
+      </ReportFilters>
       {error && <p role="alert" className="op-danger">{error} <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => setRequest((count) => count + 1)}>Recarregar</button></p>}
       {!error && !report && (!currentOptions || executionId !== undefined) && <p role="status">Carregando extrato…</p>}
       {!error && currentOptions && executionId === undefined && <p>Nenhuma execução disponível para esta competência.</p>}

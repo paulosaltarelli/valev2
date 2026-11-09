@@ -1,3 +1,4 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { PageHeading } from '../../shared/components/PageHeading';
@@ -50,7 +51,8 @@ export function VariacaoPage() {
     <PageHeading area="Análise" title="Variação entre competências" description="Compare os valores calculados de cada funcionário e fórmula entre dois períodos."
       actions={<button className="btn btn-primary" disabled={!rows.length || query.loading || !!query.error || exporting} onClick={()=>void download()}>{exporting?'Gerando Excel…':'Exportar Excel'}</button>}/>
     <AnalysisNav/>
-    <section className="op-context mb-3" aria-label="Períodos e filial da comparação">
+    <ReportFilters summary={`${current?.competencia ?? "—"} × ${previous?.competencia ?? "—"} · ${branch?.nome ?? "Selecione a filial"}`}>
+      <section className="op-context mb-3" aria-label="Períodos e filial da comparação">
       <label>Competência atual<select value={currentId ?? ''} onChange={e=>change('periodo',e.target.value)} disabled={!periods.length}>
         {!periods.length && <option value="">Nenhuma disponível</option>}{periods.map(p=><option value={p.periodo_id} key={p.periodo_id}>{p.competencia}{p.ativo?' · Ativa':''}</option>)}
       </select></label>
@@ -63,6 +65,7 @@ export function VariacaoPage() {
       <label className="ve-check-filter"><input type="checkbox" checked={includeInactive} onChange={e=>setIncludeInactive(e.target.checked)}/> Incluir filiais inativas</label>
       <button className="btn btn-outline-primary" disabled={query.loading || options.loading} onClick={()=>{options.refresh();query.refresh();}}>Atualizar</button>
     </section>
+      </ReportFilters>
     <QueryNotice {...options}/><QueryNotice {...query}/>
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
     {options.data && !previous && <p className="op-notice">Selecione uma competência que tenha outro período anterior cadastrado para comparar.</p>}

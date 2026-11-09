@@ -1,3 +1,4 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { QueryNotice, useOperationQuery } from "../../components/Processamento/OperationCommon";
@@ -39,6 +40,7 @@ export function FalhasPage() {
       <PageHeading area="Análise" title="Falhas por causa"
         description="Veja as falhas que exigem ação e abra a execução afetada." />
       <AnalysisNav />
+      <ReportFilters summary={(current?.periodos.find(p => p.periodo_id === current.periodo)?.competencia ?? "Carregando…") + " · " + (stage || "Todas as etapas")}>
       <section className="op-context mb-3" aria-label="Filtros das falhas">
         <label>
           Competência
@@ -60,6 +62,7 @@ export function FalhasPage() {
           </select>
         </label>
       </section>
+      </ReportFilters>
       <QueryNotice {...query} />
       {current && <details className="mb-3"><summary>{groups.length} causas · Como ler</summary><p className="op-muted">Ordenado por pessoas afetadas. As barras comparam cada causa à maior deste recorte. Uma pessoa pode aparecer em várias causas; não some as linhas.</p></details>}
       {current && (groups.length ? (
