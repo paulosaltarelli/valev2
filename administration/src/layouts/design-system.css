@@ -313,3 +313,26 @@
 
 @media(max-width:1199.98px){.ve-analysis-switch>summary{list-style-position:inside}}
 @media(max-width:700px){.ve-report-table td:has(>.ve-status-pill){min-width:145px}.ve-report-table .ve-status-pill{white-space:nowrap;overflow-wrap:normal}}
+
+/* Mobile refinement: compact summaries and an isolated navigation drawer. */
+@media(max-width:700px){
+ body:has(.sidebar.sidebar-open){overflow:hidden}
+ body:has(.sidebar.sidebar-open) .vale-ia-atalho{visibility:hidden;pointer-events:none}
+ .sidebar.sidebar-open{overscroll-behavior:contain;padding-bottom:env(safe-area-inset-bottom)}
+ .ve-analysis-switch>summary{display:flex;align-items:center;justify-content:space-between;list-style:none;gap:12px}
+ .ve-analysis-switch>summary::-webkit-details-marker{display:none}
+ .ve-analysis-switch>summary::after{content:"";width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin:0 4px 4px;flex-shrink:0}
+ .ve-analysis-switch[open]>summary::after{transform:rotate(225deg);margin-top:6px}
+ :is(.op-page,.ve-page) .ve-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+ :is(.op-page,.ve-page) .ve-metrics>div{min-width:0;padding:12px}
+ :is(.op-page,.ve-page) .ve-metrics dt{font-size:12px;line-height:1.4}
+ :is(.op-page,.ve-page) .ve-metrics dd{font-size:18px;overflow-wrap:anywhere;margin-top:6px}
+ .ve-visual-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .ve-visual-summary>div{grid-template-columns:18px minmax(0,1fr);gap:6px;padding:10px;min-width:0}
+ .ve-visual-summary dt{font-size:12px;line-height:1.4}
+ .ve-visual-summary dd{grid-column:2;font-size:18px;line-height:1.2}
+ .ve-visual-summary>div:last-child:nth-child(odd){grid-column:1/-1;grid-template-columns:18px minmax(0,1fr) auto}
+ .ve-visual-summary>div:last-child:nth-child(odd) dd{grid-column:3}
+ :is(.op-page,.ve-page) :is(input,select,textarea){font-size:16px}
+ .ve-page-help>summary{top:3px;min-width:28px;min-height:28px;display:grid;place-items:center}
+}
