@@ -23,12 +23,13 @@ export const intents = [
   'esclarecer',
 ] as const;
 export type Intent = (typeof intents)[number];
-export const provedoresExternos = ['gpt', 'claude'] as const;
-export type ProvedorExterno = (typeof provedoresExternos)[number];
-
 export class AssistenteConfiguracaoDto {
   @IsBoolean()
   ativo!: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  gptAtivo?: boolean;
 
   @IsString()
   @Matches(/^claude-[a-z0-9-]{2,73}$/)

@@ -37,7 +37,11 @@ type Mensagem = {
 };
 type Estado = {
   historico: Turno[];
-  provedores: { id: string; disponivel: boolean }[];
+  provedores: {
+    id: "gpt" | "claude";
+    habilitado: boolean;
+    disponivel: boolean;
+  }[];
 };
 type Contexto = {
   periodos: Pick<Periodo, "periodo_id" | "competencia" | "ativo">[];
@@ -141,8 +145,13 @@ export function AssistenteVale() {
   const [aberto, setAberto] = useState(false);
   const [aba, setAba] = useState<"conversa" | "acessos">("conversa");
   const [pergunta, setPergunta] = useState("");
-  const [claudeDisponivel, setClaudeDisponivel] = useState(false);
-  const [provedor, setProvedor] = useState<"local" | "claude">("local");
+  const [provedores, setProvedores] = useState<Estado["provedores"]>();
+  const [preferencia, setPreferencia] = useState<"gpt" | "claude">();
+  const provedor =
+    provedores?.find(({ id, disponivel }) => disponivel && id === preferencia)
+      ?.id ??
+    provedores?.find(({ disponivel }) => disponivel)?.id ??
+    (provedores?.length === 0 ? "local" : undefined);
   const [competencia, setCompetencia] = useState("");
   const [filial, setFilial] = useState("");
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -184,6 +193,7 @@ export function AssistenteVale() {
     setCompetencia("");
     setFilial("");
     setContexto(undefined);
+    setProvedores(undefined);
     setErro("");
     setAberto(true);
     setAba("conversa");
@@ -193,11 +203,7 @@ export function AssistenteVale() {
         http.get<Contexto>("/assistente/contexto", { params: { execucao } }),
         http.get<Estado>("/assistente"),
       ]);
-      const podeUsarClaude = estado.provedores.some(
-        ({ id, disponivel }) => id === "claude" && disponivel,
-      );
-      setClaudeDisponivel(podeUsarClaude);
-      if (!podeUsarClaude) setProvedor("local");
+      setProvedores(estado.provedores.filter(({ habilitado }) => habilitado));
       const periodos = data.periodos.filter((item) => item.ativo);
       setContexto({ ...data, periodos });
       const periodo =
@@ -225,7 +231,7 @@ export function AssistenteVale() {
   const fechar = () => setAberto(false);
 
   const enviar = async (texto: string, consulta?: string) => {
-    if (!texto.trim() || ocupado || carregandoContexto) return;
+    if (!texto.trim() || ocupado || carregandoContexto || !provedor) return;
     setErro("");
     const pedido = texto.trim();
     const exportar =
@@ -470,7 +476,7 @@ export function AssistenteVale() {
                 <strong>Vale IA</strong>
                 <p>Seu assistente para entender a operação.</p>
               </div>
-              <ContasVale claudeDisponivel={claudeDisponivel} />
+              <ContasVale provedores={provedores} />
             </aside>
             <section
               className="vale-ia-painel"
@@ -499,7 +505,9 @@ export function AssistenteVale() {
                   <div className="vale-ia-boas-vindas">
                     <h2>Como posso ajudar?</h2>
                     <p>Digite sua pergunta ou experimente um dos exemplos.</p>
-                    <fieldset disabled={ocupado || carregandoContexto}>
+                    <fieldset
+                      disabled={ocupado || carregandoContexto || !provedor}
+                    >
                       <div
                         className="vale-ia-exemplos"
                         aria-label="Consultas sugeridas"
@@ -547,6 +555,13 @@ export function AssistenteVale() {
                   ),
                 )}
                 {carregandoContexto && <p role="status">Carregando opções…</p>}
+                {!!provedores?.length && !provedor && (
+                  <p role="status">
+                    {provedores.some(({ id }) => id === "gpt")
+                      ? "O login pessoal do ChatGPT aguarda liberação da OpenAI."
+                      : "O Claude institucional está indisponível."}
+                  </p>
+                )}
                 {erro && <Alert variant="warning">{erro}</Alert>}
                 <div ref={fimDaConversa} />
               </div>
@@ -563,7 +578,12 @@ export function AssistenteVale() {
                 />
                 <Button
                   type="submit"
-                  disabled={!pergunta.trim() || ocupado || carregandoContexto}
+                  disabled={
+                    !pergunta.trim() ||
+                    ocupado ||
+                    carregandoContexto ||
+                    !provedor
+                  }
                 >
                   Enviar
                 </Button>
@@ -585,21 +605,30 @@ export function AssistenteVale() {
                 O Vale IA aproveita a competência ativa e a filial da tela. Você
                 também pode citar uma filial na sua mensagem.
               </p>
-              <ContasVale claudeDisponivel={claudeDisponivel} />
-              {claudeDisponivel && (
+              <ContasVale provedores={provedores} />
+              {provedores?.length === 2 && (
                 <Form.Group controlId="vale-ia-provedor" className="mt-3">
                   <Form.Label>Provedor da conversa</Form.Label>
                   <Form.Select
-                    value={provedor}
+                    value={provedor ?? ""}
                     disabled={ocupado}
                     onChange={(event) =>
-                      setProvedor(
-                        event.target.value === "claude" ? "claude" : "local",
+                      setPreferencia(
+                        event.target.value === "gpt" ? "gpt" : "claude",
                       )
                     }
                   >
-                    <option value="local">Consultas do Vale</option>
-                    <option value="claude">Claude institucional</option>
+                    {!provedor && (
+                      <option value="">Nenhum provedor disponível</option>
+                    )}
+                    {provedores.map(({ id, disponivel }) => (
+                      <option key={id} value={id} disabled={!disponivel}>
+                        {id === "gpt"
+                          ? "ChatGPT pessoal"
+                          : "Claude institucional"}
+                        {!disponivel && " (indisponível)"}
+                      </option>
+                    ))}
                   </Form.Select>
                   <Form.Text>
                     Ao selecionar Claude, o texto da pergunta é enviado ao
@@ -615,23 +644,28 @@ export function AssistenteVale() {
   );
 }
 
-function ContasVale({ claudeDisponivel }: { claudeDisponivel: boolean }) {
+function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
+  if (!provedores) return null;
   return (
     <div className="vale-ia-contas">
-      <h3>Contas pessoais</h3>
-      <div>
-        <strong>ChatGPT</strong>
-        <span>Aguardando liberação da OpenAI</span>
-      </div>
-      <div>
-        <strong>Claude</strong>
-        <span>
-          {claudeDisponivel
-            ? "Claude institucional disponível"
-            : "Aguardando configuração institucional"}
-        </span>
-      </div>
-      <p>As consultas do Vale estão disponíveis nesta sessão.</p>
+      <h3>Provedores</h3>
+      {provedores.map(({ id, disponivel }) => (
+        <div key={id}>
+          <strong>
+            {id === "gpt" ? "ChatGPT pessoal" : "Claude institucional"}
+          </strong>
+          <span>
+            {disponivel
+              ? "Disponível"
+              : id === "gpt"
+                ? "Aguardando liberação da OpenAI"
+                : "Aguardando configuração institucional"}
+          </span>
+        </div>
+      ))}
+      {provedores.length === 0 && (
+        <p>Consultas do Vale disponíveis nesta sessão.</p>
+      )}
     </div>
   );
 }

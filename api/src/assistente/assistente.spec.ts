@@ -133,6 +133,7 @@ describe('Assistente do Vale', () => {
       .expect(200);
     expect(leitura.body).toEqual({
       ativo: false,
+      gptAtivo: false,
       modelo: 'claude-haiku-5-5',
       credencialConfigurada: false,
     });
@@ -164,10 +165,11 @@ describe('Assistente do Vale', () => {
     const resposta = await request(app.getHttpServer())
       .put('/assistente/configuracao')
       .set('Cookie', cookie(12, 'admin-config'))
-      .send({ ativo: true, modelo, chave })
+      .send({ ativo: true, gptAtivo: true, modelo, chave })
       .expect(200);
     expect(resposta.body).toEqual({
       ativo: true,
+      gptAtivo: true,
       modelo,
       credencialConfigurada: true,
     });
@@ -175,6 +177,66 @@ describe('Assistente do Vale', () => {
       prisma.assistente_configuracao.update.mock.lastCall?.[0].data;
     expect(claude_chave).not.toContain(chave);
     expect(new CryptoService().decryptJson(claude_chave)).toBe(chave);
+  });
+
+  it('aplica as flags no chat e bloqueia GPT até o login pessoal estar disponível', async () => {
+    const sessao = cookie(13, 'operador-provedores');
+    const http = request(app.getHttpServer());
+    const base = {
+      gpt_ativo: false,
+      claude_ativo: false,
+      claude_modelo: 'claude-haiku-5-5',
+    };
+    const claude = {
+      ...base,
+      claude_ativo: true,
+      claude_chave: new CryptoService().encryptJson('chave-teste'),
+    };
+    const ambos = { ...claude, gpt_ativo: true };
+    prisma.assistente_configuracao.findUnique
+      .mockResolvedValueOnce(ambos)
+      .mockResolvedValueOnce(claude)
+      .mockResolvedValueOnce({ ...base, gpt_ativo: true })
+      .mockResolvedValueOnce(base);
+    const estado = await http
+      .get('/assistente')
+      .set('Cookie', sessao)
+      .expect(200);
+    expect(estado.body.provedores).toEqual([
+      { id: 'gpt', habilitado: true, disponivel: false },
+      { id: 'claude', habilitado: true, disponivel: true },
+    ]);
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ content: [{ type: 'text', text: 'pendencias' }] }),
+        ),
+      );
+    const pergunta = 'quais filiais têm pendências?';
+    try {
+      await http
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
+        .send({ pergunta, periodoId: 7 })
+        .expect(201);
+      await http
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
+        .send({ pergunta, provedor: 'local' })
+        .expect(503);
+      await http
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
+        .send({ pergunta, provedor: 'gpt' })
+        .expect(403);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://api.anthropic.com/v1/messages',
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it('recusa chamadas anônimas e sessões expiradas', async () => {

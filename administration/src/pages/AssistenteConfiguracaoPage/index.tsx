@@ -6,6 +6,7 @@ import { http } from "../../shared/lib/http";
 
 type Configuracao = {
   ativo: boolean;
+  gptAtivo: boolean;
   modelo: string;
   credencialConfigurada: boolean;
 };
@@ -48,7 +49,7 @@ export function AssistenteConfiguracaoPage() {
       } else {
         const { data } = await http.put<Configuracao>(
           "/assistente/configuracao",
-          dados,
+          { ...dados, gptAtivo: config.gptAtivo },
         );
         setConfig(data);
         setChave("");
@@ -78,10 +79,9 @@ export function AssistenteConfiguracaoPage() {
       <PageHeading
         area="Administração"
         title="Configuração do Vale IA"
-        description="Gerencie a conexão institucional com Claude."
+        description="Escolha quais provedores podem ser usados no Vale IA."
       />
-      <section className="op-panel" aria-label="Configuração do Claude">
-        <h2>Claude</h2>
+      <section className="op-panel" aria-label="Provedores do Vale IA">
         {erro && <Alert variant="danger">{erro}</Alert>}
         {mensagem && (
           <Alert variant="success" role="status">
@@ -91,6 +91,18 @@ export function AssistenteConfiguracaoPage() {
         {!config && !erro && <p role="status">Carregando configuração…</p>}
         {config && (
           <Form onSubmit={salvar}>
+            <h2>ChatGPT</h2>
+            <Form.Check
+              id="vale-gpt-ativo"
+              label="Disponibilizar login pessoal do ChatGPT no Vale IA"
+              checked={config.gptAtivo}
+              disabled={Boolean(acao)}
+              onChange={(event) =>
+                setConfig({ ...config, gptAtivo: event.target.checked })
+              }
+            />
+            <p>A conexão com a conta pessoal aguarda liberação da OpenAI.</p>
+            <h2>Claude</h2>
             <p>
               {config.credencialConfigurada
                 ? "Chave da Anthropic cadastrada."

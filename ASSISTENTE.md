@@ -23,6 +23,8 @@ O fluxo desejado para a conta pessoal começa no botão **Entrar com ChatGPT**. 
 
 A ativação desse fluxo hospedado depende do registro OAuth do Vale e da autorização para usar o plano ChatGPT do operador. O cadastro precisa incluir o callback HTTPS de produção e solicitar expressamente o uso do plano. A OpenAI fornece o identificador do cliente, o método de autenticação e as permissões concedidas. [Registro OAuth](https://developers.openai.com/siwc/request-client-id) · [Uso do plano em aplicações hospedadas](https://developers.openai.com/siwc/token-sharing-open-source)
 
+As flags administrativas de ChatGPT pessoal e Claude institucional são independentes. Aplique a migração aditiva `20261109110000_assistente_gpt_flag` antes de publicar a API com a nova flag. Enquanto o login pessoal estiver pendente, o ChatGPT aparece como indisponível quando habilitado. Com Claude habilitado e chave cadastrada, o chat usa Claude automaticamente. Com ambas as flags desligadas, usa as consultas locais do Vale.
+
 GPT e Claude classificam a pergunta em um catálogo fechado. O Vale executa a consulta parametrizada e monta as tabelas, indicadores, links e arquivos. O histórico, os filtros estruturados, os registros e as credenciais do banco ficam no Vale. O usuário pode selecionar **Consultas do Vale** para interpretação local. Ao escolher um modelo externo, envie apenas a pergunta sem dados pessoais e use o campo de matrícula para identificar funcionários.
 
 | Opção | Integração | US$ por milhão de tokens de entrada e saída | Cenário de mil perguntas |

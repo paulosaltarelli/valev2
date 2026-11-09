@@ -3,20 +3,7 @@ import {
   ForbiddenException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import {
-  AssistenteDto,
-  Intent,
-  intents,
-  provedoresExternos,
-} from './assistente.dto';
-
-export function provedores(claudeDisponivel = false) {
-  return provedoresExternos.map((id) => ({
-    id,
-    disponivel:
-      id === 'claude' ? claudeDisponivel : Boolean(process.env.OPENAI_API_KEY),
-  }));
-}
+import { AssistenteDto, Intent, intents } from './assistente.dto';
 
 export function intencaoLocal(texto: string): Intent {
   const pergunta = texto

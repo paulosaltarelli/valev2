@@ -29,7 +29,7 @@ import { CryptoModule } from '../security/crypto.module';
 import { CryptoService } from '../security/crypto.service';
 import { AssistenteConsultas } from './assistente-consultas';
 import { AssistenteConfiguracaoDto, AssistenteDto } from './assistente.dto';
-import { provedores, selecionarConsulta } from './assistente-intencao';
+import { selecionarConsulta } from './assistente-intencao';
 
 type Turno = { pergunta: string; resposta: string; em: string };
 const ttl = 30 * 60_000;
@@ -145,9 +145,18 @@ export class AssistenteController {
       where: { id: 1 },
     });
     return {
-      provedores: provedores(
-        Boolean(config?.claude_ativo && config.claude_chave),
-      ),
+      provedores: [
+        {
+          id: 'gpt',
+          habilitado: Boolean(config?.gpt_ativo),
+          disponivel: false,
+        },
+        {
+          id: 'claude',
+          habilitado: Boolean(config?.claude_ativo),
+          disponivel: Boolean(config?.claude_ativo && config.claude_chave),
+        },
+      ],
       historico: this.sessoes.ler(usuario.chave),
     };
   }
@@ -161,6 +170,7 @@ export class AssistenteController {
     });
     return {
       ativo: config.claude_ativo,
+      gptAtivo: Boolean(config.gpt_ativo),
       modelo: config.claude_modelo,
       credencialConfigurada: Boolean(config.claude_chave),
     };
@@ -185,6 +195,7 @@ export class AssistenteController {
       where: { id: 1 },
       data: {
         claude_ativo: input.ativo,
+        ...(input.gptAtivo != null && { gpt_ativo: input.gptAtivo }),
         claude_modelo: input.modelo,
         ...(input.chave && {
           claude_chave: this.crypto.encryptJson(input.chave),
@@ -193,6 +204,7 @@ export class AssistenteController {
     });
     return {
       ativo: salva.claude_ativo,
+      gptAtivo: Boolean(salva.gpt_ativo),
       modelo: salva.claude_modelo,
       credencialConfigurada: Boolean(salva.claude_chave),
     };
@@ -277,19 +289,32 @@ export class AssistenteController {
     input.pergunta = input.pergunta.trim();
     if (!input.pergunta) throw new BadRequestException('Digite uma pergunta.');
     return this.sessoes.consultar(usuario.id, async () => {
-      const config =
-        input.provedor === 'claude'
-          ? await this.prisma.assistente_configuracao.findUnique({
-              where: { id: 1 },
-            })
-          : null;
-      const chave = config?.claude_ativo
-        ? this.lerChaveClaude(config.claude_chave)
-        : undefined;
+      const config = await this.prisma.assistente_configuracao.findUnique({
+        where: { id: 1 },
+      });
+      const provedor =
+        input.provedor && input.provedor !== 'local'
+          ? input.provedor
+          : config?.claude_ativo
+            ? 'claude'
+            : config?.gpt_ativo
+              ? 'gpt'
+              : 'local';
+      if (provedor === 'gpt') {
+        if (!config?.gpt_ativo)
+          throw new ForbiddenException('ChatGPT está desabilitado no Vale IA.');
+        throw new ServiceUnavailableException(
+          'O login pessoal do ChatGPT aguarda liberação da OpenAI.',
+        );
+      }
+      const chave =
+        provedor === 'claude' && config?.claude_ativo
+          ? this.lerChaveClaude(config.claude_chave)
+          : undefined;
       const intent = await selecionarConsulta(
-        input,
+        { ...input, provedor },
         config && chave ? { modelo: config.claude_modelo, chave } : undefined,
-        input.provedor === 'claude',
+        provedor === 'claude',
       );
       if (
         input.matricula &&

@@ -9,6 +9,7 @@ datasource db {
 
 model assistente_configuracao {
   id            Int      @id
+  gpt_ativo     Boolean  @default(false)
   claude_ativo  Boolean  @default(false)
   claude_modelo String   @db.VarChar(80)
   atualizado_em DateTime @updatedAt
