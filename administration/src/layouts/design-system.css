@@ -168,3 +168,61 @@
 @media(max-width:600px) { .ve-home-alert { flex-direction:column; align-items:stretch; gap:12px; } }
 .ve-table-empty table { min-width:0 !important; width:100% !important; table-layout:fixed; }
 .ve-table-empty .dt-empty { white-space:normal !important; overflow-wrap:anywhere; }
+
+/* Interface Vale IA: escopo exclusivamente visual, preservando os fluxos do assistente. */
+.vale-ia-modal .modal-dialog { max-width: 960px; }
+.vale-ia-modal .modal-content { height:min(780px, calc(100dvh - 32px)); border:1px solid var(--op-line); border-radius:12px; color:var(--op-text); background:var(--op-surface); }
+.vale-ia-modal .modal-header { border-top:0; padding:16px 20px; border-bottom:1px solid var(--op-line); }
+.vale-ia-modal .modal-title { font-size:20px; font-weight:600; }
+.vale-ia-modal .modal-title small { font-size:11px; color:var(--op-muted); letter-spacing:.04em; }
+.vale-ia-modal .vale-ia-corpo { background:var(--op-surface); overflow:hidden; }
+.vale-ia-modal .vale-ia-lateral { display:none; }
+.vale-ia-modal .vale-ia-navegacao { padding:8px 20px; gap:8px; border-color:var(--op-line); background:var(--op-soft); flex-shrink:0; }
+.vale-ia-modal .vale-ia-navegacao button { padding:8px 12px; border:1px solid transparent; border-radius:7px; font-size:14px; font-weight:500; color:var(--op-muted); }
+.vale-ia-modal .vale-ia-navegacao button[aria-pressed="true"] { color:var(--op-blue); background:var(--op-surface); border-color:var(--op-line); }
+.vale-ia-modal .vale-ia-paineis { padding:0; gap:0; }
+.vale-ia-modal .vale-ia-painel, .vale-ia-modal .vale-ia-acessos { border:0; border-radius:0; background:var(--op-surface); color:var(--op-text); }
+.vale-ia-modal .vale-ia-contexto { padding:10px 20px; font-size:13px; border-color:var(--op-line); }
+.vale-ia-modal .vale-ia-contexto strong { font-weight:500; }
+.vale-ia-modal .vale-ia-contexto small, .vale-ia-modal .vale-ia-contas span { color:var(--op-muted); }
+.vale-ia-modal .vale-ia-contexto > span { background:var(--op-soft); color:var(--op-muted); }
+.vale-ia-modal .vale-ia-conversa { padding:20px; font-size:15px; line-height:1.55; }
+.vale-ia-modal .vale-ia-turno { gap:12px; margin-bottom:24px; }
+.vale-ia-modal .vale-ia-balao { max-width:100%; border-radius:10px; padding:12px 16px; }
+.vale-ia-modal .vale-ia-pergunta { max-width:85%; background:var(--op-blue-soft); color:var(--op-text); border:1px solid var(--op-line); }
+.vale-ia-modal .vale-ia-resposta { width:100%; background:transparent; border:0; padding:4px 0; }
+.vale-ia-modal .vale-ia-autor { color:var(--op-blue); font-size:13px; }
+.vale-ia-modal .vale-ia-compor { padding:12px 20px; background:var(--op-surface); border-color:var(--op-line); flex-shrink:0; }
+.vale-ia-modal .vale-ia-compor textarea { border-color:var(--op-line); border-radius:7px; background:var(--op-surface); color:var(--op-text); font-size:15px; max-height:120px; }
+.vale-ia-modal .btn { border-radius:7px; }
+.vale-ia-modal .btn-primary { background:var(--ve-primary); border-color:var(--ve-primary); color:#fff; }
+.vale-ia-modal .btn-outline-secondary, .vale-ia-modal .btn-outline-primary { color:var(--op-blue); border-color:var(--op-line); background:transparent; }
+.vale-ia-modal .btn-outline-secondary:hover, .vale-ia-modal .btn-outline-primary:hover { background:var(--op-blue-soft); }
+.vale-ia-modal :is(button,a,textarea,select,summary):focus-visible { outline:3px solid var(--op-blue); outline-offset:2px; }
+.vale-ia-modal .vale-ia-acessos { padding:20px; font-size:14px; }
+.vale-ia-modal .vale-ia-acessos h2 { font-size:18px; margin-bottom:16px; }
+.vale-ia-modal .vale-ia-contas > div { background:var(--op-soft); border-color:var(--op-line); border-radius:7px; }
+.vale-ia-modal .vale-ia-contas p { color:var(--op-muted); }
+.vale-ia-modal .table-responsive { max-height:none; overflow-y:visible; }
+.vale-ia-modal table { font-size:13px; color:var(--op-text); }
+.vale-ia-modal th { background:var(--op-soft); }
+.vale-ia-modal .vale-ia-marca { flex:0 0 40px; height:40px; background:transparent; border-radius:0; }
+.vale-ia-modal .vale-ia-marca svg, .vale-ia-atalho > svg { display:none; }
+.vale-ia-modal .vale-ia-marca::before, .vale-ia-atalho::after { content:""; display:block; width:40px; height:40px; flex-shrink:0; background:url('/vale-ia-transporte.svg') center / contain no-repeat; }
+.vale-ia-atalho { color:var(--op-blue); background:var(--op-surface); border:1px solid var(--op-line); box-shadow:0 4px 16px rgb(29 42 59 / 12%); padding:5px 7px 5px 14px; gap:8px; font-size:14px; }
+.vale-ia-atalho small { display:none; }
+.vale-ia-atalho:hover { background:var(--op-blue-soft); }
+.vale-ia-atalho:focus-visible { outline:3px solid var(--op-blue); outline-offset:3px; }
+@media(max-width:575.98px) {
+  .vale-ia-modal .modal-dialog { max-width:none; margin:0; }
+  .vale-ia-modal .modal-content { height:100dvh; border:0; border-radius:0; }
+  .vale-ia-modal .modal-header { padding:12px 16px; }
+  .vale-ia-modal .vale-ia-navegacao { padding:8px 12px; }
+  .vale-ia-modal .vale-ia-contexto { padding:8px 16px; }
+  .vale-ia-modal .vale-ia-conversa, .vale-ia-modal .vale-ia-acessos { padding:16px; }
+  .vale-ia-modal .vale-ia-compor { padding:10px 12px max(10px, env(safe-area-inset-bottom)); }
+  .vale-ia-modal .vale-ia-compor textarea { font-size:16px; }
+  .vale-ia-modal .vale-ia-acessos dl { grid-template-columns:1fr; gap:4px; }
+  .vale-ia-modal .vale-ia-pergunta { max-width:95%; }
+  .vale-ia-atalho { padding:4px; }
+}
