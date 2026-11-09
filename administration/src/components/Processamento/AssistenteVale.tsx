@@ -75,12 +75,68 @@ function MarcaAssistente() {
   );
 }
 
+function AvatarVale() {
+  return (
+    <svg viewBox="0 0 96 96" fill="none" aria-hidden="true" focusable="false">
+      <circle cx="48" cy="48" r="47" fill="#e4f2ed" />
+      <path
+        d="M15 78c7-12 18-17 33-17s26 5 33 17c-8 10-20 16-33 16s-25-6-33-16Z"
+        fill="#245d50"
+      />
+      <path d="M35 64l13 16 13-16" stroke="#88c0a9" strokeWidth="4" />
+      <rect
+        x="22"
+        y="34"
+        width="52"
+        height="33"
+        rx="16"
+        fill="#fdfcf6"
+        stroke="#16433a"
+        strokeWidth="3"
+      />
+      <rect x="28" y="38" width="40" height="20" rx="10" fill="#16433a" />
+      <path
+        d="M37 48c0-4 5-4 5 0m12 0c0-4 5-4 5 0"
+        stroke="#b0ead0"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <path
+        d="M44 61c2 2 6 2 8 0"
+        stroke="#245d50"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M22 34a26 26 0 0 1 52 0H22Z"
+        fill="#245d50"
+        stroke="#16433a"
+        strokeWidth="3"
+      />
+      <path
+        d="M29 34h44M43 18l5 9 5-9"
+        stroke="#ffd675"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M78 21v10m-5-5h10"
+        stroke="#a07121"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function AssistenteVale() {
   const location = useLocation();
   const [disponivel, setDisponivel] = useState(false);
   const [contexto, setContexto] = useState<Contexto>();
   const [carregandoContexto, setCarregandoContexto] = useState(false);
   const [aberto, setAberto] = useState(false);
+  const [aba, setAba] = useState<"conversa" | "acessos">("conversa");
   const [pergunta, setPergunta] = useState("");
   const [competencia, setCompetencia] = useState("");
   const [filial, setFilial] = useState("");
@@ -111,8 +167,10 @@ export function AssistenteVale() {
   }, []);
 
   useEffect(() => {
-    if (aberto) fimDaConversa.current?.scrollIntoView({ block: "end" });
-  }, [aberto, mensagens]);
+    if (aberto && aba === "conversa") {
+      fimDaConversa.current?.scrollIntoView({ block: "end" });
+    }
+  }, [aberto, aba, mensagens]);
 
   const abrir = async () => {
     const params = new URLSearchParams(location.search);
@@ -123,6 +181,7 @@ export function AssistenteVale() {
     setContexto(undefined);
     setErro("");
     setAberto(true);
+    setAba("conversa");
     setCarregandoContexto(true);
     try {
       const { data } = await http.get<Contexto>("/assistente/contexto", {
@@ -330,6 +389,12 @@ export function AssistenteVale() {
     }
   };
   if (!disponivel) return null;
+  const periodoAtivo = contexto?.periodos.find(
+    (item) => String(item.periodo_id) === competencia,
+  )?.competencia;
+  const filialAtiva = contexto?.filiais.find(
+    (item) => String(item.filial_id) === filial,
+  )?.nome;
 
   return (
     <>
@@ -340,14 +405,18 @@ export function AssistenteVale() {
         aria-haspopup="dialog"
         onClick={() => void abrir()}
       >
-        <MarcaAssistente />
-        <span aria-hidden="true">Vale IA</span>
+        <span className="vale-ia-atalho-texto" aria-hidden="true">
+          <strong>Vale IA</strong>
+          <small>Seu assistente no Vale</small>
+        </span>
+        <AvatarVale />
       </button>
       <Modal
         show={aberto}
         onHide={fechar}
         scrollable={false}
-        size="lg"
+        size="xl"
+        fullscreen="sm-down"
         className="vale-ia-modal"
         aria-labelledby="assistente-vale-titulo"
       >
@@ -362,100 +431,171 @@ export function AssistenteVale() {
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="vale-ia-corpo">
-          {contexto && (
-            <div className="vale-ia-contexto">
-              {contexto.periodos.find(
-                (item) => String(item.periodo_id) === competencia,
-              )?.competencia ?? "Sem competência ativa"}
-              {filial &&
-                " · " +
-                  (contexto.filiais.find(
-                    (item) => String(item.filial_id) === filial,
-                  )?.nome ?? "")}
-            </div>
-          )}
-          <div
-            className="vale-ia-conversa"
-            role="log"
-            aria-label="Conversa com o Vale IA"
-            tabIndex={0}
-          >
-            {!mensagens.length && (
-              <div className="vale-ia-balao vale-ia-resposta">
-                <strong>Vale IA</strong>
-                <p className="mb-2">
-                  Olá! Como posso ajudar com o Vale Expresso?
-                </p>
-                <fieldset disabled={ocupado || carregandoContexto}>
-                  <div
-                    className="d-flex flex-wrap gap-2 mb-3"
-                    aria-label="Consultas sugeridas"
-                  >
-                    {sugestoes.map(([id, texto]) => (
-                      <Button
-                        key={id}
-                        type="button"
-                        variant="outline-secondary"
-                        size="sm"
-                        onClick={() => void enviar(texto, id)}
-                      >
-                        {texto}
-                      </Button>
-                    ))}
-                  </div>
-                </fieldset>
-              </div>
-            )}
-            {mensagens.map(({ id, pergunta: texto, resposta, erro: falha }) => (
-              <div className="vale-ia-turno" key={id}>
-                <div className="vale-ia-balao vale-ia-pergunta">
-                  <span className="visually-hidden">Você: </span>
-                  {texto}
-                </div>
-                <div className="vale-ia-balao vale-ia-resposta">
-                  <strong className="vale-ia-autor">Vale IA</strong>
-                  {resposta ? (
-                    <MensagemVale
-                      resposta={resposta}
-                      fechar={fechar}
-                      baixar={() => void baixarExcel(resposta)}
-                      exportando={exportando}
-                    />
-                  ) : falha ? (
-                    <p className="mb-0">{falha}</p>
-                  ) : (
-                    <p role="status" className="mb-0">
-                      Consultando o Vale…
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {carregandoContexto && <p role="status">Carregando opções…</p>}
-            {erro && <Alert variant="warning">{erro}</Alert>}
-            <div ref={fimDaConversa} />
-          </div>
-          <Form className="vale-ia-compor" onSubmit={submit}>
-            <Form.Control
-              as="textarea"
-              rows={2}
-              maxLength={500}
-              value={pergunta}
-              onChange={(e) => setPergunta(e.target.value)}
-              onKeyDown={atalhosDeTeclado}
-              aria-label="Mensagem"
-              placeholder="Escreva sua mensagem…"
-            />
-            <Button
-              type="submit"
-              disabled={!pergunta.trim() || ocupado || carregandoContexto}
+          <nav className="vale-ia-navegacao" aria-label="Áreas do Vale IA">
+            <button
+              type="button"
+              aria-pressed={aba === "conversa"}
+              onClick={() => setAba("conversa")}
             >
-              Enviar
-            </Button>
-          </Form>
+              Conversa
+            </button>
+            <button
+              type="button"
+              aria-pressed={aba === "acessos"}
+              onClick={() => setAba("acessos")}
+            >
+              Contexto e acessos
+            </button>
+          </nav>
+          <div className="vale-ia-paineis">
+            <aside
+              className="vale-ia-lateral"
+              aria-label="Contas do Vale IA"
+              hidden={aba === "acessos"}
+            >
+              <div className="vale-ia-identidade">
+                <AvatarVale />
+                <strong>Vale IA</strong>
+                <p>Seu assistente para entender a operação.</p>
+              </div>
+              <ContasVale />
+            </aside>
+            <section
+              className="vale-ia-painel"
+              aria-label="Conversa"
+              hidden={aba !== "conversa"}
+            >
+              <div className="vale-ia-contexto">
+                <div>
+                  <strong>Converse sobre o Vale</strong>
+                  <small>Consultas com o contexto da sua tela</small>
+                </div>
+                {contexto && (
+                  <span>
+                    {periodoAtivo ?? "Sem competência ativa"}
+                    {filialAtiva && " · " + filialAtiva}
+                  </span>
+                )}
+              </div>
+              <div
+                className="vale-ia-conversa"
+                role="log"
+                aria-label="Conversa com o Vale IA"
+                tabIndex={0}
+              >
+                {!mensagens.length && (
+                  <div className="vale-ia-boas-vindas">
+                    <h2>Como posso ajudar?</h2>
+                    <p>Digite sua pergunta ou experimente um dos exemplos.</p>
+                    <fieldset disabled={ocupado || carregandoContexto}>
+                      <div
+                        className="vale-ia-exemplos"
+                        aria-label="Consultas sugeridas"
+                      >
+                        {sugestoes.map(([id, texto]) => (
+                          <Button
+                            key={id}
+                            type="button"
+                            variant="outline-secondary"
+                            size="sm"
+                            onClick={() => void enviar(texto, id)}
+                          >
+                            {texto}
+                          </Button>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                )}
+                {mensagens.map(
+                  ({ id, pergunta: texto, resposta, erro: falha }) => (
+                    <div className="vale-ia-turno" key={id}>
+                      <div className="vale-ia-balao vale-ia-pergunta">
+                        <span className="visually-hidden">Você: </span>
+                        {texto}
+                      </div>
+                      <div className="vale-ia-balao vale-ia-resposta">
+                        <strong className="vale-ia-autor">Vale IA</strong>
+                        {resposta ? (
+                          <MensagemVale
+                            resposta={resposta}
+                            fechar={fechar}
+                            baixar={() => void baixarExcel(resposta)}
+                            exportando={exportando}
+                          />
+                        ) : falha ? (
+                          <p className="mb-0">{falha}</p>
+                        ) : (
+                          <p role="status" className="mb-0">
+                            Consultando o Vale…
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ),
+                )}
+                {carregandoContexto && <p role="status">Carregando opções…</p>}
+                {erro && <Alert variant="warning">{erro}</Alert>}
+                <div ref={fimDaConversa} />
+              </div>
+              <Form className="vale-ia-compor" onSubmit={submit}>
+                <Form.Control
+                  as="textarea"
+                  rows={2}
+                  maxLength={500}
+                  value={pergunta}
+                  onChange={(e) => setPergunta(e.target.value)}
+                  onKeyDown={atalhosDeTeclado}
+                  aria-label="Mensagem"
+                  placeholder="Escreva sua mensagem…"
+                />
+                <Button
+                  type="submit"
+                  disabled={!pergunta.trim() || ocupado || carregandoContexto}
+                >
+                  Enviar
+                </Button>
+              </Form>
+            </section>
+            <section
+              className="vale-ia-acessos"
+              aria-label="Contexto e acessos"
+              hidden={aba !== "acessos"}
+            >
+              <h2>Contexto e acessos</h2>
+              <dl>
+                <dt>Competência</dt>
+                <dd>{periodoAtivo ?? "Sem competência ativa"}</dd>
+                <dt>Filial</dt>
+                <dd>{filialAtiva ?? "Definida pela pergunta"}</dd>
+              </dl>
+              <p>
+                O Vale IA aproveita a competência ativa e a filial da tela. Você
+                também pode citar uma filial na sua mensagem.
+              </p>
+              <ContasVale />
+            </section>
+          </div>
         </Modal.Body>
       </Modal>
     </>
+  );
+}
+
+function ContasVale() {
+  return (
+    <div className="vale-ia-contas">
+      <h3>Contas pessoais</h3>
+      <div>
+        <strong>ChatGPT</strong>
+        <span>Aguardando liberação da OpenAI</span>
+      </div>
+      <div>
+        <strong>Claude</strong>
+        <span>Login pessoal indisponível no Vale</span>
+      </div>
+      <p>As consultas do Vale estão disponíveis nesta sessão.</p>
+    </div>
   );
 }
 
