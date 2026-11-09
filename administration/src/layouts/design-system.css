@@ -226,3 +226,5 @@
   .vale-ia-modal .vale-ia-pergunta { max-width:95%; }
   .vale-ia-atalho { padding:4px; }
 }
+
+.vale-ia-modal .vale-ia-compor > button { flex-shrink:0; min-width:76px; white-space:nowrap; }
