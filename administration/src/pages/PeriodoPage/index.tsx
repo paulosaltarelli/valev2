@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState, type FormEvent } from "react";
 import DataTable from "datatables.net-react";
@@ -197,6 +198,12 @@ export function PeriodoPage() {
           </Button>
         )}
       />
+      {!!periodos.length && <VisualSummary items={[
+{label:"Competências",value:periodos.length,icon:"tabler:list"},
+{label:"Ativas",value:periodos.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Inativas",value:periodos.filter(item=>!item.ativo).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
           <div className="ve-table-list">

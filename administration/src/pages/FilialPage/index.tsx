@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
@@ -153,6 +154,12 @@ export function FilialPage() {
           </Button>
         )}
       />
+      {!!filiais.length && <VisualSummary items={[
+{label:"Filiais",value:filiais.length,icon:"tabler:list"},
+{label:"Ativas",value:filiais.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Inativas",value:filiais.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
           <div className="ve-table-list">

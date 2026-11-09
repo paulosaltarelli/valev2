@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
@@ -103,6 +104,12 @@ export function UsuariosPage() {
           </Button>
         )}
       />
+      {!!usuarios.length && <VisualSummary items={[
+{label:"Usuários",value:usuarios.length,icon:"tabler:list"},
+{label:"Ativos",value:usuarios.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Inativos",value:usuarios.filter(item=>!item.ativo).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
           <div className="ve-table-list">

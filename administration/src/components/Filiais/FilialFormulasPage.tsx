@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
@@ -202,7 +203,7 @@ export function FilialFormulasPage() {
       <PageHeading
         area="Regras e cadastros"
         title="Fórmulas"
-        description={filial?.nome}
+        context={filial?.nome}
         actions={(
           <Button
           variant="primary"
@@ -216,6 +217,12 @@ export function FilialFormulasPage() {
         </Button>
         )}
       />
+      {!!formulas.length && <VisualSummary items={[
+{label:"Fórmulas",value:formulas.length,icon:"tabler:list"},
+{label:"Ativas",value:formulas.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Inativas",value:formulas.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card card-body ve-table-list">
       <DataTable
         className="table striped-table mb-0"

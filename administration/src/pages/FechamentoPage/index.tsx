@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { PageHeading } from '../../shared/components/PageHeading';
@@ -49,8 +50,13 @@ export function FechamentoPage() {
     <QueryNotice {...query} />
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
     {query.data && <>
-      <p className="op-muted">{rows.length} filiais · Atualizado em {dateTime(query.data.updatedAt)}. “—” indica ausência de execução.</p>
-      <details className="mb-3"><summary>Como ler as contagens</summary><p className="op-muted mt-2">Completo, parcial e sem cálculo dividem os funcionários da execução. “Com erro” pode incluir pessoas com resultados parciais ou falha de envio. As colunas de envio são um recorte dos cálculos completos. Filiais sem execução não têm quantidade de funcionários conhecida.</p></details>
+      <VisualSummary items={[
+{label:'Filiais no recorte',value:rows.length,icon:'tabler:building'},
+{label:'Filiais com erro',value:rows.filter(r=>(r.counts?.comErro ?? 0)>0).length,icon:'tabler:alert-circle',tone:'danger'},
+{label:'Filiais aguardando envio',value:rows.filter(r=>(r.counts?.aguardandoEnvio ?? 0)>0).length,icon:'tabler:clock',tone:'warning'}
+]} />
+      <small className="op-muted">Atualizado em {dateTime(query.data.updatedAt)}</small>
+      <details className="mb-3"><summary>Como ler as contagens</summary><p className="op-muted mt-2">“—” indica ausência de execução. Completo, parcial e sem cálculo dividem os funcionários da execução. “Com erro” pode incluir pessoas com resultados parciais ou falha de envio. As colunas de envio são um recorte dos cálculos completos. Filiais sem execução não têm quantidade de funcionários conhecida.</p></details>
       <label className="ve-check-filter mb-3"><input type="checkbox" checked={showDetails} onChange={e=>setShowDetails(e.target.checked)}/> Exibir todas as contagens</label>
       {rows.length ? <div className="op-table-wrap"><div className="op-scroll" tabIndex={0} role="region" aria-label="Fechamento das filiais">
         <table className="op-table ve-report-table"><thead><tr>

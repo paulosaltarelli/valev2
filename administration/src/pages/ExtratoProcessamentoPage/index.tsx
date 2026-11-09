@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { useEffect, useState } from "react";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { AnalysisNav } from "../../shared/components/AnalysisNav";
@@ -186,9 +187,11 @@ export function ExtratoProcessamentoPage() {
       {!error && !report && (!currentOptions || executionId !== undefined) && <p role="status">Carregando extrato…</p>}
       {!error && currentOptions && executionId === undefined && <p>Nenhuma execução disponível para esta competência.</p>}
       {report && <>
-        <p className="op-muted" role="status">
-          {employees.length} {employees.length === 1 ? "funcionário" : "funcionários"} · {columns.length} {columns.length === 1 ? "fórmula" : "fórmulas"} · — indica ausência de cálculo.
-        </p>
+        <VisualSummary items={[
+{label:"Funcionários",value:employees.length,icon:"tabler:users"},
+{label:"Fórmulas",value:columns.length,icon:"tabler:math-function"}
+]} />
+        <details className="mb-3"><summary>Legenda</summary><p className="op-muted">— indica ausência de cálculo. Abra um erro para ver o detalhe.</p></details>
         {employees.length ? (
           <div className="op-table-wrap">
             <div className="op-scroll extrato-tabela" tabIndex={0} role="region" aria-label="Valores calculados por funcionário">

@@ -1,3 +1,4 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
@@ -164,7 +165,7 @@ export function FilialVariaveisPage() {
       <PageHeading
         area="Regras e cadastros"
         title="Variáveis"
-        description={filial?.nome}
+        context={filial?.nome}
         actions={(
           <Button
           variant="primary"
@@ -175,6 +176,11 @@ export function FilialVariaveisPage() {
         </Button>
         )}
       />
+      {!!variaveis.length && <VisualSummary items={[
+{label:"Variáveis",value:variaveis.length,icon:"tabler:variable"},
+{label:"Consulta RM",value:variaveis.filter(item=>!!item.sql_codigo_rm).length,icon:"tabler:database"},
+{label:"Valor fixo",value:variaveis.filter(item=>!item.sql_codigo_rm && item.valor_fixo != null).length,icon:"tabler:pin",tone:"success"}
+]} />}
       <div className="card card-body ve-table-list">
       <DataTable
         className="table striped-table mb-0"

@@ -61,7 +61,7 @@ export function FalhasPage() {
         </label>
       </section>
       <QueryNotice {...query} />
-      {current && <p className="op-muted">Ordenado por pessoas afetadas. A mesma pessoa pode aparecer em mais de uma causa; não some as linhas como um total de pessoas.</p>}
+      {current && <details className="mb-3"><summary>{groups.length} causas · Como ler</summary><p className="op-muted">Ordenado por pessoas afetadas. As barras comparam cada causa à maior deste recorte. Uma pessoa pode aparecer em várias causas; não some as linhas.</p></details>}
       {current && (groups.length ? (
         <div className="op-table-wrap">
           <div className="op-scroll">
@@ -74,7 +74,7 @@ export function FalhasPage() {
                 <tr key={group.id}>
                   <th scope="row">{group.stage === "Variáveis" ? "Variável com falha" : group.stage === "Cálculo" ? "Falha no cálculo" : "Falha no envio"}<small className="op-muted">{group.cause}</small></th>
                   <td>{group.stage}</td>
-                  <td>{group.count}</td>
+                  <td><strong className="op-danger">{group.count}</strong><span className="ve-impact-track" aria-hidden="true"><span style={{width: `${groups[0]?.count ? group.count / groups[0].count * 100 : 0}%`}} /></span></td>
                   <td>
                     <details>
                       <summary>{group.affected.length} {group.affected.length === 1 ? "filial" : "filiais"}</summary>
