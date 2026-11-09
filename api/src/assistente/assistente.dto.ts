@@ -31,6 +31,19 @@ export class AssistenteConfiguracaoDto {
   @IsBoolean()
   gptAtivo?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  gptInstitucionalAtivo?: boolean;
+
+  @IsOptional()
+  @Matches(/^gpt-[a-z0-9.-]{2,76}$/)
+  gptModelo?: string;
+
+  @IsOptional()
+  @Length(16, 512, { message: 'Chave da OpenAI inválida.' })
+  @Matches(/^sk-[a-zA-Z0-9_-]+$/, { message: 'Chave da OpenAI inválida.' })
+  gptChave?: string;
+
   @IsString()
   @Matches(/^claude-[a-z0-9-]{2,73}$/)
   modelo!: string;
@@ -43,6 +56,14 @@ export class AssistenteConfiguracaoDto {
   chave?: string;
 }
 
+export class AssistenteTesteDto extends AssistenteConfiguracaoDto {
+  @IsOptional()
+  @IsIn(['claude', 'gpt-institucional'])
+  provedorTeste?: 'claude' | 'gpt-institucional';
+}
+
+const provedores = ['local', 'gpt', 'gpt-institucional', 'claude'] as const;
+
 export class AssistenteDto {
   @IsString()
   @Length(1, 500)
@@ -53,8 +74,8 @@ export class AssistenteDto {
   consulta?: Intent;
 
   @IsOptional()
-  @IsIn(['local', 'gpt', 'claude'])
-  provedor?: 'local' | 'gpt' | 'claude';
+  @IsIn(provedores)
+  provedor?: (typeof provedores)[number];
 
   @IsOptional()
   @IsInt()

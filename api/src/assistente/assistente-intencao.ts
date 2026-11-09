@@ -30,24 +30,25 @@ export function intencaoLocal(texto: string): Intent {
 
 export async function selecionarConsulta(
   input: AssistenteDto,
-  claude?: { modelo: string; chave: string },
+  credencial?: { modelo: string; chave: string },
   exigirRespostaDoProvedor = false,
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
-  if (provedor === 'claude' && !claude)
-    throw new BadRequestException('Claude está desativado no Vale.');
+  if (provedor !== 'local' && !credencial)
+    throw new BadRequestException(
+      provedor === 'claude'
+        ? 'Claude está desativado no Vale.'
+        : 'GPT institucional está desativado no Vale.',
+    );
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
-  if (provedor === 'local') return local;
-  const chave =
-    provedor === 'claude' ? claude?.chave : process.env.OPENAI_API_KEY;
-  if (!chave)
-    throw new BadRequestException('Este provedor está indisponível no Vale.');
+  if (provedor === 'local' || !credencial) return local;
+  const { chave, modelo } = credencial;
   const instructions =
     'Classifique a pergunta sobre o Vale Expresso. Responda com exatamente uma opção: ' +
     intents.join(', ') +
     '. Use esclarecer quando faltar contexto ou a pergunta pedir alterações ou dados fora do catálogo.';
-  const gpt = provedor === 'gpt';
+  const gpt = provedor === 'gpt-institucional';
   try {
     // Apenas o texto do usuário é enviado. Consultas, histórico e dados ficam no Vale.
     const response = await fetch(
@@ -71,15 +72,14 @@ export async function selecionarConsulta(
         body: JSON.stringify(
           gpt
             ? {
-                model:
-                  process.env.VALE_OPENAI_MODEL || 'gpt-5.4-mini-2026-03-17',
+                model: modelo,
                 instructions,
                 input: input.pergunta,
                 store: false,
                 max_output_tokens: 32,
               }
             : {
-                model: claude?.modelo,
+                model: modelo,
                 system: instructions,
                 messages: [{ role: 'user', content: input.pergunta }],
                 thinking: { type: 'disabled' },
@@ -119,7 +119,7 @@ export async function selecionarConsulta(
   }
   if (exigirRespostaDoProvedor)
     throw new ServiceUnavailableException(
-      'Claude não retornou uma classificação válida.',
+      'O provedor não retornou uma classificação válida.',
     );
   return local;
 }

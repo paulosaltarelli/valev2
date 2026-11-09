@@ -28,7 +28,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CryptoModule } from '../security/crypto.module';
 import { CryptoService } from '../security/crypto.service';
 import { AssistenteConsultas } from './assistente-consultas';
-import { AssistenteConfiguracaoDto, AssistenteDto } from './assistente.dto';
+import {
+  AssistenteConfiguracaoDto,
+  AssistenteDto,
+  AssistenteTesteDto,
+} from './assistente.dto';
 import { selecionarConsulta } from './assistente-intencao';
 
 type Turno = { pergunta: string; resposta: string; em: string };
@@ -156,6 +160,13 @@ export class AssistenteController {
           habilitado: Boolean(config?.claude_ativo),
           disponivel: Boolean(config?.claude_ativo && config.claude_chave),
         },
+        {
+          id: 'gpt-institucional',
+          habilitado: Boolean(config?.gpt_institucional_ativo),
+          disponivel: Boolean(
+            config?.gpt_institucional_ativo && config.gpt_chave,
+          ),
+        },
       ],
       historico: this.sessoes.ler(usuario.chave),
     };
@@ -168,11 +179,26 @@ export class AssistenteController {
     const config = await this.prisma.assistente_configuracao.findUniqueOrThrow({
       where: { id: 1 },
     });
+    return this.respostaConfiguracao(config);
+  }
+
+  private respostaConfiguracao(config: {
+    claude_ativo: boolean;
+    claude_modelo: string;
+    claude_chave: string | null;
+    gpt_ativo: boolean;
+    gpt_institucional_ativo: boolean;
+    gpt_modelo: string;
+    gpt_chave: string | null;
+  }) {
     return {
       ativo: config.claude_ativo,
       gptAtivo: Boolean(config.gpt_ativo),
       modelo: config.claude_modelo,
       credencialConfigurada: Boolean(config.claude_chave),
+      gptInstitucionalAtivo: Boolean(config.gpt_institucional_ativo),
+      gptModelo: config.gpt_modelo,
+      gptCredencialConfigurada: Boolean(config.gpt_chave),
     };
   }
 
@@ -191,30 +217,36 @@ export class AssistenteController {
       throw new BadRequestException(
         'Cadastre a chave da Anthropic antes de ativar Claude.',
       );
+    if (input.gptInstitucionalAtivo && !input.gptChave && !config.gpt_chave)
+      throw new BadRequestException(
+        'Cadastre a chave da OpenAI antes de ativar GPT institucional.',
+      );
     const salva = await this.prisma.assistente_configuracao.update({
       where: { id: 1 },
       data: {
         claude_ativo: input.ativo,
         ...(input.gptAtivo != null && { gpt_ativo: input.gptAtivo }),
+        ...(input.gptInstitucionalAtivo != null && {
+          gpt_institucional_ativo: input.gptInstitucionalAtivo,
+        }),
+        ...(input.gptModelo && { gpt_modelo: input.gptModelo }),
+        ...(input.gptChave && {
+          gpt_chave: this.crypto.encryptJson(input.gptChave),
+        }),
         claude_modelo: input.modelo,
         ...(input.chave && {
           claude_chave: this.crypto.encryptJson(input.chave),
         }),
       },
     });
-    return {
-      ativo: salva.claude_ativo,
-      gptAtivo: Boolean(salva.gpt_ativo),
-      modelo: salva.claude_modelo,
-      credencialConfigurada: Boolean(salva.claude_chave),
-    };
+    return this.respostaConfiguracao(salva);
   }
 
   @Post('configuracao/testar')
   @Header('Cache-Control', 'no-store')
   async testarConfiguracao(
     @Req() req: Request,
-    @Body() input: AssistenteConfiguracaoDto,
+    @Body() input: AssistenteTesteDto,
   ) {
     const usuario = await this.autorizar(req, true);
     this.validarOrigem(req);
@@ -223,21 +255,30 @@ export class AssistenteController {
         await this.prisma.assistente_configuracao.findUniqueOrThrow({
           where: { id: 1 },
         });
-      const chave = input.chave ?? this.lerChaveClaude(config.claude_chave);
+      const provedor = input.provedorTeste ?? 'claude';
+      const gpt = provedor === 'gpt-institucional';
+      const chave = gpt
+        ? (input.gptChave ?? this.lerChave(config.gpt_chave))
+        : (input.chave ?? this.lerChave(config.claude_chave));
       if (!chave)
         throw new BadRequestException(
-          'Informe a chave da Anthropic para testar.',
+          gpt
+            ? 'Informe a chave da OpenAI para testar.'
+            : 'Informe a chave da Anthropic para testar.',
         );
       await selecionarConsulta(
-        { provedor: 'claude', pergunta: 'Como funciona o Vale Expresso?' },
-        { modelo: input.modelo, chave },
+        { provedor, pergunta: 'Como funciona o Vale Expresso?' },
+        {
+          modelo: gpt ? (input.gptModelo ?? config.gpt_modelo) : input.modelo,
+          chave,
+        },
         true,
       );
       return { conectado: true };
     });
   }
 
-  private lerChaveClaude(credencial: string | null | undefined) {
+  private lerChave(credencial: string | null | undefined) {
     if (!credencial) return undefined;
     try {
       return this.crypto.decryptJson<string>(credencial);
@@ -297,9 +338,11 @@ export class AssistenteController {
           ? input.provedor
           : config?.claude_ativo
             ? 'claude'
-            : config?.gpt_ativo
-              ? 'gpt'
-              : 'local';
+            : config?.gpt_institucional_ativo
+              ? 'gpt-institucional'
+              : config?.gpt_ativo
+                ? 'gpt'
+                : 'local';
       if (provedor === 'gpt') {
         if (!config?.gpt_ativo)
           throw new ForbiddenException('ChatGPT está desabilitado no Vale IA.');
@@ -307,14 +350,20 @@ export class AssistenteController {
           'O login pessoal do ChatGPT aguarda liberação da OpenAI.',
         );
       }
+      const gpt = provedor === 'gpt-institucional';
+      const habilitado = gpt
+        ? config?.gpt_institucional_ativo
+        : config?.claude_ativo;
       const chave =
-        provedor === 'claude' && config?.claude_ativo
-          ? this.lerChaveClaude(config.claude_chave)
+        provedor !== 'local' && habilitado
+          ? this.lerChave(gpt ? config?.gpt_chave : config?.claude_chave)
           : undefined;
       const intent = await selecionarConsulta(
         { ...input, provedor },
-        config && chave ? { modelo: config.claude_modelo, chave } : undefined,
-        provedor === 'claude',
+        config && chave
+          ? { modelo: gpt ? config.gpt_modelo : config.claude_modelo, chave }
+          : undefined,
+        provedor !== 'local',
       );
       if (
         input.matricula &&

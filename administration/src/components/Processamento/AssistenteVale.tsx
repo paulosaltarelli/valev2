@@ -35,10 +35,16 @@ type Mensagem = {
   resposta: Resposta | null;
   erro?: string;
 };
+const nomesDosProvedores = {
+  gpt: "ChatGPT pessoal",
+  claude: "Claude institucional",
+  "gpt-institucional": "GPT institucional",
+};
+type Provedor = keyof typeof nomesDosProvedores;
 type Estado = {
   historico: Turno[];
   provedores: {
-    id: "gpt" | "claude";
+    id: Provedor;
     habilitado: boolean;
     disponivel: boolean;
   }[];
@@ -146,7 +152,7 @@ export function AssistenteVale() {
   const [aba, setAba] = useState<"conversa" | "acessos">("conversa");
   const [pergunta, setPergunta] = useState("");
   const [provedores, setProvedores] = useState<Estado["provedores"]>();
-  const [preferencia, setPreferencia] = useState<"gpt" | "claude">();
+  const [preferencia, setPreferencia] = useState<Provedor>();
   const provedor =
     provedores?.find(({ id, disponivel }) => disponivel && id === preferencia)
       ?.id ??
@@ -559,7 +565,7 @@ export function AssistenteVale() {
                   <p role="status">
                     {provedores.some(({ id }) => id === "gpt")
                       ? "O login pessoal do ChatGPT aguarda liberação da OpenAI."
-                      : "O Claude institucional está indisponível."}
+                      : "O provedor institucional está indisponível."}
                   </p>
                 )}
                 {erro && <Alert variant="warning">{erro}</Alert>}
@@ -606,33 +612,33 @@ export function AssistenteVale() {
                 também pode citar uma filial na sua mensagem.
               </p>
               <ContasVale provedores={provedores} />
-              {provedores?.length === 2 && (
+              {provedores && provedores.length > 1 && (
                 <Form.Group controlId="vale-ia-provedor" className="mt-3">
                   <Form.Label>Provedor da conversa</Form.Label>
                   <Form.Select
                     value={provedor ?? ""}
                     disabled={ocupado}
-                    onChange={(event) =>
-                      setPreferencia(
-                        event.target.value === "gpt" ? "gpt" : "claude",
-                      )
-                    }
+                    onChange={(event) => {
+                      const escolhido = provedores.find(
+                        ({ id, disponivel }) =>
+                          disponivel && id === event.target.value,
+                      );
+                      if (escolhido) setPreferencia(escolhido.id);
+                    }}
                   >
                     {!provedor && (
                       <option value="">Nenhum provedor disponível</option>
                     )}
                     {provedores.map(({ id, disponivel }) => (
                       <option key={id} value={id} disabled={!disponivel}>
-                        {id === "gpt"
-                          ? "ChatGPT pessoal"
-                          : "Claude institucional"}
+                        {nomesDosProvedores[id]}
                         {!disponivel && " (indisponível)"}
                       </option>
                     ))}
                   </Form.Select>
                   <Form.Text>
-                    Ao selecionar Claude, o texto da pergunta é enviado ao
-                    provedor para interpretar a consulta.
+                    O texto da pergunta é enviado ao provedor escolhido para
+                    interpretar a consulta.
                   </Form.Text>
                 </Form.Group>
               )}
@@ -651,9 +657,7 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
       <h3>Provedores</h3>
       {provedores.map(({ id, disponivel }) => (
         <div key={id}>
-          <strong>
-            {id === "gpt" ? "ChatGPT pessoal" : "Claude institucional"}
-          </strong>
+          <strong>{nomesDosProvedores[id]}</strong>
           <span>
             {disponivel
               ? "Disponível"

@@ -8,12 +8,15 @@ datasource db {
 }
 
 model assistente_configuracao {
-  id            Int      @id
-  gpt_ativo     Boolean  @default(false)
-  claude_ativo  Boolean  @default(false)
-  claude_modelo String   @db.VarChar(80)
-  atualizado_em DateTime @updatedAt
-  claude_chave  String?  @db.VarChar(Max)
+  id                      Int      @id
+  gpt_ativo               Boolean  @default(false)
+  gpt_institucional_ativo Boolean  @default(false)
+  gpt_modelo              String   @default("gpt-5.4-mini") @db.VarChar(80)
+  gpt_chave               String?  @db.VarChar(Max)
+  claude_ativo            Boolean  @default(false)
+  claude_modelo           String   @db.VarChar(80)
+  atualizado_em           DateTime @updatedAt
+  claude_chave            String?  @db.VarChar(Max)
 }
 
 model ajuste_manual {

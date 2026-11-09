@@ -7,16 +7,20 @@ import { http } from "../../shared/lib/http";
 type Configuracao = {
   ativo: boolean;
   gptAtivo: boolean;
+  gptInstitucionalAtivo: boolean;
+  gptModelo: string;
+  gptCredencialConfigurada: boolean;
   modelo: string;
   credencialConfigurada: boolean;
 };
 
 export function AssistenteConfiguracaoPage() {
   const [config, setConfig] = useState<Configuracao>();
-  const [acao, setAcao] = useState<"salvar" | "testar">();
+  const [acao, setAcao] = useState<"salvar" | "claude" | "gpt-institucional">();
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
   const [chave, setChave] = useState("");
+  const [gptChave, setGptChave] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -32,7 +36,7 @@ export function AssistenteConfiguracaoPage() {
     return () => controller.abort();
   }, []);
 
-  const executar = async (operacao: "salvar" | "testar") => {
+  const executar = async (operacao: NonNullable<typeof acao>) => {
     if (!config || acao) return;
     setAcao(operacao);
     setErro("");
@@ -41,18 +45,36 @@ export function AssistenteConfiguracaoPage() {
       ativo: config.ativo,
       modelo: config.modelo.trim(),
       chave: chave.trim() || undefined,
+      gptModelo: config.gptModelo.trim(),
+      gptChave: gptChave.trim() || undefined,
     };
     try {
-      if (operacao === "testar") {
-        await http.post("/assistente/configuracao/testar", dados);
-        setMensagem("Claude respondeu à pergunta de teste.");
+      if (operacao !== "salvar") {
+        await http.post("/assistente/configuracao/testar", {
+          ativo: dados.ativo,
+          modelo: dados.modelo,
+          provedorTeste: operacao,
+          ...(operacao === "claude"
+            ? { chave: dados.chave }
+            : { gptChave: dados.gptChave, gptModelo: dados.gptModelo }),
+        });
+        setMensagem(
+          operacao === "claude"
+            ? "Claude respondeu à pergunta de teste."
+            : "GPT institucional respondeu à pergunta de teste.",
+        );
       } else {
         const { data } = await http.put<Configuracao>(
           "/assistente/configuracao",
-          { ...dados, gptAtivo: config.gptAtivo },
+          {
+            ...dados,
+            gptAtivo: config.gptAtivo,
+            gptInstitucionalAtivo: config.gptInstitucionalAtivo,
+          },
         );
         setConfig(data);
         setChave("");
+        setGptChave("");
         setMensagem("Configuração salva.");
       }
     } catch (falha) {
@@ -102,6 +124,73 @@ export function AssistenteConfiguracaoPage() {
               }
             />
             <p>A conexão com a conta pessoal aguarda liberação da OpenAI.</p>
+            <fieldset disabled={Boolean(acao)}>
+              <h2>GPT institucional</h2>
+              <Form.Group
+                controlId="vale-gpt-institucional-chave"
+                className="mb-3"
+              >
+                <Form.Label>Chave da API da OpenAI</Form.Label>
+                <Form.Control
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={512}
+                  value={gptChave}
+                  onChange={(event) => setGptChave(event.target.value)}
+                />
+                {config.gptCredencialConfigurada && (
+                  <Form.Text>
+                    Chave cadastrada. Preencha apenas para substituir.
+                  </Form.Text>
+                )}
+              </Form.Group>
+              <Form.Group
+                controlId="vale-gpt-institucional-modelo"
+                className="mb-3"
+              >
+                <Form.Label>Identificador do modelo GPT</Form.Label>
+                <Form.Control
+                  required
+                  maxLength={80}
+                  pattern="gpt-[a-z0-9.\-]{2,76}"
+                  value={config.gptModelo}
+                  onChange={(event) =>
+                    setConfig({ ...config, gptModelo: event.target.value })
+                  }
+                />
+              </Form.Group>
+              <Form.Check
+                id="vale-gpt-institucional-ativo"
+                className="mb-3"
+                label="Disponibilizar GPT institucional no Vale IA"
+                checked={config.gptInstitucionalAtivo}
+                disabled={
+                  !config.gptCredencialConfigurada &&
+                  !gptChave.trim() &&
+                  !config.gptInstitucionalAtivo
+                }
+                onChange={(event) =>
+                  setConfig({
+                    ...config,
+                    gptInstitucionalAtivo: event.target.checked,
+                  })
+                }
+              />
+              <Button
+                type="button"
+                variant="outline-primary"
+                className="mb-3"
+                disabled={
+                  (!config.gptCredencialConfigurada && !gptChave.trim()) ||
+                  !/^gpt-[a-z0-9.-]{2,76}$/.test(config.gptModelo.trim())
+                }
+                onClick={() => void executar("gpt-institucional")}
+              >
+                {acao === "gpt-institucional"
+                  ? "Testando GPT…"
+                  : "Testar conexão GPT"}
+              </Button>
+            </fieldset>
             <h2>Claude</h2>
             <p>
               {config.credencialConfigurada
@@ -161,9 +250,9 @@ export function AssistenteConfiguracaoPage() {
                     (!config.credencialConfigurada && !chave.trim()) ||
                     !/^claude-[a-z0-9-]{2,73}$/.test(config.modelo.trim())
                   }
-                  onClick={() => void executar("testar")}
+                  onClick={() => void executar("claude")}
                 >
-                  {acao === "testar" ? "Testando…" : "Testar conexão"}
+                  {acao === "claude" ? "Testando…" : "Testar conexão Claude"}
                 </Button>
               </div>
             </fieldset>

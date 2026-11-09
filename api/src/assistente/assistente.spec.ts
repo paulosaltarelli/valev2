@@ -38,6 +38,7 @@ describe('Assistente do Vale', () => {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         claude_ativo: false,
         claude_modelo: 'claude-haiku-5-5',
+        gpt_modelo: 'gpt-5.4-mini',
       }),
       update: jest.fn().mockResolvedValue({}),
     },
@@ -136,6 +137,9 @@ describe('Assistente do Vale', () => {
       gptAtivo: false,
       modelo: 'claude-haiku-5-5',
       credencialConfigurada: false,
+      gptInstitucionalAtivo: false,
+      gptModelo: 'gpt-5.4-mini',
+      gptCredencialConfigurada: false,
     });
     prisma.usuario.findUnique.mockResolvedValueOnce({
       ativo: true,
@@ -154,6 +158,7 @@ describe('Assistente do Vale', () => {
 
   it('cadastra a chave cifrada sem devolver a credencial ao administrador', async () => {
     const chave = 'sk-ant-credencial-de-teste';
+    const gptChave = 'sk-proj-credencial-de-teste';
     const modelo = 'claude-haiku-5-5';
     prisma.usuario.findUnique.mockResolvedValueOnce({
       ativo: true,
@@ -165,18 +170,31 @@ describe('Assistente do Vale', () => {
     const resposta = await request(app.getHttpServer())
       .put('/assistente/configuracao')
       .set('Cookie', cookie(12, 'admin-config'))
-      .send({ ativo: true, gptAtivo: true, modelo, chave })
+      .send({
+        ativo: true,
+        gptAtivo: true,
+        modelo,
+        chave,
+        gptInstitucionalAtivo: true,
+        gptModelo: 'gpt-5.4-mini',
+        gptChave,
+      })
       .expect(200);
     expect(resposta.body).toEqual({
       ativo: true,
       gptAtivo: true,
       modelo,
       credencialConfigurada: true,
+      gptInstitucionalAtivo: true,
+      gptModelo: 'gpt-5.4-mini',
+      gptCredencialConfigurada: true,
     });
-    const { claude_chave } =
+    const { claude_chave, gpt_chave } =
       prisma.assistente_configuracao.update.mock.lastCall?.[0].data;
     expect(claude_chave).not.toContain(chave);
     expect(new CryptoService().decryptJson(claude_chave)).toBe(chave);
+    expect(gpt_chave).not.toContain(gptChave);
+    expect(new CryptoService().decryptJson(gpt_chave)).toBe(gptChave);
   });
 
   it('aplica as flags no chat e bloqueia GPT até o login pessoal estar disponível', async () => {
@@ -192,10 +210,17 @@ describe('Assistente do Vale', () => {
       claude_ativo: true,
       claude_chave: new CryptoService().encryptJson('chave-teste'),
     };
-    const ambos = { ...claude, gpt_ativo: true };
+    const ambos = {
+      ...claude,
+      gpt_ativo: true,
+      gpt_institucional_ativo: true,
+      gpt_modelo: 'gpt-5.4-mini',
+      gpt_chave: new CryptoService().encryptJson('chave-gpt-teste'),
+    };
     prisma.assistente_configuracao.findUnique
       .mockResolvedValueOnce(ambos)
       .mockResolvedValueOnce(claude)
+      .mockResolvedValueOnce(ambos)
       .mockResolvedValueOnce({ ...base, gpt_ativo: true })
       .mockResolvedValueOnce(base);
     const estado = await http
@@ -205,12 +230,25 @@ describe('Assistente do Vale', () => {
     expect(estado.body.provedores).toEqual([
       { id: 'gpt', habilitado: true, disponivel: false },
       { id: 'claude', habilitado: true, disponivel: true },
+      { id: 'gpt-institucional', habilitado: true, disponivel: true },
     ]);
     const fetchMock = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ content: [{ type: 'text', text: 'pendencias' }] }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: [
+              {
+                type: 'message',
+                content: [{ type: 'output_text', text: 'pendencias' }],
+              },
+            ],
+          }),
         ),
       );
     const pergunta = 'quais filiais têm pendências?';
@@ -223,6 +261,11 @@ describe('Assistente do Vale', () => {
       await http
         .post('/assistente/consultar')
         .set('Cookie', sessao)
+        .send({ pergunta, periodoId: 7, provedor: 'gpt-institucional' })
+        .expect(201);
+      await http
+        .post('/assistente/consultar')
+        .set('Cookie', sessao)
         .send({ pergunta, provedor: 'local' })
         .expect(503);
       await http
@@ -230,10 +273,16 @@ describe('Assistente do Vale', () => {
         .set('Cookie', sessao)
         .send({ pergunta, provedor: 'gpt' })
         .expect(403);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0][0]).toBe(
         'https://api.anthropic.com/v1/messages',
       );
+      expect(fetchMock.mock.calls[1][0]).toBe(
+        'https://api.openai.com/v1/responses',
+      );
+      expect(fetchMock.mock.calls[1][1]?.headers).toMatchObject({
+        Authorization: 'Bearer chave-gpt-teste',
+      });
     } finally {
       fetchMock.mockRestore();
     }
@@ -476,8 +525,6 @@ describe('Integração com provedor', () => {
   });
 
   it('envia apenas a pergunta e rejeita resposta fora do catálogo', async () => {
-    const key = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = 'chave-de-teste';
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -492,13 +539,16 @@ describe('Integração com provedor', () => {
     );
     try {
       await expect(
-        selecionarConsulta({
-          pergunta: 'qual informação',
-          periodoId: 74,
-          filialId: 32,
-          matricula: 'ABC-123',
-          provedor: 'gpt',
-        }),
+        selecionarConsulta(
+          {
+            pergunta: 'qual informação',
+            periodoId: 74,
+            filialId: 32,
+            matricula: 'ABC-123',
+            provedor: 'gpt-institucional',
+          },
+          { modelo: 'gpt-5.4-mini', chave: 'chave-de-teste' },
+        ),
       ).resolves.toBe('esclarecer');
       const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
       expect(body).toMatchObject({ input: 'qual informação', store: false });
@@ -507,8 +557,6 @@ describe('Integração com provedor', () => {
       expect(body).not.toHaveProperty('periodoId');
     } finally {
       fetchMock.mockRestore();
-      if (key === undefined) delete process.env.OPENAI_API_KEY;
-      else process.env.OPENAI_API_KEY = key;
     }
   });
 });
