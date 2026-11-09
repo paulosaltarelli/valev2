@@ -4,6 +4,32 @@ import { isAxiosError } from "axios";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { http } from "../../shared/lib/http";
 
+const modelosGpt = {
+  "gpt-5.4-mini": "GPT-5.4 mini",
+  "gpt-5.4-nano": "GPT-5.4 nano",
+};
+
+const modelosClaude = {
+  "claude-haiku-5-5": "Claude Haiku 5.5",
+  "claude-sonnet-5-5": "Claude Sonnet 5.5",
+  "claude-opus-5-5": "Claude Opus 5.5",
+};
+
+function opcoesDeModelo(modelos: Record<string, string>, atual: string) {
+  return (
+    <>
+      {atual && !Object.hasOwn(modelos, atual) && (
+        <option value={atual}>{atual} (modelo salvo)</option>
+      )}
+      {Object.entries(modelos).map(([id, nome]) => (
+        <option key={id} value={id}>
+          {nome}
+        </option>
+      ))}
+    </>
+  );
+}
+
 type Configuracao = {
   ativo: boolean;
   gptAtivo: boolean;
@@ -148,16 +174,16 @@ export function AssistenteConfiguracaoPage() {
                 controlId="vale-gpt-institucional-modelo"
                 className="mb-3"
               >
-                <Form.Label>Identificador do modelo GPT</Form.Label>
-                <Form.Control
+                <Form.Label>Modelo GPT</Form.Label>
+                <Form.Select
                   required
-                  maxLength={80}
-                  pattern="gpt-[a-z0-9.\-]{2,76}"
                   value={config.gptModelo}
                   onChange={(event) =>
                     setConfig({ ...config, gptModelo: event.target.value })
                   }
-                />
+                >
+                  {opcoesDeModelo(modelosGpt, config.gptModelo)}
+                </Form.Select>
               </Form.Group>
               <Form.Check
                 id="vale-gpt-institucional-ativo"
@@ -214,16 +240,16 @@ export function AssistenteConfiguracaoPage() {
                 )}
               </Form.Group>
               <Form.Group controlId="vale-claude-modelo" className="mb-3">
-                <Form.Label>Identificador do modelo</Form.Label>
-                <Form.Control
+                <Form.Label>Modelo Claude</Form.Label>
+                <Form.Select
                   required
-                  maxLength={80}
-                  pattern="claude-[a-z0-9\-]{2,73}"
                   value={config.modelo}
                   onChange={(event) =>
                     setConfig({ ...config, modelo: event.target.value })
                   }
-                />
+                >
+                  {opcoesDeModelo(modelosClaude, config.modelo)}
+                </Form.Select>
               </Form.Group>
               <Form.Check
                 id="vale-claude-ativo"
