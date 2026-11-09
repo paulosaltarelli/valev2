@@ -17,10 +17,10 @@ function chaveDoVale(provedor: ProvedorExterno) {
     : process.env.ANTHROPIC_API_KEY;
 }
 
-export function provedores() {
+export function provedores(claudeAtivo = false) {
   return provedoresExternos.map((id) => ({
     id,
-    disponivel: Boolean(chaveDoVale(id)),
+    disponivel: Boolean(chaveDoVale(id)) && (id !== 'claude' || claudeAtivo),
   }));
 }
 
@@ -49,11 +49,15 @@ export function intencaoLocal(texto: string): Intent {
 
 export async function selecionarConsulta(
   input: AssistenteDto,
+  modeloClaude?: string,
+  teste = false,
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
   if (provedor === 'local') return local;
+  if (provedor === 'claude' && !modeloClaude)
+    throw new BadRequestException('Claude está desativado no Vale.');
   const chave = chaveDoVale(provedor);
   if (!chave)
     throw new BadRequestException('Este provedor está indisponível no Vale.');
@@ -93,7 +97,7 @@ export async function selecionarConsulta(
                 max_output_tokens: 32,
               }
             : {
-                model: process.env.VALE_CLAUDE_MODEL || 'claude-haiku-5-5',
+                model: modeloClaude,
                 system: instructions,
                 messages: [{ role: 'user', content: input.pergunta }],
                 thinking: { type: 'disabled' },
@@ -126,10 +130,14 @@ export async function selecionarConsulta(
     if (intents.includes(answer as Intent)) return answer as Intent;
   } catch (error) {
     if (error instanceof ForbiddenException) throw error;
-    if (local !== 'esclarecer') return local;
+    if (!teste && local !== 'esclarecer') return local;
     throw new ServiceUnavailableException(
       'O provedor está indisponível. Selecione uma consulta sugerida.',
     );
   }
+  if (teste)
+    throw new ServiceUnavailableException(
+      'Claude não retornou uma resposta válida para o teste.',
+    );
   return local;
 }

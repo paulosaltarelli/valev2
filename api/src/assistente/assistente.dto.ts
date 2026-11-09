@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -24,6 +25,15 @@ export const intents = [
 export type Intent = (typeof intents)[number];
 export const provedoresExternos = ['gpt', 'claude'] as const;
 export type ProvedorExterno = (typeof provedoresExternos)[number];
+
+export class AssistenteConfiguracaoDto {
+  @IsBoolean()
+  ativo!: boolean;
+
+  @IsString()
+  @Matches(/^claude-[a-z0-9-]{2,73}$/)
+  modelo!: string;
+}
 
 export class AssistenteDto {
   @IsString()

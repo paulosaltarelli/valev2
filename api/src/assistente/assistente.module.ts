@@ -11,6 +11,7 @@ import {
   Module,
   NotFoundException,
   Post,
+  Put,
   Req,
   Query,
   UnauthorizedException,
@@ -24,7 +25,7 @@ import { OperationalReportsService } from '../dash/operational-reports.service';
 import { ExecucaoModule } from '../execucao/execucao.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssistenteConsultas } from './assistente-consultas';
-import { AssistenteDto } from './assistente.dto';
+import { AssistenteConfiguracaoDto, AssistenteDto } from './assistente.dto';
 import { provedores, selecionarConsulta } from './assistente-intencao';
 
 type Turno = { pergunta: string; resposta: string; em: string };
@@ -99,7 +100,7 @@ export class AssistenteController {
     private readonly relatorios: OperationalReportsService,
   ) {}
 
-  private async autorizar(req: Request) {
+  private async autorizar(req: Request, apenasAdmin = false) {
     if (process.env.VALE_ASSISTENTE_ATIVO !== 'true')
       throw new NotFoundException();
     const payload = req.user as JwtPayload;
@@ -123,6 +124,8 @@ export class AssistenteController {
       throw new UnauthorizedException();
     if (!usuario?.ativo || !['admin', 'operator'].includes(usuario.perfil))
       throw new ForbiddenException();
+    if (apenasAdmin && usuario.perfil !== 'admin')
+      throw new ForbiddenException();
     return {
       id: payload.usuarioId,
       perfil: usuario.perfil,
@@ -134,10 +137,66 @@ export class AssistenteController {
   @Header('Cache-Control', 'no-store')
   async estado(@Req() req: Request) {
     const usuario = await this.autorizar(req);
+    const config = process.env.ANTHROPIC_API_KEY
+      ? await this.prisma.assistente_configuracao.findUnique({
+          where: { id: 1 },
+        })
+      : null;
     return {
-      provedores: provedores(),
+      provedores: provedores(config?.claude_ativo),
       historico: this.sessoes.ler(usuario.chave),
     };
+  }
+
+  @Get('configuracao')
+  @Header('Cache-Control', 'no-store')
+  async configuracao(@Req() req: Request) {
+    await this.autorizar(req, true);
+    const config = await this.prisma.assistente_configuracao.findUniqueOrThrow({
+      where: { id: 1 },
+    });
+    return {
+      ativo: config.claude_ativo,
+      modelo: config.claude_modelo,
+      credencialConfigurada: Boolean(process.env.ANTHROPIC_API_KEY),
+    };
+  }
+
+  @Put('configuracao')
+  @Header('Cache-Control', 'no-store')
+  async salvarConfiguracao(
+    @Req() req: Request,
+    @Body() input: AssistenteConfiguracaoDto,
+  ) {
+    await this.autorizar(req, true);
+    this.validarOrigem(req);
+    if (input.ativo && !process.env.ANTHROPIC_API_KEY)
+      throw new BadRequestException(
+        'Configure a credencial institucional no servidor antes de ativar Claude.',
+      );
+    await this.prisma.assistente_configuracao.update({
+      where: { id: 1 },
+      data: { claude_ativo: input.ativo, claude_modelo: input.modelo },
+    });
+    return { salvo: true };
+  }
+
+  @Post('configuracao/testar')
+  @Header('Cache-Control', 'no-store')
+  async testarConfiguracao(
+    @Req() req: Request,
+    @Body() input: AssistenteConfiguracaoDto,
+  ) {
+    const usuario = await this.autorizar(req, true);
+    this.validarOrigem(req);
+    return this.sessoes.consultar(usuario.id, async () => {
+      await selecionarConsulta(
+        { provedor: 'claude', pergunta: 'Como funciona o Vale Expresso?' },
+        input.modelo,
+        true,
+      );
+      return { conectado: true };
+    });
   }
 
   private validarOrigem(req: Request) {
@@ -181,7 +240,16 @@ export class AssistenteController {
     input.pergunta = input.pergunta.trim();
     if (!input.pergunta) throw new BadRequestException('Digite uma pergunta.');
     return this.sessoes.consultar(usuario.id, async () => {
-      const intent = await selecionarConsulta(input);
+      const config =
+        input.provedor === 'claude'
+          ? await this.prisma.assistente_configuracao.findUnique({
+              where: { id: 1 },
+            })
+          : null;
+      const intent = await selecionarConsulta(
+        input,
+        config?.claude_ativo ? config.claude_modelo : undefined,
+      );
       if (
         input.matricula &&
         !['valores', 'variaveis', 'erros', 'km', 'esclarecer'].includes(intent)

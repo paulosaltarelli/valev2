@@ -35,7 +35,10 @@ type Mensagem = {
   resposta: Resposta | null;
   erro?: string;
 };
-type Estado = { historico: Turno[] };
+type Estado = {
+  historico: Turno[];
+  provedores: { id: string; disponivel: boolean }[];
+};
 type Contexto = {
   periodos: Pick<Periodo, "periodo_id" | "competencia" | "ativo">[];
   filiais: Pick<Filial, "filial_id" | "nome">[];
@@ -138,6 +141,8 @@ export function AssistenteVale() {
   const [aberto, setAberto] = useState(false);
   const [aba, setAba] = useState<"conversa" | "acessos">("conversa");
   const [pergunta, setPergunta] = useState("");
+  const [claudeDisponivel, setClaudeDisponivel] = useState(false);
+  const [provedor, setProvedor] = useState<"local" | "claude">("local");
   const [competencia, setCompetencia] = useState("");
   const [filial, setFilial] = useState("");
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -184,9 +189,15 @@ export function AssistenteVale() {
     setAba("conversa");
     setCarregandoContexto(true);
     try {
-      const { data } = await http.get<Contexto>("/assistente/contexto", {
-        params: { execucao },
-      });
+      const [{ data }, { data: estado }] = await Promise.all([
+        http.get<Contexto>("/assistente/contexto", { params: { execucao } }),
+        http.get<Estado>("/assistente"),
+      ]);
+      const podeUsarClaude = estado.provedores.some(
+        ({ id, disponivel }) => id === "claude" && disponivel,
+      );
+      setClaudeDisponivel(podeUsarClaude);
+      if (!podeUsarClaude) setProvedor("local");
       const periodos = data.periodos.filter((item) => item.ativo);
       setContexto({ ...data, periodos });
       const periodo =
@@ -290,6 +301,7 @@ export function AssistenteVale() {
         {
           pergunta: textoConsulta.slice(0, 500),
           consulta: consultaEfetiva,
+          provedor,
           ...filtros,
         },
         { timeout: 30000 },
@@ -458,7 +470,7 @@ export function AssistenteVale() {
                 <strong>Vale IA</strong>
                 <p>Seu assistente para entender a operação.</p>
               </div>
-              <ContasVale />
+              <ContasVale claudeDisponivel={claudeDisponivel} />
             </aside>
             <section
               className="vale-ia-painel"
@@ -573,7 +585,28 @@ export function AssistenteVale() {
                 O Vale IA aproveita a competência ativa e a filial da tela. Você
                 também pode citar uma filial na sua mensagem.
               </p>
-              <ContasVale />
+              <ContasVale claudeDisponivel={claudeDisponivel} />
+              {claudeDisponivel && (
+                <Form.Group controlId="vale-ia-provedor" className="mt-3">
+                  <Form.Label>Provedor da conversa</Form.Label>
+                  <Form.Select
+                    value={provedor}
+                    disabled={ocupado}
+                    onChange={(event) =>
+                      setProvedor(
+                        event.target.value === "claude" ? "claude" : "local",
+                      )
+                    }
+                  >
+                    <option value="local">Consultas do Vale</option>
+                    <option value="claude">Claude institucional</option>
+                  </Form.Select>
+                  <Form.Text>
+                    Ao selecionar Claude, o texto da pergunta é enviado ao
+                    provedor para interpretar a consulta.
+                  </Form.Text>
+                </Form.Group>
+              )}
             </section>
           </div>
         </Modal.Body>
@@ -582,7 +615,7 @@ export function AssistenteVale() {
   );
 }
 
-function ContasVale() {
+function ContasVale({ claudeDisponivel }: { claudeDisponivel: boolean }) {
   return (
     <div className="vale-ia-contas">
       <h3>Contas pessoais</h3>
@@ -592,7 +625,11 @@ function ContasVale() {
       </div>
       <div>
         <strong>Claude</strong>
-        <span>Login pessoal indisponível no Vale</span>
+        <span>
+          {claudeDisponivel
+            ? "Claude institucional disponível"
+            : "Aguardando configuração institucional"}
+        </span>
       </div>
       <p>As consultas do Vale estão disponíveis nesta sessão.</p>
     </div>

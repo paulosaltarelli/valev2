@@ -7,6 +7,13 @@ datasource db {
   provider = "sqlserver"
 }
 
+model assistente_configuracao {
+  id            Int      @id
+  claude_ativo  Boolean  @default(false)
+  claude_modelo String   @db.VarChar(80)
+  atualizado_em DateTime @updatedAt
+}
+
 model ajuste_manual {
   ajuste_id               Int                  @id(map: "PK__ajuste_m__AD9C431FF53BA7CB") @default(autoincrement())
   execucao_funcionario_id Int

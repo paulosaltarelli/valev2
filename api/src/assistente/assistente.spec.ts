@@ -31,6 +31,13 @@ describe('Assistente do Vale', () => {
         .mockResolvedValue({ ativo: true, perfil: 'operator' }),
     },
     rm_sessao: { findUnique: jest.fn() },
+    assistente_configuracao: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue({
+        claude_ativo: false,
+        claude_modelo: 'claude-haiku-5-5',
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   };
 
   beforeAll(async () => {
@@ -87,6 +94,51 @@ describe('Assistente do Vale', () => {
 
   const cookie = (usuarioId: number, sessionId: string) =>
     `access_token=${jwt.sign({ usuarioId, sessionId, username: 'operador', perfil: 'admin' })}`;
+
+  it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {
+    const sessao = cookie(10, 'operador-config');
+    const dados = { ativo: false, modelo: 'claude-haiku-5-5' };
+    await request(app.getHttpServer())
+      .get('/assistente/configuracao')
+      .set('Cookie', sessao)
+      .expect(403);
+    await request(app.getHttpServer())
+      .put('/assistente/configuracao')
+      .set('Cookie', sessao)
+      .send(dados)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/assistente/configuracao/testar')
+      .set('Cookie', sessao)
+      .send(dados)
+      .expect(403);
+    prisma.usuario.findUnique.mockResolvedValueOnce({
+      ativo: true,
+      perfil: 'admin',
+    });
+    const leitura = await request(app.getHttpServer())
+      .get('/assistente/configuracao')
+      .set('Cookie', sessao)
+      .expect(200);
+    expect(leitura.body).toEqual({
+      ativo: false,
+      modelo: 'claude-haiku-5-5',
+      credencialConfigurada: Boolean(process.env.ANTHROPIC_API_KEY),
+    });
+    prisma.usuario.findUnique.mockResolvedValueOnce({
+      ativo: true,
+      perfil: 'admin',
+    });
+    await request(app.getHttpServer())
+      .put('/assistente/configuracao')
+      .set('Cookie', sessao)
+      .send(dados)
+      .expect(200);
+    expect(prisma.assistente_configuracao.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { claude_ativo: false, claude_modelo: 'claude-haiku-5-5' },
+    });
+  });
 
   it('recusa chamadas anônimas e sessões expiradas', async () => {
     await request(app.getHttpServer()).get('/assistente').expect(401);
@@ -288,6 +340,45 @@ describe('Consultas operacionais', () => {
 });
 
 describe('Integração com provedor', () => {
+  it('o teste do Claude confirma uma resposta válida e acusa falha sem recorrer ao modo local', async () => {
+    const key = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'chave-de-teste';
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ content: [{ type: 'text', text: 'ajuda' }] }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response('', { status: 500 }));
+    const input = {
+      pergunta: 'Como funciona o Vale Expresso?',
+      provedor: 'claude' as const,
+    };
+    try {
+      await expect(selecionarConsulta(input)).rejects.toThrow(
+        'Claude está desativado',
+      );
+      await expect(
+        selecionarConsulta(input, 'claude-haiku-5-5', true),
+      ).resolves.toBe('ajuda');
+      await expect(
+        selecionarConsulta(input, 'claude-haiku-5-5', true),
+      ).rejects.toThrow('indisponível');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        JSON.parse(String(fetchMock.mock.calls[0][1]?.body)),
+      ).toMatchObject({
+        model: 'claude-haiku-5-5',
+        messages: [{ role: 'user', content: input.pergunta }],
+      });
+    } finally {
+      fetchMock.mockRestore();
+      if (key === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = key;
+    }
+  });
+
   it('envia apenas a pergunta e rejeita resposta fora do catálogo', async () => {
     const key = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = 'chave-de-teste';

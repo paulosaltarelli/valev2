@@ -33,7 +33,14 @@ const navigation = [
       ["/periodo", "Competências", "mdi:calendar-month-outline"],
     ],
   },
-  { label: 'Administração', adminOnly: true, links: [['/usuarios', 'Usuários e acesso', 'mdi:account-outline']] },
+  {
+    label: "Administração",
+    adminOnly: true,
+    links: [
+      ["/usuarios", "Usuários e acesso", "mdi:account-outline"],
+      ["/configuracao-ia", "Configuração do Vale IA", "mdi:cog-outline"],
+    ],
+  },
 ];
 
 export function Sidebar() {
