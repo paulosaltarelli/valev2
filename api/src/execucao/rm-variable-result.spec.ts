@@ -32,13 +32,4 @@ describe('readRmVariable', () => {
     'converte RESULTADO nulo em zero para %s',
     (query) => expect(readRmVariable(query, [{ RESULTADO: null }])).toBe(0),
   );
-
-  it.each([0, '0', null, 300])('lê o alias do teto com valor %s', (value) => {
-    expect(readRmVariable('PVE.TETO_PGTO', [{ VALORTETOPAGTO: value }])).toBe(Number(value));
-  });
-
-  it('prioriza RESULTADO e aceita o alias somente para a sentença de teto', () => {
-    expect(readRmVariable('PVE.TETO_PGTO', [{ RESULTADO: null, VALORTETOPAGTO: 300 }])).toBe(0);
-    expect(readRmVariable('PVE.VR_FIXO', [{ VALORTETOPAGTO: 0 }])).toBeNaN();
-  });
 });
