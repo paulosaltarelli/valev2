@@ -25,7 +25,9 @@ export function readRmVariable(query: string, rows: unknown): number {
   if (!rows.length) return occurrenceQueries.has(code) ? 0 : NaN;
   const row = rows[0];
   if (!row || typeof row !== 'object' || Array.isArray(row)) return NaN;
-  const value: unknown = row.RESULTADO;
+  const value: unknown = code === 'PVE.TETO_PGTO' && row.RESULTADO === undefined
+    ? row.VALORTETOPAGTO
+    : row.RESULTADO;
   if (value === null) return 0;
   if (value === undefined) return nullableAggregates.has(code) ? 0 : NaN;
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return NaN;
