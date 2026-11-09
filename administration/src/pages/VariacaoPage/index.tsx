@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { PageHeading } from '../../shared/components/PageHeading';
 import { AnalysisNav } from '../../shared/components/AnalysisNav';
-import { dateTime, QueryNotice, useOperationQuery } from '../../components/Processamento/OperationCommon';
+import { dateTime, QueryNotice, StatusPill, useOperationQuery } from '../../components/Processamento/OperationCommon';
 import { OperationalReportsApi } from '../../utils/api/operationalReportsApi';
 import { exportReport, ReportPagination } from '../../components/Relatorios/ReportTools';
 
@@ -89,7 +89,7 @@ export function VariacaoPage() {
             <th scope="row">{r.nome}<small>{r.matricula}</small></th><td>{r.formula}<small>{r.tipo==='V'?'R$':r.tipo==='D'?'Dias':'Número'}</small></td>
             <td className="ve-report-number">{display(r.anterior,r.tipo)}</td><td className="ve-report-number">{display(r.atual,r.tipo)}</td>
             <td className="ve-report-number">{display(r.diferenca,r.tipo)}</td><td className="ve-report-number">{r.percentual===null?'—':number.format(Number(r.percentual))+'%'}</td>
-            <td>{r.situacao}{r.observacao && <details><summary className="op-muted">Entender</summary><p className="mt-1 mb-0">{r.observacao}</p></details>}</td>
+            <td><StatusPill label={r.situacao}/>{r.observacao && <details><summary className="op-muted">Entender</summary><p className="mt-1 mb-0">{r.observacao}</p></details>}</td>
           </tr>)}</tbody>
         </table>
       </div></div>:<p>Nenhum resultado encontrado com estes filtros.</p>}

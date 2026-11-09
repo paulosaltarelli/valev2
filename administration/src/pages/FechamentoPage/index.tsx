@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { PageHeading } from '../../shared/components/PageHeading';
 import { AnalysisNav } from '../../shared/components/AnalysisNav';
-import { dateTime, QueryNotice, useOperationQuery } from '../../components/Processamento/OperationCommon';
+import { dateTime, QueryNotice, StatusPill, useOperationQuery } from '../../components/Processamento/OperationCommon';
 import { OperationalReportsApi } from '../../utils/api/operationalReportsApi';
 import { exportReport, ReportPagination } from '../../components/Relatorios/ReportTools';
 
@@ -57,7 +57,7 @@ export function FechamentoPage() {
           {['Filial','Situação','Funcionários',...(showDetails ? ['Cálculo completo','Cálculo parcial','Sem cálculo'] : []),'Com erro','Aguardando envio',...(showDetails ? ['Enviados ao RM'] : [])].map(h=><th scope="col" key={h}>{h}</th>)}
         </tr></thead><tbody>{rows.slice((currentPage-1)*25,currentPage*25).map(r=><tr key={r.filialId}>
           <th scope="row">{r.execucaoId?<Link to={href(r.execucaoId,'acompanhamento')}>{r.filial}</Link>:<Link to={`/processamento?periodo=${query.data?.periodo}`}>{r.filial}</Link>}{!r.ativa && <small>Inativa atualmente</small>}</th>
-          <td>{r.situacao}</td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
+          <td><StatusPill label={r.situacao}/></td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
           <td>{r.execucaoId && r.counts?.comErro ? <Link className="op-danger" to={href(r.execucaoId,'pendencias')}>{r.counts.comErro} · Ver</Link>:r.counts?.comErro ?? '—'}</td>
           <td>{r.execucaoId && r.counts?.aguardandoEnvio ? <Link to={href(r.execucaoId,'envios')}>{r.counts.aguardandoEnvio} · Ver</Link>:r.counts?.aguardandoEnvio ?? '—'}</td>
           {showDetails && <td>{r.counts?.enviados ?? '—'}</td>}

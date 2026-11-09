@@ -174,9 +174,9 @@ export function ProcessamentoPage() {
   const calculationActive = activity.some((row) => (row.pending > 0 || row.processing > 0) &&
     row.etapas.some((stage) => stage === "VARIAVEIS" || stage === "VALORES"));
   const expected = totals.variablesTotal + totals.formulasTotal;
-  const percent = expected ? Math.floor(100 * (totals.variablesDone + totals.formulasDone) / expected) : null;
+  const percent = expected ? Math.max(0, Math.min(100, Math.floor(100 * (totals.variablesDone + totals.formulasDone) / expected))) : null;
   const totalKnown = !preparing.length && !creationFailures.size;
-  const showPercent = queueKnown && totalKnown && !(calculationActive && percent === 100) && percent !== null;
+  const showPercent = percent !== null;
   const progressStatus = !queueKnown ? "Aguardando atualização da fila"
     : preparing.length ? "Preparando execuções"
     : percent === 100 && !calculationActive && processingJobs ? "Cálculo concluído · envio ao RM em andamento"
@@ -291,7 +291,7 @@ export function ProcessamentoPage() {
         <div className="op-freshness">
           {query.at && (
             <>
-              Consulta atualizada em <strong>{dateTime(query.at)}</strong>
+              Atualizado <strong>{dateTime(query.at)}</strong>
             </>
           )}
           <button
@@ -325,22 +325,22 @@ export function ProcessamentoPage() {
                   <h2 id="op-overall-heading">Progresso geral do cálculo</h2>
                   <details className="ve-progress-help"><summary>Como o progresso é calculado</summary><p className="op-muted mb-2">Variáveis e fórmulas calculadas sobre o total previsto. Resultados parciais também contam; o envio ao RM é separado.</p></details>
                 </div>
-                {showPercent && <strong className="op-overall-percent">{percent}%</strong>}
+                {showPercent && <div className="ve-percent-summary"><strong className="op-overall-percent">{percent}%</strong><small>{!queueKnown || !totalKnown ? "Parcial · execuções criadas" : "Das variáveis e fórmulas previstas"}</small></div>}
               </div>
               <div role="status">
-                <strong>{progressStatus}</strong>
+                <strong className={`ve-status-pill ${attention || creationFailures.size ? "ve-status-danger" : processingJobs || pendingJobs ? "ve-status-info" : percent === 100 ? "ve-status-success" : "ve-status-warning"}`}>{progressStatus}</strong>
                 <p className="mb-2">
-                  {totals.valores.toLocaleString("pt-BR")} de {totals.total.toLocaleString("pt-BR")} funcionários com valores calculados
+                  {totals.valores.toLocaleString("pt-BR")} de {totals.total.toLocaleString("pt-BR")} funcionários concluídos
                   {!totalKnown && " nas execuções já criadas"}
                 </p>
                 {queueKnown && (preparing.length > 0 || pendingJobs > 0 || processingJobs > 0 || attention > 0 || creationFailures.size > 0) && (
                   <ul className="op-overall-activity">
-                    {preparing.length > 0 && <li>Filiais em preparação <strong>{preparing.length}</strong></li>}
-                    {processingJobs > 0 && <li>Tarefas em andamento <strong>{processingJobs}</strong></li>}
-                    {pendingJobs > 0 && <li>Tarefas na fila <strong>{pendingJobs}</strong></li>}
-                    {attention > 0 && <li>Funcionários que exigem ação <strong>{attention}</strong></li>}
+                    {preparing.length > 0 && <li>Preparando <strong>{preparing.length}</strong></li>}
+                    {processingJobs > 0 && <li>Em andamento <strong>{processingJobs}</strong></li>}
+                    {pendingJobs > 0 && <li>Na fila <strong>{pendingJobs}</strong></li>}
+                    {attention > 0 && <li>Com pendências <strong>{attention}</strong></li>}
                     {creationFailures.size > 0 && <li><button type="button" className="btn btn-link p-0" onClick={() => void openErrors()}>
-                      Filiais com falha na criação ({creationFailures.size})
+                      Falha na criação ({creationFailures.size})
                     </button></li>}
                   </ul>
                 )}
@@ -373,14 +373,14 @@ export function ProcessamentoPage() {
               value={totals.variablesDone}
               total={totals.variablesTotal}
               unit="variáveis"
-              detail={`${totals.variaveis} de ${totals.total} funcionários completos`}
+              detail={`${totals.variaveis}/${totals.total} funcionários completos`}
             />
             <StageCount
               label="Fórmulas calculadas"
               value={totals.formulasDone}
               total={totals.formulasTotal}
               unit="fórmulas"
-              detail={`${totals.valores} de ${totals.total} funcionários completos`}
+              detail={`${totals.valores}/${totals.total} funcionários completos`}
             />
             <StageCount
               label="Enviados ao RM"

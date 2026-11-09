@@ -16,7 +16,7 @@ export function PageHeading({
       <div>
         <p className="op-eyebrow">{area}</p>
         <h1>{title}</h1>
-        {description && <p>{description}</p>}
+        {description && <details className="ve-page-help"><summary aria-label={`Sobre ${title}`} title="Sobre esta tela">ⓘ</summary><p>{description}</p></details>}
       </div>
       {actions}
     </header>

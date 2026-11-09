@@ -228,3 +228,34 @@
 }
 
 .vale-ia-modal .vale-ia-compor > button { flex-shrink:0; min-width:76px; white-space:nowrap; }
+
+/* Percentuais visíveis e estados semânticos: cor sempre acompanhada por texto. */
+.ve-percent-summary { text-align:right; }
+.ve-percent-summary small { display:block; color:var(--op-muted); font-size:12px; }
+.ve-stage-percent { float:right; color:var(--op-blue); margin-left:12px; font-size:17px; }
+.ve-stage-complete .ve-stage-percent { color:var(--op-success); }
+.ve-stage-complete progress { accent-color:var(--op-success); }
+.ve-stage-complete progress::-webkit-progress-value { background:var(--op-success); }
+.ve-stage-complete progress::-moz-progress-bar { background:var(--op-success); }
+.ve-status-pill { display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border-radius:7px; font-size:13px; background:var(--op-soft); }
+.ve-status-pill::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0; }
+.ve-status-danger { color:var(--op-danger); background:color-mix(in srgb,var(--op-danger) 8%,var(--op-surface)); }
+.ve-status-warning { color:var(--op-warning); background:color-mix(in srgb,var(--op-warning) 8%,var(--op-surface)); }
+.ve-status-success { color:var(--op-success); background:color-mix(in srgb,var(--op-success) 8%,var(--op-surface)); }
+.ve-status-info { color:var(--op-blue); background:var(--op-blue-soft); }
+.ve-heading > div { position:relative; padding-right:32px; }
+.ve-page-help { display:inline; }
+.ve-page-help > summary { position:absolute; right:0; top:26px; list-style:none; cursor:pointer; color:var(--op-blue); font-size:20px; line-height:1; }
+.ve-page-help > summary::-webkit-details-marker { display:none; }
+.ve-page-help p { margin-top:8px; color:var(--op-muted); font-size:14px; }
+.ve-home-alert { border-left:3px solid var(--op-blue); background:var(--op-blue-soft); padding:12px 16px; }
+.ve-home-alert-danger { border-left-color:var(--op-danger); background:color-mix(in srgb,var(--op-danger) 7%,var(--op-surface)); }
+.ve-home-alert-success { border-left-color:var(--op-success); background:color-mix(in srgb,var(--op-success) 7%,var(--op-surface)); }
+.ve-home-alert-warning { border-left-color:var(--op-warning); background:color-mix(in srgb,var(--op-warning) 7%,var(--op-surface)); }
+.ve-home-alert strong::before { content:"●"; font-size:11px; margin-right:8px; color:var(--op-blue); }
+.ve-home-alert-danger strong::before { content:"!"; color:var(--op-danger); font-size:16px; }
+.ve-home-alert-success strong::before { content:"✓"; color:var(--op-success); font-size:16px; }
+.ve-home-alert-warning strong::before { content:"!"; color:var(--op-warning); font-size:16px; }
+.op-overall-activity li { background:var(--op-soft); border-radius:6px; padding:5px 8px; }
+.op-overall-activity strong { color:var(--op-blue); font-size:16px; }
+.op-overall-progress > [role="status"] > p { margin-top:8px; font-size:13px; color:var(--op-muted); }

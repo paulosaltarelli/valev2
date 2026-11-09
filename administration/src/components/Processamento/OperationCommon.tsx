@@ -201,8 +201,8 @@ export function StageCount({
   detail?: string;
 }) {
   return (
-    <div className="op-stage">
-      <span className="op-stage-label">{label}</span>
+    <div className={`op-stage ${total > 0 && value >= total ? "ve-stage-complete" : ""}`}>
+      <span className="op-stage-label">{label}{showBar && total > 0 && <strong className="ve-stage-percent">{Math.max(0, Math.min(100, Math.floor(100 * value / total)))}%</strong>}</span>
       <span className="op-count">
         {value.toLocaleString("pt-BR")}{" "}
         <span>/ {total.toLocaleString("pt-BR")}</span>
@@ -230,7 +230,7 @@ export function QueryNotice({
     <>
       {loading && (
         <div className="op-notice" role="status">
-          Carregando informações… As contagens serão exibidas após a consulta.
+          Carregando…
         </div>
       )}
       {error && (
@@ -264,4 +264,12 @@ export function useOperationAction(onNotice: (message: string) => void, onDone: 
     }
   };
   return { busy, run };
+}
+
+export function StatusPill({ label }: { label: string }) {
+  const normalized = label.toLocaleLowerCase("pt-BR");
+  const tone = /erro|falha|exige ação/.test(normalized) ? "danger"
+    : /conclu|enviado|completo/.test(normalized) ? "success"
+    : /pendente|parcial|ausente|sem |pausad/.test(normalized) ? "warning" : "info";
+  return <span className={`ve-status-pill ve-status-${tone}`}>{label}</span>;
 }

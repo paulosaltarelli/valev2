@@ -78,24 +78,24 @@ export function OperationalOverview({ activePeriodIds, branches }: {
             </div>
             <div className="ve-home-alerts mt-3" aria-label="Alertas e próximas ações">
               {attention.length > 0 && <div className="ve-home-alert ve-home-alert-danger">
-                <div><strong>Resolver falhas de cálculo ou envio</strong><p>{attention.length} filiais por competência exigem atenção. Consulte as causas e os funcionários afetados.</p></div>
+                <div><strong>Falhas para resolver</strong><p>{attention.length} {attention.length === 1 ? "filial" : "filiais"} · por competência</p></div>
                 <Link className="btn btn-outline-primary" to="/falhas-por-causa">Ver falhas</Link>
               </div>}
               {creating.some(item => item.status === "ERRO") && <div className="ve-home-alert ve-home-alert-danger">
-                <div><strong>Há falhas na criação de execuções</strong><p>Verifique a fila de criação antes de continuar.</p></div>
-                <Link className="btn btn-outline-primary" to="/processamento">Ver pendências de criação</Link>
+                <div><strong>Falha na criação</strong><p>Execuções não criadas.</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento">Ver pendências</Link>
               </div>}
-              {ready.length > 0 && <div className="ve-home-alert">
-                <div><strong>Há resultados prontos para enviar</strong><p>{ready.length} filiais por competência aguardam sua ação.</p></div>
-                <Link className="btn btn-outline-primary" to="/processamento?situacao=envio">Conferir e enviar ao RM</Link>
+              {ready.length > 0 && <div className="ve-home-alert ve-home-alert-success">
+                <div><strong>Pronto para envio</strong><p>{ready.length} {ready.length === 1 ? "filial" : "filiais"} · por competência</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento?situacao=envio">Conferir envio</Link>
               </div>}
-              {missing.length > 0 && <div className="ve-home-alert">
-                <div><strong>Há filiais sem execução</strong><p>{missing.length} filiais por competência ainda precisam iniciar o processamento.</p></div>
-                <Link className="btn btn-outline-primary" to="/processamento">Iniciar processamento</Link>
+              {missing.length > 0 && <div className="ve-home-alert ve-home-alert-warning">
+                <div><strong>Sem execução</strong><p>{missing.length} {missing.length === 1 ? "filial" : "filiais"} · por competência</p></div>
+                <Link className="btn btn-outline-primary" to="/processamento">Iniciar</Link>
               </div>}
               <div className="ve-home-alert">
-                <div><strong>{running.length || creating.some(item => item.status !== "ERRO") ? "Há processamento em andamento ou na fila" : "Fila de cálculo encerrada"}</strong>
-                  <p>{running.length || creating.some(item => item.status !== "ERRO") ? "Acompanhe o avanço e as próximas tentativas em Processamentos." : attention.length || creating.some(item => item.status === "ERRO") ? "O processamento parou com pendências. Resolva os alertas acima para concluir." : "Não há tarefas de cálculo em andamento. Confira os envios e as competências ativas."}</p></div>
+                <div><strong>{running.length || creating.some(item => item.status !== "ERRO") ? "Processamento em andamento" : "Fila de cálculo encerrada"}</strong>
+                  <p>{running.length || creating.some(item => item.status !== "ERRO") ? "Tarefas em execução ou aguardando." : attention.length || creating.some(item => item.status === "ERRO") ? "Há pendências para resolver." : "Sem tarefas de cálculo na fila."}</p></div>
                 <Link className="btn btn-outline-primary" to="/processamento">Acompanhar</Link>
               </div>
             </div>

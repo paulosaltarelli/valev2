@@ -726,7 +726,7 @@ export function DashboardPage() {
       )}
       <div>
             <h2 className="ve-section-title">Indicadores do recorte selecionado</h2>
-            <p className="op-muted">Os filtros abaixo afetam estes indicadores. O resumo acima acompanha todas as competências ativas.</p>
+            <p className="op-muted">Recorte selecionado abaixo · resumo superior: competências ativas.</p>
             <div className="op-context ve-filter-bar" aria-label="Filtros dos indicadores">
               <div>
                 <label htmlFor="dash-competencia">Competência</label>
