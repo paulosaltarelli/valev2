@@ -18,6 +18,8 @@ const navigation = [
   },
   {
     label: "Análise",
+    id: "analysis",
+    icon: "mdi:chart-box-outline",
     links: [
         ["/fechamento", "Fechamento por filial", "mdi:clipboard-check-outline"],
         ["/variacao-competencias", "Variação entre competências", "mdi:compare-horizontal"],
@@ -28,6 +30,8 @@ const navigation = [
   },
   {
     label: "Regras e cadastros",
+    id: "registration",
+    icon: "mdi:store-outline",
     adminOnly: true,
     links: [
       ["/filial", "Filiais e regras", "mdi:store-outline"],
@@ -41,9 +45,11 @@ export function Sidebar() {
   const { state, dispatch } = useThemeContext();
   const { state: appState } = useAppContext();
   const pathname = useLocation().pathname;
-  const analysisActive = navigation[1].links.some(([path]) => pathname === path || pathname.startsWith(path + "/"));
-  const [analysisOpen, setAnalysisOpen] = useState(analysisActive);
-  useEffect(() => { if (analysisActive) setAnalysisOpen(true); }, [pathname, analysisActive]);
+  const activeGroup = navigation.find((group) => group.id && group.links.some(([path]) => pathname === path || pathname.startsWith(path + "/")))?.id;
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => activeGroup ? { [activeGroup]: true } : {});
+  useEffect(() => {
+    if (activeGroup) setOpenGroups((open) => ({ ...open, [activeGroup]: true }));
+  }, [pathname, activeGroup]);
   const closeMobileMenu = () => {
     if (state.mobileMenu) dispatch({ type: ThemeActionsTypes.TOGGLE_MOBILE_MENU });
   };
@@ -74,25 +80,31 @@ export function Sidebar() {
         <ul className="sidebar-menu" id="sidebar-menu">
           {navigation
             .filter((group) => !group.adminOnly || appState.user.perfil === "admin")
-            .flatMap(({ label, links }) => label === "Análise" ? [
-              <li key="analysis-toggle"><button type="button" className={`ve-analysis-toggle${analysisActive ? " is-current" : ""}`} aria-expanded={analysisOpen} aria-controls="analysis-menu" title="Análise" onClick={() => setAnalysisOpen((open) => !open)}><Icon icon="mdi:chart-box-outline" className="menu-icon" aria-hidden="true" /><span>Análise</span><Icon icon={analysisOpen ? "mdi:chevron-up" : "mdi:chevron-down"} className="ve-menu-chevron" aria-hidden="true" /></button><ul id="analysis-menu" className="ve-analysis-submenu" hidden={!analysisOpen}>{links.map(([path, name, icon]) => <li key={path}><NavLink to={path} title={name} onClick={closeMobileMenu} className={({isActive}) => isActive ? "active-page" : ""}><Icon icon={icon} className="menu-icon" aria-hidden="true" /><span>{name}</span></NavLink></li>)}</ul></li>,
-            ] : [
-              <li key={label} className="sidebar-menu-group-title">{label}</li>,
-              ...links.map(([path, name, icon]) => (
+            .flatMap(({ label, links, id, icon }) => {
+              const items = links.map(([path, name, linkIcon]) => (
                 <li key={path}>
-                  <NavLink
-                    to={path}
-                    title={name}
-                    aria-label={name}
-                    onClick={closeMobileMenu}
-                    className={({ isActive }) => isActive ? "active-page" : ""}
-                  >
-                    <Icon icon={icon} className="menu-icon" aria-hidden="true" />
+                  <NavLink to={path} title={name} aria-label={name} onClick={closeMobileMenu}
+                    className={({ isActive }) => isActive ? "active-page" : ""}>
+                    <Icon icon={linkIcon} className="menu-icon" aria-hidden="true" />
                     <span>{name}</span>
                   </NavLink>
                 </li>
-              )),
-            ])}
+              ));
+              if (!id) return [<li key={label} className="sidebar-menu-group-title">{label}</li>, ...items];
+              const expanded = !!openGroups[id];
+              return [
+                <li key={id}>
+                  <button type="button" className={`ve-analysis-toggle${activeGroup === id ? " is-current" : ""}`}
+                    aria-expanded={expanded} aria-controls={`${id}-menu`} title={label}
+                    onClick={() => setOpenGroups((open) => ({ ...open, [id]: !open[id] }))}>
+                    <Icon icon={icon!} className="menu-icon" aria-hidden="true" />
+                    <span>{label}</span>
+                    <Icon icon={expanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="ve-menu-chevron" aria-hidden="true" />
+                  </button>
+                  <ul id={`${id}-menu`} className="ve-analysis-submenu" hidden={!expanded}>{items}</ul>
+                </li>,
+              ];
+            })}
         </ul>
       </nav>
     </aside>
