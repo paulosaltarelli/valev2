@@ -27,6 +27,11 @@ import {
   useOperationQuery,
 } from "./OperationCommon";
 
+function historicalEvent(formula: ResultDetail["formulaUtilizada"] | undefined) {
+  if (!formula || formula.snapshot_origem === "CONFERENCIA_LEGADO") return "Evento RM histórico indisponível";
+  return formula.codEvento?.trim() ? `Evento RM: ${formula.codEvento}` : "Sem evento RM vinculado";
+}
+
 type MemoryEntry = ResultDetail["memoria_calculo"][number];
 type VariableRow = {
   key: string;
@@ -271,6 +276,10 @@ function ResultPanel({
             <p>
               {r.execucao_funcionario_base.funcionario_id_rm} · {f?.nome}
             </p>
+            <p className="op-event-reference">
+              {historicalEvent(r.formulaUtilizada)}
+              {r.formulaUtilizada && r.formulaUtilizada.snapshot_origem !== "CONFERENCIA_LEGADO" && r.formulaUtilizada.versao != null && ` · Fórmula v${r.formulaUtilizada.versao}`}
+            </p>
           </header>
           <div className="op-result-status">
             <span className="op-status op-neutral">
@@ -451,17 +460,7 @@ function ResultPanel({
 export function ProcessamentoDetalhesPage() {
   const id = Number(useParams().execucaoId);
   const [params, setParams] = useSearchParams();
-  const tabs = [
-    ["acompanhamento", "Acompanhamento"],
-    ["pendencias", "Pendências"],
-    ["resultados", "Resultados"],
-    ["envios", "Envio ao RM"],
-    ["historico", "Histórico"],
-  ];
-  const requestedTab = params.get("aba") === "conferencia" ? "resultados" : params.get("aba");
-  const tab = tabs.some(([key]) => key === requestedTab)
-    ? requestedTab!
-    : "acompanhamento";
+  const requestedTab = params.get("aba");
   const page = Math.max(1, Number(params.get("pagina")) || 1);
   const search = params.get("busca") ?? "";
   const filter = params.get("filtro") ?? "todos";
@@ -524,12 +523,12 @@ export function ProcessamentoDetalhesPage() {
     setRecalculate(false);
     refresh();
   });
-  const process = (etapa: Etapa) =>
+  const process = (etapa: Etapa, baseIds?: number[], repeat = false) =>
     void command.run({
       etapa,
       execucaoIds: [id],
-      ...(selecting ? { baseIds: selected } : {}),
-      recalcular: etapa !== "ENVIAR_RM" && recalculate,
+      ...(baseIds ? { baseIds } : {}),
+      recalcular: etapa !== "ENVIAR_RM" && repeat,
     });
   const refresh = () => {
     query.refresh();
@@ -539,8 +538,7 @@ export function ProcessamentoDetalhesPage() {
     command.busy ||
     query.loading ||
     Boolean(query.error) ||
-    Boolean(summary.error) ||
-    (selecting && !selected.length);
+    Boolean(summary.error);
   return (
     <div className="op-page op-detail-page">
       <Link className="op-back" to={returnTo}>
@@ -595,23 +593,58 @@ export function ProcessamentoDetalhesPage() {
           O resumo não pôde ser atualizado. Atualize antes de realizar ações.
         </div>
       )}
-      <nav className="op-tabs" aria-label="Etapas da execução">
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            aria-current={tab === key ? "page" : undefined}
-            onClick={() => setContext({ aba: key, resultado: "" })}
-          >
-            {label}
-            {key === "pendencias" && row && row.errors + row.pending > 0
-              ? ` (${row.errors + row.pending})`
-              : ""}
-          </button>
-        ))}
-      </nav>
-      {tab === "pendencias" && (
-        <section className="op-panel">
-          <h2>Pendências e próximas tentativas</h2>
+          {exec && (
+            <section className="op-step-actions" aria-label="Ações da filial">
+              <div>
+                <strong>
+                  Processar filial inteira
+                </strong>
+                <p>
+                  Todos os funcionários da filial. A busca abaixo não limita estas ações.
+                </p>
+              </div>
+              <div className="op-actions">
+                <button
+                  className="btn btn-outline-primary"
+                  disabled={commandDisabled}
+                  onClick={() => process("VARIAVEIS", undefined, recalculate)}
+                >
+                  Processar variáveis da filial
+                </button>
+                <button
+                  className="btn btn-outline-primary"
+                  disabled={commandDisabled}
+                  onClick={() => process("VALORES", undefined, recalculate)}
+                >
+                  Calcular valores da filial
+                </button>
+                {exec && (
+                  <Link
+                    className="btn btn-link"
+                    to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}
+                  >
+                    Gestão de KM
+                  </Link>
+                )}
+              </div>
+              <details>
+                <summary>Recálculo de etapas já concluídas</summary>
+                <label className="op-check">
+                  <input
+                    type="checkbox"
+                    checked={recalculate}
+                    onChange={(e) => setRecalculate(e.target.checked)}
+                  />
+                  <span>
+                    Incluir etapas já concluídas no recálculo. Ajustes manuais e envios anteriores serão preservados no histórico.
+                  </span>
+                </label>
+              </details>
+            </section>
+          )}
+      {exec && (
+        <details className="op-panel op-execution-support" open={requestedTab === "pendencias" || requestedTab === "historico" ? true : undefined}>
+          <summary>Fila e histórico de falhas {query.data?.queue.length ? `· ${query.data.queue.length} itens ativos` : ""}</summary>
           {query.data?.queue.length ? (
             <div className="op-scroll">
               <table className="op-table">
@@ -681,7 +714,7 @@ export function ProcessamentoDetalhesPage() {
               Use o estado atual da pessoa e da fila para decidir.
             </p>
           </details>
-        </section>
+        </details>
       )}
       {row && (row.processing > 0 || row.pending > 0) && (
         <div className="op-notice" role="status">
@@ -690,13 +723,22 @@ export function ProcessamentoDetalhesPage() {
           {row.etapas.includes("VARIAVEIS") && " As variáveis consultam o RM em lotes de até 25 pessoas; as contagens avançam quando cada lote termina."}
         </div>
       )}
-      {tab === "envios" && (
-        <section className="op-panel">
-          <h2>Enviar valores ao RM</h2>
+      {exec && (
+        <details className="op-panel op-execution-support" open={requestedTab === "envios" ? true : undefined}>
+          <summary>Envio ao RM</summary>
           <p>
             Envie os valores calculados diretamente. Eventos existentes são atualizados;
             versões já enviadas e pessoas com cálculo incompleto ou etapa em andamento ficam fora da fila.
           </p>
+            <button
+              className="btn btn-outline-secondary"
+              onClick={() => {
+                setSelecting(!selecting);
+                setSelected([]);
+              }}
+            >
+              {selecting ? "Encerrar seleção" : "Selecionar pessoas para envio"}
+            </button>
           <p><strong>{selecting ? `${selected.length} pessoas selecionadas` : "Execução inteira"}</strong>
             {!selecting && " · A busca e os filtros da lista não limitam o envio."}
           </p>
@@ -706,14 +748,14 @@ export function ProcessamentoDetalhesPage() {
               executionIds={[id]}
               personIds={selecting ? selected : undefined}
               disabled={commandDisabled}
-              onSend={() => process("ENVIAR_RM")}
+              onSend={() => process("ENVIAR_RM", selecting ? selected : undefined)}
             />
           )}
           <p className="op-muted">
             Abra um resultado abaixo para consultar a versão e a confirmação por
             evento.
           </p>
-        </section>
+        </details>
       )}
       {exec && (
         <>
@@ -757,68 +799,9 @@ export function ProcessamentoDetalhesPage() {
                 <option value="enviados">Enviadas ao RM</option>
               </select>
             </label>
-            <button
-              className="btn btn-outline-secondary"
-              onClick={() => {
-                setSelecting(!selecting);
-                setSelected([]);
-              }}
-            >
-              {selecting ? "Encerrar seleção" : "Selecionar pessoas"}
-            </button>
+
           </section>
-          {(tab === "acompanhamento" || tab === "pendencias") && (
-            <section className="op-step-actions" aria-label="Processar etapas">
-              <div>
-                <strong>
-                  {selecting
-                    ? `${selected.length} pessoas selecionadas nesta página`
-                    : "Retomar pendentes da execução inteira"}
-                </strong>
-                <p>
-                  Filtros da lista não alteram o escopo de “execução inteira”.
-                  Para um conjunto específico, selecione as pessoas.
-                </p>
-              </div>
-              <div className="op-actions">
-                <button
-                  className="btn btn-outline-primary"
-                  disabled={commandDisabled}
-                  onClick={() => process("VARIAVEIS")}
-                >
-                  Processar Variáveis
-                </button>
-                <button
-                  className="btn btn-outline-primary"
-                  disabled={commandDisabled}
-                  onClick={() => process("VALORES")}
-                >
-                  Calcular Valores
-                </button>
-                {exec && (
-                  <Link
-                    className="btn btn-link"
-                    to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}
-                  >
-                    Gestão de KM
-                  </Link>
-                )}
-              </div>
-              <details>
-                <summary>Recálculo de etapas já concluídas</summary>
-                <label className="op-check">
-                  <input
-                    type="checkbox"
-                    checked={recalculate}
-                    onChange={(e) => setRecalculate(e.target.checked)}
-                  />
-                  <span>
-                    Incluir etapas já concluídas no recálculo. Ajustes manuais e envios anteriores serão preservados no histórico.
-                  </span>
-                </label>
-              </details>
-            </section>
-          )}
+
           <div>
             <div className="op-scroll">
               <table className="op-table op-people">
@@ -880,7 +863,8 @@ export function ProcessamentoDetalhesPage() {
                               aria-haspopup="dialog"
                               onClick={() => setContext({ resultado: String(r.execucao_funcionario_id) }, false)}
                             >
-                              {r.formula.nome} <span>{resultValue(r.valor_final, r.formula.tipo)}</span>
+                              {r.formulaUtilizada?.nome ?? r.formula.nome} <span>{resultValue(r.valor_final, r.formulaUtilizada?.tipo ?? r.formula.tipo)}</span>
+                              <span>· {historicalEvent(r.formulaUtilizada)}</span>
                               {r.ajuste_manual && <span aria-label="Valor ajustado">· ajustado</span>}
                             </button>
                           ))}
@@ -906,6 +890,20 @@ export function ProcessamentoDetalhesPage() {
                             Variáveis
                           </button>
                         )}
+
+                        <div className="op-person-run" aria-label={`Ações de ${b.nome_funcionario}`}>
+                          <button type="button" className="btn btn-outline-primary btn-sm" disabled={commandDisabled}
+                            onClick={() => process("VARIAVEIS", [b.execucao_funcionario_base_id])}>Processar variáveis</button>
+                          <button type="button" className="btn btn-outline-primary btn-sm" disabled={commandDisabled}
+                            onClick={() => process("VALORES", [b.execucao_funcionario_base_id])}>Calcular valores</button>
+                          <details>
+                            <summary>Reprocessar concluídos</summary>
+                            <button type="button" className="btn btn-link btn-sm" disabled={commandDisabled}
+                              onClick={() => process("VARIAVEIS", [b.execucao_funcionario_base_id], true)}>Reprocessar variáveis</button>
+                            <button type="button" className="btn btn-link btn-sm" disabled={commandDisabled}
+                              onClick={() => process("VALORES", [b.execucao_funcionario_base_id], true)}>Recalcular valores</button>
+                          </details>
+                        </div>
                       </td>
                     </tr>
                   ))}

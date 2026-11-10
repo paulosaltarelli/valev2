@@ -49,9 +49,10 @@ export type ResultRow = {
   valor_final: string | null;
   ajuste_manual: boolean;
   metadados_rm_id: number | null;
+  formulaUtilizada?: ResultRow["formula"] | null;
   formula: {
     nome: string;
-    codEvento: string;
+    codEvento: string | null;
     tipo?: string;
     expressao?: string;
     versao?: number;

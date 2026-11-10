@@ -311,6 +311,7 @@ export class OperacaoService {
               valor_calculado: true,
               valor_final: true,
               ajuste_manual: true,
+              formula_snapshot: true,
               metadados_rm_id: true,
               formula: { select: { nome: true, codEvento: true, tipo: true } },
             },
@@ -339,7 +340,21 @@ export class OperacaoService {
       total,
       page: safePage,
       pageSize: 25,
-      bases,
+      bases: bases.map((base) => ({
+        ...base,
+        execucao_funcionario: base.execucao_funcionario.map(({ formula_snapshot, ...result }) => {
+          let formulaUtilizada: { nome?: string; codEvento?: string | null; tipo?: string; versao?: number; snapshot_origem?: string } | null = null;
+          if (formula_snapshot) {
+            try {
+              const snapshot = JSON.parse(formula_snapshot);
+              if (snapshot && typeof snapshot === 'object') {
+                formulaUtilizada = { nome: snapshot.nome, codEvento: snapshot.codEvento, tipo: snapshot.tipo, versao: snapshot.versao, snapshot_origem: snapshot.snapshot_origem };
+              }
+            } catch { /* Legacy invalid snapshots must not break the results list. */ }
+          }
+          return { ...result, formulaUtilizada };
+        }),
+      })),
       queue,
       updatedAt: new Date(),
     };
