@@ -47,7 +47,7 @@ export class OperacaoController {
   @Get(':id/pessoas/:base/eventos')
   @Header('Cache-Control', 'no-store')
   employeeEvents(@Param('id', ParseIntPipe) id: number, @Param('base', ParseIntPipe) base: number) {
-    return this.service.employeeEvents(id, base, this.user.getJwtPayload().sessionId);
+    return this.service.employeeEvents(id, base);
   }
   @Get(':id/pessoas/:base/variaveis')
   @Header('Cache-Control', 'no-store')

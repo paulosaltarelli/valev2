@@ -11,7 +11,7 @@ import { CalculatorService } from 'src/helpers/calculator/calculator.service';
 import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
 import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
-import { OperacaoService } from './operacao.service';
+import { OperacaoService, type CalculationEvent } from './operacao.service';
 import { isRmVariableFailureFinal, readRmVariable } from './rm-variable-result';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
 
@@ -609,7 +609,9 @@ export class ExecucaoService {
   async processarTodos(
     execucaoId: number,
     reprocessar: boolean = false,
+    sessionId?: string,
   ): Promise<{ status: boolean; message: string }> {
+    const eventCache = new Map<string, CalculationEvent>();
     const execucao = await this.getExecucaoById(execucaoId);
 
     if (!execucao) throw new NotFoundException('Execucao not found');
@@ -745,7 +747,7 @@ export class ExecucaoService {
             continue;
           }
 
-          await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula);
+          await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula, sessionId, eventCache);
           teveProcessado = true;
         } catch (error) {
           console.error(error);
@@ -819,6 +821,7 @@ export class ExecucaoService {
   async processarValoresBatch(
     execucaoId: number,
     rows: execucao_funcionario_base[],
+    sessionId?: string,
   ): Promise<{ status: boolean; message: string; falhasFormulaIds?: number[] }> {
     try {
       this.logger.log(
@@ -888,6 +891,7 @@ export class ExecucaoService {
         memoriaScopeByExecFuncId.set(row.execucao_funcionario_id, scope);
       }
 
+      const eventCache = new Map<string, CalculationEvent>();
       const falhasFormulaIds = new Set<number>();
       const basesComErro: number[] = [];
       const basesOk: number[] = [];
@@ -987,7 +991,7 @@ export class ExecucaoService {
               continue;
             }
 
-            await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula);
+            await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula, sessionId, eventCache);
           teveProcessado = true;
           } catch (error) {
             this.logger.error(

@@ -231,7 +231,7 @@ export class CronService {
         return false;
       });
       if (aptos.length) {
-        const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos);
+        const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos, sessionId!);
         for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
       }
     } else if (tipo === 'ENVIAR_RM') {

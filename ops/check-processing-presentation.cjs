@@ -10,6 +10,11 @@ assert.equal(key({formula:{codEvento:'(:EVENTOPAG)'}}).key, 'variable:EVENTOPAG'
 assert.equal(key({formula:{codEvento:'0042'}}).key, 'literal:0042');
 assert.equal(key({formulaUtilizada:{codEvento:null},formula:{codEvento:'9999'}}).key, 'literal:');
 assert.equal(key({formulaUtilizada:{codEvento:'(:EVENTODES)'},formula:{codEvento:'9999'}}).key, 'variable:EVENTODES');
+const storedSource = groups.match(/export function storedEvent\([^]*?\n\}/)[0].replace('export ', '').replace('result: ResultRow', 'result');
+const stored = Function(storedSource + ';return storedEvent')();
+assert.equal(stored({execucao_funcionario_id:1,formula:{codEvento:'9999'},formulaUtilizada:{codEvento:'(:EVENTOPAG)',evento_calculo:{valor:'R0066',variavel:'EVENTOPAG'}}}).valor,'R0066');
+assert.equal(stored({execucao_funcionario_id:1,formula:{codEvento:'9999'},formulaUtilizada:{codEvento:'(:EVENTOPAG)'}}).valor,null);
+assert.ok(!groups.includes('api.get('));
 const processSource = ui.slice(ui.indexOf('  const process ='), ui.indexOf('  const refresh =')).replace('etapa: Etapa, baseIds?: number[], repeat = false', 'etapa, baseIds, repeat = false');
 const calls = [];
 const run = Function('command', 'id', processSource + 'return process;')({run: request => calls.push(request)}, 42);

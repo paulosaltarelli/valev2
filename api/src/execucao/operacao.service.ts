@@ -10,6 +10,15 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { operationProgress } from './operation-progress';
 import { RmService } from 'src/rm/rm.service';
 
+
+export type CalculationEvent = { referencia: string; variavel: string | null; valor: string | null; origem: string; coletadoEm: string; consulta?: string };
+type FormulaWithEvent = formula & { evento_calculo?: CalculationEvent; snapshot_origem?: string };
+export const calculationEventCode = (f: Partial<FormulaWithEvent>) => {
+  if (f.evento_calculo) return f.evento_calculo.valor;
+  const reference = f.codEvento?.trim() ?? '';
+  return reference && !reference.includes('(:') ? reference : null;
+};
+
 type Tx = Prisma.TransactionClient;
 export type Etapa = 'VARIAVEIS' | 'VALORES' | 'CONFERIR' | 'ENVIAR_RM';
 export type PedidoOperacao = {
@@ -344,12 +353,12 @@ export class OperacaoService {
       bases: bases.map((base) => ({
         ...base,
         execucao_funcionario: base.execucao_funcionario.map(({ formula_snapshot, ...result }) => {
-          let formulaUtilizada: { nome?: string; codEvento?: string | null; tipo?: string; versao?: number; snapshot_origem?: string } | null = null;
+          let formulaUtilizada: { nome?: string; codEvento?: string | null; tipo?: string; versao?: number; snapshot_origem?: string; evento_calculo?: CalculationEvent } | null = null;
           if (formula_snapshot) {
             try {
               const snapshot = JSON.parse(formula_snapshot);
               if (snapshot && typeof snapshot === 'object') {
-                formulaUtilizada = { nome: snapshot.nome, codEvento: snapshot.codEvento, tipo: snapshot.tipo, versao: snapshot.versao, snapshot_origem: snapshot.snapshot_origem };
+                formulaUtilizada = { nome: snapshot.nome, codEvento: snapshot.codEvento, tipo: snapshot.tipo, versao: snapshot.versao, snapshot_origem: snapshot.snapshot_origem, evento_calculo: snapshot.evento_calculo };
               }
             } catch { /* Legacy invalid snapshots must not break the results list. */ }
           }
@@ -362,54 +371,64 @@ export class OperacaoService {
   }
 
 
-  // Read-only display lookup. Never schedules work or rewrites calculation history.
-  async employeeEvents(execucaoId: number, baseId: number, sessionId: string) {
+
+  // Display is strictly historical: never calls RM or reads today's variable definition.
+  async employeeEvents(execucaoId: number, baseId: number) {
     const base = await this.prisma.execucao_funcionario_base.findFirst({
       where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
-      include: { execucao: { include: { periodo: true, filial: { include: { variavel: true } } } },
-        execucao_funcionario: { include: { formula: true, memoria_calculo: true } } },
+      select: { execucao_funcionario: { select: { execucao_funcionario_id: true, formula_snapshot: true } } },
     });
     if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
-    const cache = new Map<string, { valor: string | null; erro?: string }>();
-    const events: Array<{ resultadoId: number; variavel: string | null; nome: string; valor: string | null; origem: string; erro?: string }> = [];
-    for (const result of base.execucao_funcionario) {
-      let snapshot: { codEvento?: string | null; snapshot_origem?: string } | null = null;
+    return { events: base.execucao_funcionario.map(result => {
+      let snapshot: FormulaWithEvent | null = null;
       try { snapshot = result.formula_snapshot ? JSON.parse(result.formula_snapshot) : null; } catch { /* legacy */ }
+      const reference = snapshot?.codEvento?.trim() ?? '';
+      const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
       const historical = snapshot && snapshot.snapshot_origem !== 'CONFERENCIA_LEGADO';
-      const reference = ((snapshot ?? result.formula)?.codEvento ?? '').trim();
-      const code = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
-      const definition = code ? base.execucao.filial.variavel.find(v => v.codigo.toUpperCase() === code.toUpperCase()) : null;
-      const event = { resultadoId: result.execucao_funcionario_id, variavel: code, nome: definition?.nome ?? code ?? 'Evento RM' };
-      if (!code) {
-        events.push({ ...event, valor: reference || null, origem: historical ? 'CALCULO' : 'CADASTRO_ATUAL' });
-        continue;
-      }
-      const memory = historical ? result.memoria_calculo.find(m => m.variavel_codigo.toUpperCase() === code.toUpperCase()) : null;
-      if (memory) {
-        events.push({ ...event, valor: String(memory.valor), origem: 'MEMORIA' });
-        continue;
-      }
-      if (!cache.has(code)) {
-        if (!definition || !definition.ativa) cache.set(code, { valor: null, erro: 'Variável de evento não disponível no cadastro atual.' });
-        else if (definition.valor_fixo != null) cache.set(code, { valor: String(definition.valor_fixo) });
-        else if (!definition.sql_codigo_rm) cache.set(code, { valor: null, erro: 'Variável sem consulta RM configurada.' });
-        else {
-          try {
-            const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, {
-              DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10),
-              DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
-              CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm,
-              KM_MAX: Number(base.execucao.filial.km_max),
-            }, sessionId) as { status: boolean; data?: Array<{ RESULTADO?: unknown }> };
-            const value = response.status && Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
-            const valid = (typeof value === 'string' && value.trim().length > 0) || (typeof value === 'number' && Number.isFinite(value));
-            cache.set(code, valid ? { valor: String(value).trim() } : { valor: null, erro: 'RM não retornou um código de evento válido.' });
-          } catch { cache.set(code, { valor: null, erro: 'Não foi possível consultar o evento no RM. Tente novamente.' }); }
-        }
-      }
-      events.push({ ...event, ...cache.get(code)!, origem: 'CONSULTA_ATUAL' });
+      const stored = historical && snapshot ? snapshot.evento_calculo : null;
+      const value = historical && snapshot ? calculationEventCode(snapshot) : null;
+      return { resultadoId: result.execucao_funcionario_id, variavel: stored?.variavel ?? variable,
+        nome: stored?.variavel ?? variable ?? 'Evento RM', valor: value, origem: 'CALCULO',
+        coletadoEm: stored?.coletadoEm ?? null,
+        ...(!historical || (variable && !stored) ? { erro: 'Evento não registrado neste cálculo.' } : {}),
+      };
+    }) };
+  }
+
+  private async captureCalculationEvent(id: number, formula: formula, sessionId?: string,
+    cache = new Map<string, CalculationEvent>()): Promise<CalculationEvent> {
+    const reference = formula.codEvento?.trim() ?? '';
+    const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
+    const collected = () => new Date().toISOString();
+    if (!variable) {
+      if (reference.includes('(:')) throw new BadRequestException('Referência de evento RM inválida.');
+      return { referencia: reference, variavel: null, valor: reference || null, origem: 'FORMULA', coletadoEm: collected() };
     }
-    return { events, consultadoEm: new Date().toISOString() };
+    const result = await this.prisma.execucao_funcionario.findUniqueOrThrow({ where: { execucao_funcionario_id: id },
+      include: { execucao_funcionario_base: { include: { execucao: { include: { periodo: true, filial: { include: { variavel: true } } } } } } },
+    });
+    const base = result.execucao_funcionario_base;
+    const definition = base.execucao.filial.variavel.find(v => v.ativa && v.codigo.toUpperCase() === variable.toUpperCase());
+    if (!definition) throw new BadRequestException('Variável de evento não configurada: ' + variable);
+    const key = JSON.stringify([base.execucao_funcionario_base_id, variable, definition.sql_codigo_rm, definition.valor_fixo]);
+    const cached = cache.get(key);
+    if (cached) return cached;
+    let value: string;
+    if (definition.valor_fixo != null) value = String(definition.valor_fixo);
+    else {
+      if (!definition.sql_codigo_rm || !sessionId) throw new BadRequestException('Não foi possível registrar o evento ' + variable + ': consulta ou sessão RM indisponível.');
+      const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, {
+        DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10), DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
+        CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm, KM_MAX: Number(base.execucao.filial.km_max),
+      }, sessionId) as { status: boolean; data?: Array<{ RESULTADO?: unknown }> };
+      const raw = response.status && Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
+      if (!((typeof raw === 'string' && raw.trim()) || (typeof raw === 'number' && Number.isFinite(raw))))
+        throw new BadRequestException('RM não retornou um código válido para ' + variable + '. O cálculo não foi concluído.');
+      value = String(raw).trim();
+    }
+    const event = { referencia: reference, variavel: variable, valor: value, origem: definition.valor_fixo != null ? 'FIXO' : 'RM', coletadoEm: collected(), consulta: definition.sql_codigo_rm ?? undefined };
+    cache.set(key,event);
+    return event;
   }
 
   async employeeVariables(execucaoId: number, baseId: number) {
@@ -525,7 +544,9 @@ export class OperacaoService {
     });
   }
 
-  async saveCalculation(id: number, valor: number, formula: formula) {
+  async saveCalculation(id: number, valor: number, formula: formula, sessionId?: string, eventCache?: Map<string, CalculationEvent>) {
+    const evento_calculo = await this.captureCalculationEvent(id, formula, sessionId, eventCache);
+    const capturedFormula = { ...formula, evento_calculo };
     return this.prisma.$transaction(async (tx) => {
       const r = await tx.execucao_funcionario.findUniqueOrThrow({
         where: { execucao_funcionario_id: id },
@@ -541,7 +562,7 @@ export class OperacaoService {
           conferido_revisao: null,
           conferido_por: null,
           conferido_em: null,
-          formula_snapshot: JSON.stringify(formula),
+          formula_snapshot: JSON.stringify(capturedFormula),
         },
       });
       await tx.resultado_historico.create({
@@ -551,7 +572,8 @@ export class OperacaoService {
           revisao: updated.revisao,
           tipo: 'CALCULO',
           detalhe: JSON.stringify({
-            formula,
+            formula: capturedFormula,
+            evento_calculo,
             memoria: r.memoria_calculo,
             calculado: updated.valor_calculado,
             final: updated.valor_final,
@@ -841,16 +863,16 @@ export class OperacaoService {
         else if (
           results.some((r) => {
             const f = r.formula_snapshot
-              ? (JSON.parse(r.formula_snapshot) as formula)
+              ? (JSON.parse(r.formula_snapshot) as FormulaWithEvent)
               : r.formula;
-            return !f.codEvento || !f.tipo;
+            return !calculationEventCode(f) || !f.tipo;
           })
         )
-          reason = 'Evento ou tipo RM não configurado';
+          reason = 'Evento histórico ou tipo RM indisponível. Recalcule para registrar o evento.';
       }
       const eventos = results.map((r) => {
         const f = r.formula_snapshot
-          ? (JSON.parse(r.formula_snapshot) as formula)
+          ? (JSON.parse(r.formula_snapshot) as FormulaWithEvent)
           : r.formula;
         return {
           id: r.execucao_funcionario_id,
@@ -858,7 +880,7 @@ export class OperacaoService {
           conferencia: r.conferido_revisao,
           regra: fingerprint(f),
           nome: f.nome,
-          evento: f.codEvento,
+          evento: calculationEventCode(f),
           tipo: f.tipo,
           valor: r.valor_final,
           operacao:
@@ -873,7 +895,7 @@ export class OperacaoService {
             CHAPA: b.funcionario_id_rm,
             DATAINI: dateRm(b.execucao.periodo.data_inicio),
             DATAFIM: dateRm(b.execucao.periodo.data_fim),
-            CODEVENTO: f.codEvento,
+            CODEVENTO: calculationEventCode(f),
             VALOR: Number(r.valor_final),
             TIPO: f.tipo,
           },

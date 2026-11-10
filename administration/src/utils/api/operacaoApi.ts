@@ -57,6 +57,7 @@ export type ResultRow = {
     expressao?: string;
     versao?: number;
     snapshot_origem?: string;
+    evento_calculo?: { referencia: string; variavel: string | null; valor: string | null; origem: string; coletadoEm: string };
   };
 };
 export type BaseRow = {
