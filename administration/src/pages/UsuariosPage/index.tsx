@@ -127,6 +127,7 @@ export function UsuariosPage() {
                   },
                 ],
                 ...defaultConfig,
+                responsive: false,
               }}
               data={usuarios}
               columns={[
@@ -199,12 +200,12 @@ export function UsuariosPage() {
         </div>
       </div>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showEditUsuarioModal}
         onHide={() => setShowEditUsuarioModal(false)}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Editar Usuário</Modal.Title>
+          <Modal.Title>Editar usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -226,7 +227,7 @@ export function UsuariosPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
-                  <Form.Label>Código do Usuário(RM)</Form.Label>
+                  <Form.Label>Usuário RM</Form.Label>
                   <Form.Control
                     type="text"
                     defaultValue={usuarioToEdit?.login}
@@ -289,12 +290,12 @@ export function UsuariosPage() {
         </Modal.Footer>
       </Modal>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showCreateUsuarioModal}
         onHide={() => setShowCreateUsuarioModal(false)}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Criar Usuário</Modal.Title>
+          <Modal.Title>Novo usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -317,7 +318,7 @@ export function UsuariosPage() {
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
                   <Form.Label className="d-flex align-items-center gap-1">
-                    Código do Usuário(RM)
+                    Usuário RM
                     <Tooltip
                       title="O mesmo código do usuário(login) no RM."
                       placement="right"

@@ -202,6 +202,7 @@ export function FilialVariaveisPage() {
             },
           ],
           ...defaultConfig,
+                responsive: false,
         }}
         data={variaveis}
         columns={[
@@ -250,7 +251,7 @@ export function FilialVariaveisPage() {
             <th>Nome</th>
             <th>Código</th>
             <th>Tipo</th>
-            <th>SQL Código RM</th>
+            <th>Consulta RM</th>
             <th>Valor Fixo</th>
             <th>Ações</th>
           </tr>
@@ -258,12 +259,12 @@ export function FilialVariaveisPage() {
       </DataTable>
       </div>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showEditVariavelModal}
         onHide={() => setShowEditVariavelModal(false)}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Editar Variavel</Modal.Title>
+          <Modal.Title>Editar variável</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -320,7 +321,7 @@ export function FilialVariaveisPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
-                  <Form.Label>SQL Código RM</Form.Label>
+                  <Form.Label>Consulta RM</Form.Label>
                   <Form.Control
                     type="text"
                     value={variavelToEdit?.sql_codigo_rm ?? ""}
@@ -389,12 +390,12 @@ export function FilialVariaveisPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showInsertVariavelModal}
         onHide={() => setShowInsertVariavelModal(false)}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Criar Variavel</Modal.Title>
+          <Modal.Title>Nova variável</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -454,7 +455,7 @@ export function FilialVariaveisPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_sql_codigo_rm">
-                  <Form.Label>SQL Código RM</Form.Label>
+                  <Form.Label>Consulta RM</Form.Label>
                   <Form.Control
                     type="text"
                     value={variavelToInsert?.sql_codigo_rm ?? ""}

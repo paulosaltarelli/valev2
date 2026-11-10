@@ -246,6 +246,7 @@ export function FilialFormulasPage() {
             },
           ],
           ...defaultConfig,
+                responsive: false,
         }}
         data={formulas}
         columns={[
@@ -335,8 +336,8 @@ export function FilialFormulasPage() {
             <th>Expressão</th>
             <th>Versão</th>
             <th>Ativa</th>
-            <th>Data de Início de Vigência</th>
-            <th>Data de Fim de Vigência</th>
+            <th>Início da vigência</th>
+            <th>Fim da vigência</th>
             <th>Polaridade</th>
             <th>Código do Evento</th>
             <th>Tipo</th>
@@ -346,7 +347,7 @@ export function FilialFormulasPage() {
       </DataTable>
       </div>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showEditFormulaModal}
         onHide={() => setShowEditFormulaModal(false)}
       >
@@ -429,8 +430,7 @@ export function FilialFormulasPage() {
                 </Form.Group> */}
                 <Form.Group controlId="expressao">
                   <Form.Label>Expressão</Form.Label>
-                  <Form.Control
-                    type="text"
+                  <Form.Control as="textarea" rows={3}
                     value={formulaToEdit?.expressao}
                     onChange={(e) =>
                       setFormulaToEdit({
@@ -458,7 +458,7 @@ export function FilialFormulasPage() {
               </div> */}
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Início de Vigência</Form.Label>
+                  <Form.Label>Início da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -479,8 +479,8 @@ export function FilialFormulasPage() {
                 </Form.Group>
               </div>
               <div className="col-12 col-sm-6 mb-2">
-                <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Fim de Vigência</Form.Label>
+                <Form.Group controlId="data_fim_vigencia">
+                  <Form.Label>Fim da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -582,7 +582,7 @@ export function FilialFormulasPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showInsertFormulaModal}
         onHide={() => {
           setShowInsertFormulaModal(false);
@@ -590,7 +590,7 @@ export function FilialFormulasPage() {
         }}
       >
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Criar fórmula</Modal.Title>
+          <Modal.Title>Nova fórmula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {/* Itera pelas variaveis e cria um botãozinho badge para cada uma com seunome e valor. */}
@@ -637,8 +637,7 @@ export function FilialFormulasPage() {
               <div className="col-12 mb-2">
                 <Form.Group controlId="expressao">
                   <Form.Label>Expressão</Form.Label>
-                  <Form.Control
-                    type="text"
+                  <Form.Control as="textarea" rows={3}
                     required
                     value={formulaToInsert?.expressao ?? ""}
                     onChange={(e) =>
@@ -655,7 +654,7 @@ export function FilialFormulasPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Início de Vigência</Form.Label>
+                  <Form.Label>Início da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -672,8 +671,8 @@ export function FilialFormulasPage() {
                 </Form.Group>
               </div>
               <div className="col-12 col-sm-6 mb-2">
-                <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Fim de Vigência</Form.Label>
+                <Form.Group controlId="data_fim_vigencia">
+                  <Form.Label>Fim da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     onChange={(e) =>

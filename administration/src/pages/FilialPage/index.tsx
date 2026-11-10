@@ -167,6 +167,7 @@ export function FilialPage() {
               className="table striped-table mb-0"
               options={{
                 ...defaultConfig,
+                responsive: false,
                 pageLength: 10,
                 layout: {
                   topStart: null,
@@ -232,9 +233,9 @@ export function FilialPage() {
           </div>
         </div>
       </div>
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
+      <Modal className="ve-editor-modal" show={showEditModal} onHide={() => setShowEditModal(false)}>
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Editar Filial</Modal.Title>
+          <Modal.Title>Editar filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -351,9 +352,9 @@ export function FilialPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
+      <Modal className="ve-editor-modal" show={showCreateModal} onHide={() => setShowCreateModal(false)}>
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Cadastrar Filial</Modal.Title>
+          <Modal.Title>Nova filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>

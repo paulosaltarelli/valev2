@@ -29,6 +29,12 @@ import {
   useOperationQuery,
 } from "../../components/Processamento/OperationCommon";
 
+function BranchMeter({label,value,total}:{label:string;value:number;total:number}) {
+ const percent=total>0?Math.max(0,Math.min(100,Math.floor(value*100/total))):0;
+ const complete=total>0&&value>=total;
+ return <div className={`ve-branch-meter ${complete?'is-complete':''}`}><div><strong>{complete?'✓ ':''}{total>0?percent+'%':'—'}</strong><small>{value.toLocaleString('pt-BR')} / {total.toLocaleString('pt-BR')}</small></div><progress aria-label={`${label}: ${value} de ${total}`} value={value} max={total||1}/></div>;
+}
+
 export function ProcessamentoPage() {
   const [params, setParams] = useSearchParams();
   const periodo = params.get("periodo") ?? "";
@@ -466,8 +472,9 @@ export function ProcessamentoPage() {
                   <tr>
                     <th>Filial e funcionários</th>
                     <th>Variáveis</th>
-                    <th>Valores</th>
-                    <th>RM</th>
+                    <th>Fórmulas</th>
+                    <th>Funcionários</th>
+                    <th>Envio ao RM</th>
                     <th>Situação</th>
                     <th>Próxima ação</th>
                   </tr>
@@ -530,30 +537,14 @@ export function ProcessamentoPage() {
                             </small>
                           )}
                         </th>
-                        <td data-label="Variáveis">
-                          <StageCount
-                            label="Variáveis"
-                            value={r.progresso.variaveisCalculadas}
-                            total={r.progresso.variaveisPrevistas}
-                            unit="variáveis"
-                            showBar={false}
-                          />
-                        </td>
-                        <td data-label="Valores">
-                          <StageCount
-                            label="Valores"
-                            value={r.progresso.formulasCalculadas}
-                            total={r.progresso.formulasPrevistas}
-                            unit="fórmulas"
-                            showBar={false}
-                          />
-                        </td>
-                        <td data-label="RM">
-                          <StageCount label="RM" value={r.rm} total={r.total} showBar={false} />
-                        </td>
+                        <td data-label="Variáveis"><BranchMeter label="Variáveis" value={r.progresso.variaveisCalculadas} total={r.progresso.variaveisPrevistas}/></td>
+                        <td data-label="Fórmulas"><BranchMeter label="Fórmulas" value={r.progresso.formulasCalculadas} total={r.progresso.formulasPrevistas}/></td>
+                        <td data-label="Funcionários"><BranchMeter label="Funcionários com valores calculados" value={r.valores} total={r.total}/></td>
+                        <td data-label="Envio ao RM"><BranchMeter label="Funcionários enviados ao RM" value={r.rm} total={r.total}/></td>
                         <td>
-                          <span className={`op-status op-${s.tone}`}>
-                            {s.label}
+                          <span className={`ve-branch-badge ${r.errors>0?'has-error':['conferencia','envio','enviado'].includes(r.situacao)?'is-complete':''}`}>
+                            <span aria-hidden="true">{r.errors>0?'!':['conferencia','envio','enviado'].includes(r.situacao)?'✓':'◷'}</span>
+                            {r.errors>0?'Com erro':r.situacao==='enviado'?'Enviado ao RM':['conferencia','envio'].includes(r.situacao)?'Calculado':r.situacao==='inicio'?'A calcular':s.label}
                           </span>
                           {r.nextRunAt && !r.controleFila && (
                             <small>

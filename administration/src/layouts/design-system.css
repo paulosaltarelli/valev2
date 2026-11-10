@@ -424,3 +424,39 @@
  .ve-operation-overview .op-stage>progress { grid-column:1/-1; width:100%; }
  .ve-operation-overview .ve-home-alert { gap:10px; }
 }
+
+/* Cadastro dialogs: one scrolling body and stable actions. */
+.ve-editor-modal .modal-dialog{max-width:680px}
+.ve-editor-modal .modal-header{padding:16px 20px}
+.ve-editor-modal .modal-title{font-size:20px;font-weight:600}
+.ve-editor-modal .modal-body{padding:16px 20px;min-height:0;overscroll-behavior:contain}
+.ve-editor-modal .modal-footer{padding:12px 20px;gap:8px}
+.ve-editor-modal .modal-footer>.btn{margin:0;min-width:100px}
+.ve-editor-modal .row{--bs-gutter-x:16px;row-gap:4px}
+.ve-editor-modal .form-label{font-size:13px;font-weight:600;margin-top:0!important;margin-bottom:5px!important}
+.ve-editor-modal :is(.form-control,.form-select){font-size:14px;min-height:42px;padding:9px 12px}
+.ve-editor-modal textarea.form-control{min-height:100px;resize:vertical;font-family:monospace}
+.ve-editor-modal .ve-indicator-details{border:0;padding:0;background:transparent}
+.ve-editor-modal .ve-indicator-details>div{margin:10px 0 16px!important}
+.ve-editor-modal .form-switch{min-height:32px;display:flex;align-items:center}
+.ve-branch-meter{min-width:94px;max-width:160px;color:var(--op-blue)}
+.ve-branch-meter>div{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+.ve-branch-meter small{font-size:12px!important;color:var(--op-muted)}
+.ve-branch-meter progress{display:block;width:100%;height:5px;border:0;border-radius:5px;margin-top:7px;overflow:hidden;accent-color:var(--op-blue);background:var(--op-line)}
+.ve-branch-meter progress::-webkit-progress-bar{background:var(--op-line)}
+.ve-branch-meter progress::-webkit-progress-value{background:var(--op-blue)}
+.ve-branch-meter progress::-moz-progress-bar{background:var(--op-blue)}
+.ve-branch-meter.is-complete{color:var(--op-success)}
+.ve-branch-meter.is-complete progress{accent-color:var(--op-success)}
+.ve-branch-meter.is-complete progress::-webkit-progress-value{background:var(--op-success)}
+.ve-branch-meter.is-complete progress::-moz-progress-bar{background:var(--op-success)}
+.ve-branch-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border-radius:7px;font-size:13px;font-weight:700;white-space:nowrap;color:var(--op-blue);background:var(--op-blue-soft)}
+.ve-branch-badge.is-complete{color:var(--op-success);background:color-mix(in srgb,var(--op-success) 14%,var(--op-surface))}
+.ve-branch-badge.has-error{color:var(--op-danger);background:color-mix(in srgb,var(--op-danger) 14%,var(--op-surface))}
+@media(max-width:700px){
+ .ve-editor-modal .modal-dialog{margin:8px;max-width:none;height:calc(100dvh - 16px)}
+ .ve-editor-modal :is(.modal-header,.modal-body,.modal-footer){padding:14px 16px}
+ .ve-editor-modal :is(.form-control,.form-select){font-size:16px;min-height:44px}
+ .ve-editor-modal .modal-footer>.btn{flex:1;min-height:44px}
+ .ve-branch-meter{max-width:none;width:100%}
+}

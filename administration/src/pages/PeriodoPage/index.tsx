@@ -221,6 +221,7 @@ export function PeriodoPage() {
                   },
                 ],
                 ...defaultConfig,
+                responsive: false,
                 order: [[1, "desc"]],
               }}
               data={periodos}
@@ -276,16 +277,16 @@ export function PeriodoPage() {
           </div>
         </div>
       </div>
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
+      <Modal className="ve-editor-modal" show={showEditModal} onHide={() => setShowEditModal(false)}>
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Editar Competência</Modal.Title>
+          <Modal.Title>Editar competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveEditPeriodo} id="editPeriodoForm">
             <div className="row">
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Data Inicial</Form.Label>
+                  <Form.Label>Data inicial</Form.Label>
                   <Form.Control
                     type="date"
                     value={toDateInputValue(periodoToEdit?.data_inicio)}
@@ -301,7 +302,7 @@ export function PeriodoPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Data Final</Form.Label>
+                  <Form.Label>Data final</Form.Label>
                   <Form.Control
                     type="date"
                     value={toDateInputValue(periodoToEdit?.data_fim)}
@@ -370,16 +371,16 @@ export function PeriodoPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
+      <Modal className="ve-editor-modal" show={showCreateModal} onHide={() => setShowCreateModal(false)}>
         <Modal.Header closeButton closeLabel="Fechar janela">
-          <Modal.Title>Cadastrar Competência</Modal.Title>
+          <Modal.Title>Nova competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveCreatePeriodo} id="createPeriodoForm">
             <div className="row">
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Data Inicial</Form.Label>
+                  <Form.Label>Data inicial</Form.Label>
                   <Form.Control
                     type="date"
                     value={
@@ -401,7 +402,7 @@ export function PeriodoPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Data Final</Form.Label>
+                  <Form.Label>Data final</Form.Label>
                   <Form.Control
                     type="date"
                     value={
