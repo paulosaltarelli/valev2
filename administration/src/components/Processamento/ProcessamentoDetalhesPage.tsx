@@ -14,6 +14,7 @@ import {
 } from "../../utils/api/operacaoApi";
 import api from "../../utils/api/Api";
 import { EventGroups } from "./EventGroups";
+import { EmployeeResultsTable } from "./EmployeeResultsTable";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import {
   dateTime,
@@ -24,7 +25,6 @@ import {
   useOperationAction,
   QueryNotice,
   StageCount,
-  statusLabel,
   useOperationQuery,
 } from "./OperationCommon";
 
@@ -456,7 +456,7 @@ function ResultPanel({
 export function ProcessamentoDetalhesPage() {
   const id = Number(useParams().execucaoId);
   const [params, setParams] = useSearchParams();
-  const requestedTab = params.get("aba");
+  const [showQueue, setShowQueue] = useState(false);
   const page = Math.max(1, Number(params.get("pagina")) || 1);
   const search = params.get("busca") ?? "";
   const filter = params.get("filtro") ?? "todos";
@@ -589,58 +589,28 @@ export function ProcessamentoDetalhesPage() {
           O resumo não pôde ser atualizado. Atualize antes de realizar ações.
         </div>
       )}
-          {exec && (
-            <section className="op-step-actions" aria-label="Ações da filial">
-              <div>
-                <strong>
-                  Processar filial inteira
-                </strong>
-                <p>
-                  Todos os funcionários da filial. A busca abaixo não limita estas ações.
-                </p>
-              </div>
-              <div className="op-actions">
-                <button
-                  className="btn btn-outline-primary"
-                  disabled={commandDisabled}
-                  onClick={() => process("VARIAVEIS", undefined, recalculate)}
-                >
-                  Processar variáveis da filial
-                </button>
-                <button
-                  className="btn btn-outline-primary"
-                  disabled={commandDisabled}
-                  onClick={() => process("VALORES", undefined, recalculate)}
-                >
-                  Calcular valores da filial
-                </button>
-                {exec && (
-                  <Link
-                    className="btn btn-link"
-                    to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}
-                  >
-                    Gestão de KM
-                  </Link>
-                )}
-              </div>
-              <details>
-                <summary>Recálculo de etapas já concluídas</summary>
-                <label className="op-check">
-                  <input
-                    type="checkbox"
-                    checked={recalculate}
-                    onChange={(e) => setRecalculate(e.target.checked)}
-                  />
-                  <span>
-                    Incluir etapas já concluídas no recálculo. Ajustes manuais e envios anteriores serão preservados no histórico.
-                  </span>
-                </label>
-              </details>
-            </section>
-          )}
+      {exec && <section className="op-compact-actions" aria-label="Ações da filial">
+        <div className="op-compact-actions-main">
+          <span className="op-action-scope">Filial inteira</span>
+          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VARIAVEIS", undefined, recalculate)}>Processar variáveis</button>
+          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VALORES", undefined, recalculate)}>Calcular valores</button>
+          {(!selecting || selected.length > 0) ? <SendScope key={`${id}:${selecting ? selected.join(",") : "todas"}`} executionIds={[id]} personIds={selecting ? selected : undefined} disabled={commandDisabled} onSend={() => process("ENVIAR_RM", selecting ? selected : undefined)} /> : <button className="btn btn-primary" disabled>Enviar ao RM</button>}
+        </div>
+        <div className="op-compact-actions-secondary">
+          <button type="button" className="btn btn-link btn-sm" onClick={() => setShowQueue(true)}>Fila e falhas{query.data?.queue.length ? ` · ${query.data.queue.length}` : ""}</button>
+          <details className="op-action-options"><summary>Mais opções</summary><div>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => { setSelecting(!selecting); setSelected([]); }}>{selecting ? "Encerrar seleção" : "Selecionar para envio"}</button>
+            <Link className="btn btn-link btn-sm" to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}>Gestão de KM</Link>
+            <label className="op-check"><input type="checkbox" checked={recalculate} onChange={e => setRecalculate(e.target.checked)} /><span>Reprocessar etapas concluídas</span></label>
+          </div></details>
+          {recalculate && <span className="op-action-warning">Recálculo ativado</span>}
+          {selecting && <span className="op-action-scope">Envio: {selected.length} selecionados</span>}
+        </div>
+      </section>}
       {exec && (
-        <details className="op-panel op-execution-support" open={requestedTab === "pendencias" || requestedTab === "historico" ? true : undefined}>
-          <summary>Fila e histórico de falhas {query.data?.queue.length ? `· ${query.data.queue.length} itens ativos` : ""}</summary>
+        <Modal show={showQueue} onHide={() => setShowQueue(false)} centered className="op-modal" aria-labelledby="op-queue-title">
+          <Modal.Header closeButton><Modal.Title id="op-queue-title">Fila e falhas</Modal.Title></Modal.Header>
+          <Modal.Body>
           {query.data?.queue.length ? (
             <div className="op-scroll">
               <table className="op-table">
@@ -710,48 +680,13 @@ export function ProcessamentoDetalhesPage() {
               Use o estado atual da pessoa e da fila para decidir.
             </p>
           </details>
-        </details>
+          </Modal.Body>
+        </Modal>
       )}
       {row && (row.processing > 0 || row.pending > 0) && (
         <div className="op-notice" role="status">
           {row.processing > 0 ? `${row.processing} itens em processamento` : "Aguardando execução da fila"} · {row.pending} etapas agendadas.
-          {row.lastActivityAt && ` Última atividade da fila: ${dateTime(row.lastActivityAt)}.`}
-          {row.etapas.includes("VARIAVEIS") && " As variáveis consultam o RM em lotes de até 25 pessoas; as contagens avançam quando cada lote termina."}
         </div>
-      )}
-      {exec && (
-        <details className="op-panel op-execution-support" open={requestedTab === "envios" ? true : undefined}>
-          <summary>Envio ao RM</summary>
-          <p>
-            Envie os valores calculados diretamente. Eventos existentes são atualizados;
-            versões já enviadas e pessoas com cálculo incompleto ou etapa em andamento ficam fora da fila.
-          </p>
-            <button
-              className="btn btn-outline-secondary"
-              onClick={() => {
-                setSelecting(!selecting);
-                setSelected([]);
-              }}
-            >
-              {selecting ? "Encerrar seleção" : "Selecionar pessoas para envio"}
-            </button>
-          <p><strong>{selecting ? `${selected.length} pessoas selecionadas` : "Execução inteira"}</strong>
-            {!selecting && " · A busca e os filtros da lista não limitam o envio."}
-          </p>
-          {(!selecting || selected.length > 0) && (
-            <SendScope
-              key={`${id}:${selecting ? selected.join(",") : "todas"}`}
-              executionIds={[id]}
-              personIds={selecting ? selected : undefined}
-              disabled={commandDisabled}
-              onSend={() => process("ENVIAR_RM", selecting ? selected : undefined)}
-            />
-          )}
-          <p className="op-muted">
-            Abra um resultado abaixo para consultar a versão e a confirmação por
-            evento.
-          </p>
-        </details>
       )}
       {exec && (
         <>
@@ -799,100 +734,10 @@ export function ProcessamentoDetalhesPage() {
           </section>
 
           <div>
-            <div className="op-scroll">
-              <table className="op-table op-people">
-                <caption className="visually-hidden">
-                  Funcionários e resultados da execução
-                </caption>
-                <thead>
-                  <tr>
-                    <th>
-                      {selecting && (
-                        <input type="checkbox" className="me-2" aria-label="Selecionar todas as pessoas desta página"
-                          checked={Boolean(query.data?.bases.length) && query.data!.bases.every(b => selected.includes(b.execucao_funcionario_base_id))}
-                          onChange={e => setSelected(e.target.checked ? (query.data?.bases.map(b => b.execucao_funcionario_base_id) ?? []) : [])} />
-                      )}
-                      Pessoa
-                    </th>
-                    <th scope="col" className="op-people-actions">Situação e acesso</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data?.bases.map((b) => (
-                    <tr key={b.execucao_funcionario_base_id}>
-                      <th scope="row">
-                        <div className="op-branch-name">
-                          {selecting && (
-                            <input
-                              type="checkbox"
-                              aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
-                              checked={selected.includes(
-                                b.execucao_funcionario_base_id,
-                              )}
-                              onChange={(e) =>
-                                setSelected((prev) =>
-                                  e.target.checked
-                                    ? [
-                                        ...prev,
-                                        b.execucao_funcionario_base_id,
-                                      ]
-                                    : prev.filter(
-                                        (x) =>
-                                          x !==
-                                          b.execucao_funcionario_base_id,
-                                      ),
-                                )
-                              }
-                            />
-                          )}
-                          <span>{b.nome_funcionario}</span>
-                        </div>
-                        <small>
-                          {b.funcionario_id_rm} · {b.cargo} · KM: {b.km ?? "não informado"}
-                        </small>
-                        <EventGroups executionId={id} baseId={b.execucao_funcionario_base_id}
-                          results={b.execucao_funcionario} autoLoad={query.data?.total === 1}
-                          onOpen={result => setContext({ resultado: String(result) }, false)} />
-                      </th>
-                      <td className="op-people-actions">
-                        <span className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}>
-                          {statusLabel(b.status)}
-                        </span>
-                        {b.execucao_funcionario.length > 0 && (
-                          <button
-                            type="button"
-                            className="op-variables-button"
-                            aria-haspopup="dialog"
-                            aria-label={`Variáveis de ${b.nome_funcionario}`}
-                            onClick={() => setMemoryPerson(b)}
-                          >
-                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                              <path d="M4 7h16M4 12h16M4 17h16" />
-                              <path d="M9 5v4m6 1v4m-5 1v4" strokeWidth="2.5" />
-                            </svg>
-                            Variáveis
-                          </button>
-                        )}
-
-                        <div className="op-person-run" aria-label={`Ações de ${b.nome_funcionario}`}>
-                          <button type="button" className="btn btn-outline-primary btn-sm" disabled={commandDisabled}
-                            onClick={() => process("VARIAVEIS", [b.execucao_funcionario_base_id])}>Processar variáveis</button>
-                          <button type="button" className="btn btn-outline-primary btn-sm" disabled={commandDisabled}
-                            onClick={() => process("VALORES", [b.execucao_funcionario_base_id])}>Calcular valores</button>
-                          <details>
-                            <summary>Reprocessar concluídos</summary>
-                            <button type="button" className="btn btn-link btn-sm" disabled={commandDisabled}
-                              onClick={() => process("VARIAVEIS", [b.execucao_funcionario_base_id], true)}>Reprocessar variáveis</button>
-                            <button type="button" className="btn btn-link btn-sm" disabled={commandDisabled}
-                              onClick={() => process("VALORES", [b.execucao_funcionario_base_id], true)}>Recalcular valores</button>
-                          </details>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <EmployeeResultsTable bases={query.data?.bases ?? []} selecting={selecting} selected={selected}
+              onSelected={setSelected} onVariables={setMemoryPerson}
+              onOpen={result => setContext({ resultado: String(result) }, false)}
+              onProcess={process} disabled={commandDisabled} />
             {query.data && !query.data.bases.length && (
               <div className="op-empty">
                 Nenhuma pessoa neste recorte. Ajuste os filtros.
@@ -924,8 +769,7 @@ export function ProcessamentoDetalhesPage() {
             </div>
           </div>
           <p className="op-muted">
-            Última consulta: {dateTime(query.at)} · atualização automática a
-            cada 20 segundos. A ordem da lista permanece estável.
+            Atualizado: {dateTime(query.at)}
           </p>
         </>
       )}
