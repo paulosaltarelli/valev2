@@ -396,7 +396,7 @@ export function GestaoKmPage() {
         disabled={isGeoRunning}
       >
         <Icon icon="gravity-ui:person-magnifier" width={20} height={20} />
-        <span className="ms-1">Buscar funcionários</span>
+        <span className="ms-1">Consultar</span>
       </Button>
       {funcionarios.length > 0 && (
         <div className="d-flex flex-wrap align-items-center gap-2">
@@ -423,14 +423,14 @@ export function GestaoKmPage() {
               width={20}
               height={20}
               />
-            <span className="ms-1">Ver erros</span>
+            <span className="ms-1">Falhas</span>
           </Button>
         </div>
       )}
     </div>
       <div className={`card${funcionarios.length ? "" : " ve-table-empty"}`}>
         <div className="card-body">
-          {funcionarios.length > 0 && <p className="op-muted" role="status">{selectedRows.length} selecionados · O checkbox do cabeçalho seleciona apenas esta página.</p>}
+          {funcionarios.length > 0 && <p className="op-muted" role="status"><span title="O checkbox do cabeçalho seleciona apenas esta página">{selectedRows.length} selecionados</span></p>}
           {filialId !== 0 && geoStatus?.hasRunning && (
             <div className="alert alert-info py-2 px-3 mb-2">
               Calculando geolocalizações... Pendentes: {geoStatus.pending} /

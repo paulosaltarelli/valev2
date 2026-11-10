@@ -68,7 +68,7 @@ export function VariacaoPage() {
       </ReportFilters>
     <QueryNotice {...options}/><QueryNotice {...query}/>
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
-    {options.data && !previous && <p className="op-notice">Selecione uma competência que tenha outro período anterior cadastrado para comparar.</p>}
+    {options.data && !previous && <p className="op-notice">Selecione uma competência com período anterior disponível.</p>}
     {report && <>
       <details className="ve-filter-details mb-3" open={search || formula || situation ? true : undefined}><summary>Filtrar resultados{search || formula || situation ? " · filtros ativos" : ""}</summary>
       <div className="op-context mt-2" aria-label="Filtros dos resultados">
@@ -78,7 +78,7 @@ export function VariacaoPage() {
       </div>
       </details>
       <div className="op-toolbar">
-        <p className="op-muted mb-0">{rows.length} linhas · Uma linha por funcionário e fórmula · {dateTime(report.updatedAt)}</p>
+        <p className="op-muted mb-0">{rows.length} resultados · {dateTime(report.updatedAt)}</p>
         <div className="d-flex flex-wrap gap-3">
           {report.execucaoAnterior && <Link to={`/processamento/${report.execucaoAnterior}?${new URLSearchParams({aba:'resultados',retorno:returnTo})}`}>Abrir {report.anterior}</Link>}
           {report.execucaoAtual && <Link to={`/processamento/${report.execucaoAtual}?${new URLSearchParams({aba:'resultados',retorno:returnTo})}`}>Abrir {report.periodo}</Link>}

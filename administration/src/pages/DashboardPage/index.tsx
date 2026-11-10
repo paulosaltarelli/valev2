@@ -725,8 +725,9 @@ export function DashboardPage() {
         />
       )}
       <div>
-            <h2 className="ve-section-title">Indicadores do recorte selecionado</h2>
-            <p className="op-muted">Recorte selecionado abaixo · resumo superior: competências ativas.</p>
+        {error && <Alert variant="danger" role="alert">{error}</Alert>}
+        <details className="ve-overview-details">
+          <summary>Indicadores por competência</summary>
             <div className="op-context ve-filter-bar" aria-label="Filtros dos indicadores">
               <div>
                 <label htmlFor="dash-competencia">Competência</label>
@@ -1746,6 +1747,7 @@ export function DashboardPage() {
             </Modal>
           </>
         )}
+        </details>
       </div>
     </>
   );

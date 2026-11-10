@@ -370,3 +370,57 @@
 .op-event-code{color:var(--op-blue);font-size:12px}.op-event-code small{margin-left:6px}.op-event-code.has-error{color:var(--op-danger)}
 .op-event-group .op-result-tags{margin-top:6px}.op-event-groups.is-compact .op-event-group{padding:5px 10px}
 @media(max-width:700px){.op-event-tools .btn{min-height:44px}.op-event-group{padding:8px}.op-event-code{overflow-wrap:anywhere}.op-event-group .op-result-tag{max-width:100%}}
+
+/* Shared compact presentation, following the processing table. */
+.ve-page .ve-heading, .op-page .ve-heading { margin-bottom: 18px; }
+.ve-page .ve-heading h1, .op-page .ve-heading h1 { margin-bottom: 4px; }
+:is(.ve-page,.op-page) .ve-visual-summary { display:flex; flex-wrap:wrap; gap:8px 22px; margin:0 0 16px; }
+:is(.ve-page,.op-page) .ve-visual-summary>div { display:flex; align-items:center; gap:7px; padding:0; border:0; border-radius:0; background:transparent; }
+:is(.ve-page,.op-page) .ve-visual-summary dt { font-size:13px; }
+:is(.ve-page,.op-page) .ve-visual-summary dd { margin:0; font-size:17px; }
+:is(.ve-page,.op-page) .ve-visual-summary svg { width:16px; height:16px; }
+.ve-page .card:has(>.card-body>.ve-table-list)>.card-body { padding:12px; }
+.ve-page .ve-table-list .table>:is(thead,tbody)>tr>* { padding:11px 12px; }
+.ve-page .ve-table-list .table>thead>tr>th { font-size:12px; }
+.ve-page .ve-table-list .dt-layout-row { margin-block:6px; }
+:is(.ve-page,.op-page) .ve-filter-bar, .ve-mobile-filters .op-context { background:transparent; border:0; border-radius:0; padding:0; gap:12px; margin-bottom:16px; box-shadow:none; }
+.ve-mobile-filters .op-context>label, .ve-filter-bar>div { min-width:0; }
+:is(.ve-page,.op-page) .ve-report-table>:is(thead,tbody)>tr>* { padding:11px 12px; }
+:is(.ve-page,.op-page) .ve-metrics { gap:12px; margin-bottom:18px; }
+:is(.ve-page,.op-page) .ve-metrics>div { border:0; border-radius:0; background:transparent; border-left:3px solid var(--op-line); padding:4px 12px; }
+:is(.ve-page,.op-page) .ve-metrics dd { font-size:22px; margin-top:4px; }
+.ve-operation-overview { margin-bottom:20px; }
+.ve-operation-overview .ve-operation-head { align-items:center; }
+.ve-operation-overview .ve-operation-head h2 { font-size:17px; margin-bottom:4px; }
+.ve-operation-overview .op-summary { margin-bottom:12px; }
+.ve-operation-overview .ve-home-alert { padding:12px 14px; }
+.ve-operation-overview .ve-home-alert p { margin-bottom:0; }
+.ve-overview-details { border-top:1px solid var(--op-line); padding-top:12px; margin-top:18px; }
+.ve-overview-details>summary { color:var(--op-blue); cursor:pointer; padding:8px 0; font-weight:600; }
+.ve-overview-details[open]>summary { margin-bottom:14px; }
+.ve-report-content .card { box-shadow:none; }
+.ve-page .ve-report-content .card-body { padding:16px; }
+.ve-page .ve-table-list .dt-layout-table { max-height:none; overflow-y:hidden; }
+.ve-report-content .table-responsive, .ve-page .op-scroll { max-height:none; }
+@media(max-width:700px){
+ :is(.ve-page,.op-page) .ve-visual-summary { display:flex; gap:8px 16px; }
+ :is(.ve-page,.op-page) .ve-visual-summary>div, :is(.ve-page,.op-page) .ve-visual-summary>div:last-child:nth-child(odd) { display:flex; padding:0; gap:6px; }
+ :is(.ve-page,.op-page) .ve-visual-summary dd { margin:0; font-size:16px; }
+ .ve-mobile-filters .op-context { display:flex; flex-direction:column; align-items:stretch; gap:12px; margin-top:12px; }
+ .ve-mobile-filters .op-context>label,.ve-mobile-filters .op-context>div { width:100%; min-width:0; max-width:none; }
+ .ve-page .card:has(>.card-body>.ve-table-list)>.card-body { padding:10px; }
+ .ve-page .ve-table-list .table>:is(thead,tbody)>tr>* { padding:10px; }
+ .ve-page .ve-km-filters>.btn { width:100%; }
+ .ve-page .ve-km-filters>div:last-child { display:flex; flex-wrap:wrap; gap:8px; }
+ .ve-page .ve-km-filters>div:last-child>.btn { flex:1 1 140px; }
+ :is(.ve-page,.op-page) .ve-metrics>div { padding:4px 10px; }
+ :is(.ve-page,.op-page) .ve-metrics dd { font-size:18px; }
+ .ve-operation-overview .ve-operation-head { align-items:flex-start; gap:10px; }
+ .ve-operation-overview .op-summary { display:flex; flex-direction:column; gap:8px; }
+ .ve-operation-overview .op-stage { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; padding:12px; }
+ .ve-operation-overview .op-stage-label { grid-column:1; }
+ .ve-operation-overview .op-count { grid-column:2; grid-row:1/3; align-self:center; }
+ .ve-operation-overview .op-stage>small { grid-column:1; }
+ .ve-operation-overview .op-stage>progress { grid-column:1/-1; width:100%; }
+ .ve-operation-overview .ve-home-alert { gap:10px; }
+}

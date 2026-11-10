@@ -394,7 +394,7 @@ export function FinanceiroTimelineReport() {
               <div><dt>Funcionários enviados ao RM</dt><dd>{data.totals.funcionarios}</dd></div>
             </dl>
 
-            {data.totals.funcionarios === 0 && <p className="op-notice" role="status">Nenhum funcionário enviado ao RM neste período. Os totais desta tela consideram envios, não resultados ainda em cálculo. <Link to="/extrato-processamento">Consultar valores calculados</Link></p>}
+            {data.totals.funcionarios === 0 && <p className="op-notice" role="status">Sem envios ao RM neste período. <Link to="/extrato-processamento">Consultar valores calculados</Link></p>}
             <div className="row g-3">
               {data.totals.funcionarios > 0 && <><div className="col-12 col-xl-8">
                 <div className="card h-100">
@@ -403,8 +403,7 @@ export function FinanceiroTimelineReport() {
                       <div>
                         <h2 className="h6 m-0">Evolução no tempo</h2>
                         <div className="text-secondary small">
-                          Pago, desconto e saldo ao longo do período
-                          selecionado.
+                          Valores enviados ao RM
                         </div>
                       </div>
                       <span className="text-secondary small">
@@ -429,7 +428,7 @@ export function FinanceiroTimelineReport() {
                       <div>
                         <h2 className="h6 m-0">Eventos com maior impacto</h2>
                         <div className="text-secondary small">
-                          Top 12 por volume (no período).
+                          12 maiores eventos
                         </div>
                       </div>
                     </div>
@@ -451,7 +450,7 @@ export function FinanceiroTimelineReport() {
                     <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                       <div>
                         <h2 className="h6 m-0">
-                          Detalhamento — Evolução no tempo
+                          Valores por competência
                         </h2>
                       </div>
                       <span className="text-secondary small">

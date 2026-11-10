@@ -53,18 +53,18 @@ export function OperationalOverview({ activePeriodIds, branches }: {
   }), { variables: 0, expectedVariables: 0, formulas: 0, expectedFormulas: 0, rm: 0, employees: 0 });
 
   return (
-    <section className="card ve-operation-overview mb-3" aria-labelledby="ve-operation-heading">
-      <div className="card-body">
+    <section className="ve-operation-overview" aria-labelledby="ve-operation-heading">
+      <div className="ve-overview-body">
         <div className="ve-operation-head">
           <div>
-            <h2 id="ve-operation-heading">Situação das competências ativas</h2>
+            <h2 id="ve-operation-heading">Competências ativas</h2>
             <p className="op-muted mb-0">
               {activePeriodIds.length === 1 ? "1 competência ativa" : `${activePeriodIds.length} competências ativas`}
               {activePeriods.size > 0 && ` · ${[...activePeriods.values()].join(", ")}`}
             </p>
           </div>
           <Link className="btn btn-primary" to="/processamento">
-            Abrir Processamentos
+            Processamentos
           </Link>
         </div>
         <QueryNotice {...query} />
@@ -82,7 +82,7 @@ export function OperationalOverview({ activePeriodIds, branches }: {
                 <Link className="btn btn-outline-primary" to="/falhas-por-causa">Ver falhas</Link>
               </div>}
               {creating.some(item => item.status === "ERRO") && <div className="ve-home-alert ve-home-alert-danger">
-                <div><strong>Falha na criação</strong><p>Execuções não criadas.</p></div>
+                <div><strong>Falha na criação</strong><p>Verifique as execuções pendentes.</p></div>
                 <Link className="btn btn-outline-primary" to="/processamento">Ver pendências</Link>
               </div>}
               {ready.length > 0 && <div className="ve-home-alert ve-home-alert-success">

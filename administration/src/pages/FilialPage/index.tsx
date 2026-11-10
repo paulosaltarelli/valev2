@@ -150,7 +150,7 @@ export function FilialPage() {
             onClick={() => setShowCreateModal(true)}
           >
             <Icon icon="tabler:plus" width={20} height={20} />
-            <span className="ms-1">Nova Filial</span>
+            <span className="ms-1">Nova filial</span>
           </Button>
         )}
       />
@@ -220,9 +220,9 @@ export function FilialPage() {
               <thead>
                 <tr>
                   <th scope="col">Nome</th>
-                  <th scope="col">Código da Filial</th>
-                  <th scope="col">Código da Coligada</th>
-                  <th scope="col">SQL Código RM</th>
+                  <th scope="col">Filial</th>
+                  <th scope="col">Coligada</th>
+                  <th scope="col">Consulta RM</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
@@ -257,7 +257,7 @@ export function FilialPage() {
 
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Código da Filial</Form.Label>
+                  <Form.Label>Filial</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={filialToEdit?.codfilial}
@@ -272,7 +272,7 @@ export function FilialPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Código da Coligada</Form.Label>
+                  <Form.Label>Coligada</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={filialToEdit?.codcoligada}
@@ -288,7 +288,7 @@ export function FilialPage() {
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
-                    SQL Código RM
+                    Consulta RM
                     <Tooltip
                       title="A sentença(consulta) que trará os funcionários da filial"
                       placement="right"
@@ -375,7 +375,7 @@ export function FilialPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Código da Filial</Form.Label>
+                  <Form.Label>Filial</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={""}
@@ -390,7 +390,7 @@ export function FilialPage() {
               </div>
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Código da Coligada</Form.Label>
+                  <Form.Label>Coligada</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={""}
@@ -406,7 +406,7 @@ export function FilialPage() {
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
-                    SQL Código RM
+                    Consulta RM
                     <Tooltip
                       title="A sentença(consulta) que trará os funcionários da filial"
                       placement="right"

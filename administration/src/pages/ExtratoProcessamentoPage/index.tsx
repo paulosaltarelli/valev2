@@ -194,7 +194,7 @@ export function ExtratoProcessamentoPage() {
 {label:"Funcionários",value:employees.length,icon:"tabler:users"},
 {label:"Fórmulas",value:columns.length,icon:"tabler:math-function"}
 ]} />
-        <details className="mb-3"><summary>Legenda</summary><p className="op-muted">— indica ausência de cálculo. Abra um erro para ver o detalhe.</p></details>
+        <p className="op-muted small">— sem cálculo · Clique nos erros para ver detalhes.</p>
         {employees.length ? (
           <div className="op-table-wrap">
             <div className="op-scroll extrato-tabela" tabIndex={0} role="region" aria-label="Valores calculados por funcionário">
