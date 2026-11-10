@@ -13,6 +13,7 @@ export class CronService {
   private tickRunningCreateExecucao = false;
   private readonly lockOwner = `api-${process.pid}`;
   private readonly batchSize = 25;
+  private readonly geoBatchSize = 49;
   private readonly createExecucaoBatchSize = 1;
   private readonly staleLockMinutes = 1; //tempo em minutos para destravar locks antigos
   private readonly maxAttempts = 2;
@@ -361,7 +362,7 @@ export class CronService {
         }>
       >(
         Prisma.sql`
-        UPDATE TOP (${Prisma.raw(String(this.batchSize))}) q
+        UPDATE TOP (${Prisma.raw(String(this.geoBatchSize))}) q
         SET
           status = 'PROCESSANDO',
           lock_owner = ${this.lockOwner},
