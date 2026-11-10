@@ -6,6 +6,7 @@ import { FuncionarioRm } from 'src/models/FuncionarioRmModel';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RmService } from 'src/rm/rm.service';
 import { Prisma } from '@prisma/client';
+import { LimitedExecutor } from '../utils/limited-executor';
 import { stripKeysDeepInPlace } from 'src/utils/rmPayload';
 
 type RouteMatrixWaypoint = { waypoint: { address: string } };
@@ -508,8 +509,9 @@ export class GeoService {
         continue;
       }
 
-      // 1a) Busca payload do funcionário (RM) e monta endereço de origem
-      for (const it of items) {
+      // 1a) Busca até quatro cadastros no RM em paralelo.
+      const reads = new LimitedExecutor(4);
+      const readPayload = async (it: (typeof items)[number]) => {
         try {
           this.logger.log(
             `Buscando payload do funcionário ${it.chapa} (coligada=${it.codcoligada})`,
@@ -543,13 +545,16 @@ export class GeoService {
             pais: payload['PAIS'],
           });
 
-          payloadById.set(it.geo_queue_id, {
-            chapa: it.chapa,
-            codcoligada: it.codcoligada,
-            codfilial: it.codfilial,
-            payload,
-            originAddress,
-          });
+          return {
+            id: it.geo_queue_id,
+            value: {
+              chapa: it.chapa,
+              codcoligada: it.codcoligada,
+              codfilial: it.codfilial,
+              payload,
+              originAddress,
+            },
+          };
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           this.logger.error(
@@ -557,6 +562,12 @@ export class GeoService {
           );
           err.push({ geo_queue_id: it.geo_queue_id, error: msg });
         }
+      };
+      const payloads = await Promise.all(
+        items.map((it) => reads.run(() => readPayload(it))),
+      );
+      for (const entry of payloads) {
+        if (entry) payloadById.set(entry.id, entry.value);
       }
 
       // 1b) Google Routes Matrix (por destino)
