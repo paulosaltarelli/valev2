@@ -359,3 +359,14 @@
  .op-detail-page .op-person-run{grid-template-columns:repeat(2,minmax(0,1fr))}
  .op-detail-page .op-person-run .btn{word-break:normal;overflow-wrap:normal}
 }
+
+.op-event-groups{margin-top:10px;font-weight:400}
+.op-event-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}
+.op-event-tools .btn{padding:2px 0;font-size:12px;min-height:28px}
+.op-event-tools small,.op-event-group header>small,.op-event-code small{font-size:11px;color:var(--op-muted)}
+.op-event-group{margin:8px 0;padding:8px 10px;border-left:3px solid var(--op-line);background:var(--op-surface)}
+.op-event-group header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:13px}
+.op-event-group header strong{font-size:13px;color:var(--op-text)}
+.op-event-code{color:var(--op-blue);font-size:12px}.op-event-code small{margin-left:6px}.op-event-code.has-error{color:var(--op-danger)}
+.op-event-group .op-result-tags{margin-top:6px}.op-event-groups.is-compact .op-event-group{padding:5px 10px}
+@media(max-width:700px){.op-event-tools .btn{min-height:44px}.op-event-group{padding:8px}.op-event-code{overflow-wrap:anywhere}.op-event-group .op-result-tag{max-width:100%}}

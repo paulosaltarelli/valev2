@@ -96,6 +96,7 @@ export type OperationDetail = {
   updatedAt: string;
 };
 export type ResultDetail = ResultRow & {
+  execucao_funcionario_base_id: number;
   execucao_funcionario_base: {
     nome_funcionario: string;
     funcionario_id_rm: string;

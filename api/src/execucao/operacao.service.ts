@@ -8,6 +8,7 @@ import { Prisma, formula } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { operationProgress } from './operation-progress';
+import { RmService } from 'src/rm/rm.service';
 
 type Tx = Prisma.TransactionClient;
 export type Etapa = 'VARIAVEIS' | 'VALORES' | 'CONFERIR' | 'ENVIAR_RM';
@@ -38,7 +39,7 @@ const dateRm = (value: Date) =>
 
 @Injectable()
 export class OperacaoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly rm: RmService) {}
 
   private async lock(tx: Tx, ids: number[]) {
     // Todos os comandos de usuário adquirem o mesmo lock, em ordem estável.
@@ -358,6 +359,57 @@ export class OperacaoService {
       queue,
       updatedAt: new Date(),
     };
+  }
+
+
+  // Read-only display lookup. Never schedules work or rewrites calculation history.
+  async employeeEvents(execucaoId: number, baseId: number, sessionId: string) {
+    const base = await this.prisma.execucao_funcionario_base.findFirst({
+      where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
+      include: { execucao: { include: { periodo: true, filial: { include: { variavel: true } } } },
+        execucao_funcionario: { include: { formula: true, memoria_calculo: true } } },
+    });
+    if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
+    const cache = new Map<string, { valor: string | null; erro?: string }>();
+    const events: Array<{ resultadoId: number; variavel: string | null; nome: string; valor: string | null; origem: string; erro?: string }> = [];
+    for (const result of base.execucao_funcionario) {
+      let snapshot: { codEvento?: string | null; snapshot_origem?: string } | null = null;
+      try { snapshot = result.formula_snapshot ? JSON.parse(result.formula_snapshot) : null; } catch { /* legacy */ }
+      const historical = snapshot && snapshot.snapshot_origem !== 'CONFERENCIA_LEGADO';
+      const reference = ((snapshot ?? result.formula)?.codEvento ?? '').trim();
+      const code = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
+      const definition = code ? base.execucao.filial.variavel.find(v => v.codigo.toUpperCase() === code.toUpperCase()) : null;
+      const event = { resultadoId: result.execucao_funcionario_id, variavel: code, nome: definition?.nome ?? code ?? 'Evento RM' };
+      if (!code) {
+        events.push({ ...event, valor: reference || null, origem: historical ? 'CALCULO' : 'CADASTRO_ATUAL' });
+        continue;
+      }
+      const memory = historical ? result.memoria_calculo.find(m => m.variavel_codigo.toUpperCase() === code.toUpperCase()) : null;
+      if (memory) {
+        events.push({ ...event, valor: String(memory.valor), origem: 'MEMORIA' });
+        continue;
+      }
+      if (!cache.has(code)) {
+        if (!definition || !definition.ativa) cache.set(code, { valor: null, erro: 'Variável de evento não disponível no cadastro atual.' });
+        else if (definition.valor_fixo != null) cache.set(code, { valor: String(definition.valor_fixo) });
+        else if (!definition.sql_codigo_rm) cache.set(code, { valor: null, erro: 'Variável sem consulta RM configurada.' });
+        else {
+          try {
+            const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, {
+              DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10),
+              DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
+              CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm,
+              KM_MAX: Number(base.execucao.filial.km_max),
+            }, sessionId) as { status: boolean; data?: Array<{ RESULTADO?: unknown }> };
+            const value = response.status && Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
+            const valid = (typeof value === 'string' && value.trim().length > 0) || (typeof value === 'number' && Number.isFinite(value));
+            cache.set(code, valid ? { valor: String(value).trim() } : { valor: null, erro: 'RM não retornou um código de evento válido.' });
+          } catch { cache.set(code, { valor: null, erro: 'Não foi possível consultar o evento no RM. Tente novamente.' }); }
+        }
+      }
+      events.push({ ...event, ...cache.get(code)!, origem: 'CONSULTA_ATUAL' });
+    }
+    return { events, consultadoEm: new Date().toISOString() };
   }
 
   async employeeVariables(execucaoId: number, baseId: number) {

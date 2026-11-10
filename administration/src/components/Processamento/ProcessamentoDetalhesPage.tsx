@@ -13,6 +13,7 @@ import {
   type ResultDetail,
 } from "../../utils/api/operacaoApi";
 import api from "../../utils/api/Api";
+import { EventGroups } from "./EventGroups";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import {
   dateTime,
@@ -27,11 +28,6 @@ import {
   useOperationQuery,
 } from "./OperationCommon";
 
-function historicalEvent(formula: ResultDetail["formulaUtilizada"] | undefined) {
-  if (!formula || formula.snapshot_origem === "CONFERENCIA_LEGADO") return "Evento RM histórico indisponível";
-  return formula.codEvento?.trim() ? `Evento RM: ${formula.codEvento}` : "Sem evento RM vinculado";
-}
-
 type MemoryEntry = ResultDetail["memoria_calculo"][number];
 type VariableRow = {
   key: string;
@@ -45,7 +41,7 @@ function CalculationMemory({ result: r }: { result: ResultDetail }) {
   return (
     <>
       <p>
-        Evento {f?.codEvento || "não configurado"} · tipo {f?.tipo || "—"} ·
+        Tipo {f?.tipo || "—"} ·
         fórmula v{f?.versao ?? "—"}
       </p>
       {(!r.formulaUtilizada ||
@@ -162,6 +158,7 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
         query.data.rows.some(({ entry }) => entry.variavel_codigo.toUpperCase() === "KM_FUNC" && Number(entry.valor) === 0) && (
           <p className="op-notice op-warning">KM zerado. A regra de pagamento usa a quilometragem. Confira o cadastro no RM antes de enviar.</p>
         )}
+      <EventGroups executionId={execucaoId} baseId={person.execucao_funcionario_base_id} results={person.execucao_funcionario} autoLoad compact />
       {query.data && <VariableTable rows={query.data.rows} />}
     </>
   );
@@ -276,10 +273,9 @@ function ResultPanel({
             <p>
               {r.execucao_funcionario_base.funcionario_id_rm} · {f?.nome}
             </p>
-            <p className="op-event-reference">
-              {historicalEvent(r.formulaUtilizada)}
-              {r.formulaUtilizada && r.formulaUtilizada.snapshot_origem !== "CONFERENCIA_LEGADO" && r.formulaUtilizada.versao != null && ` · Fórmula v${r.formulaUtilizada.versao}`}
-            </p>
+            <EventGroups executionId={execucaoId} baseId={r.execucao_funcionario_base_id}
+              results={[r]} autoLoad compact />
+            {r.formulaUtilizada?.versao != null && <small>Fórmula v{r.formulaUtilizada.versao}</small>}
           </header>
           <div className="op-result-status">
             <span className="op-status op-neutral">
@@ -854,22 +850,9 @@ export function ProcessamentoDetalhesPage() {
                         <small>
                           {b.funcionario_id_rm} · {b.cargo} · KM: {b.km ?? "não informado"}
                         </small>
-                        <div className="op-result-tags">
-                          {b.execucao_funcionario.map((r) => (
-                            <button
-                              key={r.execucao_funcionario_id}
-                              type="button"
-                              className="op-result-tag"
-                              aria-haspopup="dialog"
-                              onClick={() => setContext({ resultado: String(r.execucao_funcionario_id) }, false)}
-                            >
-                              {r.formulaUtilizada?.nome ?? r.formula.nome} <span>{resultValue(r.valor_final, r.formulaUtilizada?.tipo ?? r.formula.tipo)}</span>
-                              <span>· {historicalEvent(r.formulaUtilizada)}</span>
-                              {r.ajuste_manual && <span aria-label="Valor ajustado">· ajustado</span>}
-                            </button>
-                          ))}
-                          {!b.execucao_funcionario.length && <small>Resultados ainda não disponíveis</small>}
-                        </div>
+                        <EventGroups executionId={id} baseId={b.execucao_funcionario_base_id}
+                          results={b.execucao_funcionario} autoLoad={query.data?.total === 1}
+                          onOpen={result => setContext({ resultado: String(result) }, false)} />
                       </th>
                       <td className="op-people-actions">
                         <span className={`op-status op-${b.status?.startsWith("ERRO") ? "danger" : "neutral"}`}>
