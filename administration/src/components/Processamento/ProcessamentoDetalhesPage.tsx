@@ -459,7 +459,7 @@ export function ProcessamentoDetalhesPage() {
   const [params, setParams] = useSearchParams();
   const [failurePerson, setFailurePerson] = useState<BaseRow | null>(null);
   useEffect(() => setFailurePerson(null), [id]);
-  const [showQueue, setShowQueue] = useState(false);
+  const [showQueue, setShowQueue] = useState(() => params.get("fila") === "1");
   const page = Math.max(1, Number(params.get("pagina")) || 1);
   const search = params.get("busca") ?? "";
   const filter = params.get("filtro") ?? "todos";
@@ -511,7 +511,7 @@ export function ProcessamentoDetalhesPage() {
   const exec = query.data?.execucao;
   const rawReturn = params.get("retorno");
   const reportReturn = ["/falhas-por-causa", "/fechamento", "/variacao-competencias"].some(path => rawReturn === path || rawReturn?.startsWith(path + "?"));
-  const returnTo = rawReturn && (rawReturn.startsWith("/processamento?") || reportReturn)
+  const returnTo = rawReturn && (rawReturn === "/dashboard" || rawReturn.startsWith("/processamento?") || reportReturn)
     ? rawReturn
     : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;
   const command = useOperationAction(setNotice, () => {
@@ -539,7 +539,7 @@ export function ProcessamentoDetalhesPage() {
   return (
     <div className="op-page op-detail-page">
       <Link className="op-back" to={returnTo}>
-        ← {reportReturn ? "Voltar ao relatório" : "Voltar à operação"}
+        ← {rawReturn === "/dashboard" ? "Voltar à Visão geral" : reportReturn ? "Voltar ao relatório" : "Voltar à operação"}
       </Link>
       <header className="op-page-head">
         <div>

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Modal } from "../../shared/components/VeModal";
 import { OperacaoApi, type BaseRow, type OperationRow } from "../../utils/api/operacaoApi";
@@ -35,13 +35,13 @@ function PendingBranch({ row, returnTo }: { row: OperationRow; returnTo: string 
   </>;
 }
 
-export function PendingPeople({ rows, count, returnTo }: { rows: OperationRow[]; count: number; returnTo: string }) {
+export function PendingPeople({ rows, count, returnTo, trigger, triggerClassName }: { rows: OperationRow[]; count: number; returnTo: string; trigger?: ReactNode; triggerClassName?: string }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const branches = rows.filter(r => r.errors > 0);
   const row = branches.find(r => r.id === selected) ?? branches[0];
   return <>
-    <button type="button" className="btn btn-link p-0" aria-haspopup="dialog" onClick={() => setOpen(true)}>Com pendências <strong>{count}</strong> <span aria-hidden="true">↗</span></button>
+    <button type="button" className={triggerClassName ?? "btn btn-link p-0"} aria-haspopup="dialog" onClick={() => setOpen(true)}>{trigger ?? <>Com pendências <strong>{count}</strong> <span aria-hidden="true">↗</span></>}</button>
     <Modal show={open} onHide={() => setOpen(false)} centered className="op-modal" aria-labelledby="pending-people-title">
       <Modal.Header closeButton><Modal.Title id="pending-people-title">Pendências do cálculo</Modal.Title></Modal.Header>
       <Modal.Body>

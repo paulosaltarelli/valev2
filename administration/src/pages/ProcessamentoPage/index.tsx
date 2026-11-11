@@ -240,13 +240,24 @@ export function ProcessamentoPage() {
     setShowErrors(true);
     setErrorsLoading(true);
     try {
-      setCreateErrors(await ExecucaoApi.getCreateQueueErrors());
+      const failures = await ExecucaoApi.getCreateQueueErrors();
+      setCreateErrors(params.get("acao") === "falhas" ? failures.filter(item => item.periodoId === Number(periodo)) : failures);
     } catch (e) {
       setNotice(errorMessage(e));
     } finally {
       setErrorsLoading(false);
     }
   };
+  useEffect(() => {
+    const action = params.get("acao");
+    if (!action || !query.data?.periodo || String(query.data.periodo.periodo_id) !== periodo || query.error) return;
+    if (action !== "nova" && action !== "falhas") return;
+    const next = new URLSearchParams(params);
+    next.delete("acao");
+    setParams(next, { replace: true });
+    if (action === "nova" && query.data.periodo.ativo) void openCreate();
+    if (action === "falhas") void openErrors();
+  }, [params, periodo, query.data?.periodo, query.error]);
   const returnTo = `/processamento?${params}`;
   return (
     <div className="op-page">
