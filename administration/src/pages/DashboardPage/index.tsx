@@ -565,8 +565,11 @@ export function DashboardPage() {
           emphasis: { label: { show: true, fontSize: 14, fontWeight: "bold" } },
           data: labels.map((l, idx) => {
             const value = values[idx] ?? 0;
+            if (norm(l) === "ENVIADO_RM") {
+              return { name: l, value, itemStyle: { color: "#176441" } };
+            }
             if (isFinalizada(l)) {
-              return { name: l, value, itemStyle: { color: "#22c55e" } };
+              return { name: l, value, itemStyle: { color: "#164f9d" } };
             }
             const color = redShade(otherIdx++, otherLabels.length);
             return { name: l, value, itemStyle: { color } };
@@ -590,7 +593,7 @@ export function DashboardPage() {
       xAxis: { type: "category", data: ["Filiais"] },
       yAxis: { type: "value" },
       series: [
-        { name: "Processadas", type: "bar", stack: "total", data: [processed], itemStyle: { color: "#22c55e" } },
+        { name: "Processadas", type: "bar", stack: "total", data: [processed], itemStyle: { color: "#164f9d" } },
         { name: "Pendentes", type: "bar", stack: "total", data: [pending], itemStyle: { color: "#ef4444" } },
       ],
     };
@@ -631,7 +634,7 @@ export function DashboardPage() {
           type: "bar",
           stack: "total",
           data: desconto,
-          itemStyle: { color: "#22c55e" },
+          itemStyle: { color: "#64748b" },
         },
       ],
     };
@@ -669,7 +672,7 @@ export function DashboardPage() {
           type: "bar",
           stack: "total",
           data: desconto,
-          itemStyle: { color: "#22c55e" },
+          itemStyle: { color: "#64748b" },
         },
       ],
     };
@@ -989,7 +992,7 @@ export function DashboardPage() {
                                 <div className="text-secondary small">
                                   Desconto do funcionário (-) (economia)
                                 </div>
-                                <Badge bg="success" className="fw-semibold">
+                                <Badge bg="secondary" className="fw-semibold">
                                   Economia
                                 </Badge>
                               </div>
@@ -1566,7 +1569,7 @@ export function DashboardPage() {
                             <Badge bg="primary" className="fw-semibold">
                               Pago: {brl.format(d.totals?.totalPago ?? 0)}
                             </Badge>
-                            <Badge bg="success" className="fw-semibold">
+                            <Badge bg="secondary" className="fw-semibold">
                               Desconto (economia):{" "}
                               {brl.format(d.totals?.totalDescontado ?? 0)}
                             </Badge>
@@ -1627,7 +1630,7 @@ export function DashboardPage() {
                                     </td>
                                     <td className="text-end text-nowrap">
                                       <Badge
-                                        bg="success"
+                                        bg="secondary"
                                         className="fw-semibold"
                                       >
                                         {brl.format(r.desconto)}
@@ -1698,7 +1701,7 @@ export function DashboardPage() {
                                     </td>
                                     <td className="text-end text-nowrap">
                                       <Badge
-                                        bg="success"
+                                        bg="secondary"
                                         className="fw-semibold"
                                       >
                                         {brl.format(r.desconto)}

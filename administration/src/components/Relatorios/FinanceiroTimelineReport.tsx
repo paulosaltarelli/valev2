@@ -219,6 +219,7 @@ export function FinanceiroTimelineReport() {
         trigger: "axis",
         valueFormatter: (v: number) => brl.format(Number(v ?? 0)),
       },
+      color: ["#164f9d", "#64748b", "#7c3aed"],
       legend: { top: 0 },
       grid: { left: 12, right: 12, top: 32, bottom: 10, containLabel: true },
       xAxis: {
@@ -274,6 +275,7 @@ export function FinanceiroTimelineReport() {
         axisPointer: { type: "shadow" },
         valueFormatter: (v: number) => brl.format(Number(v ?? 0)),
       },
+      color: ["#164f9d", "#64748b", "#7c3aed"],
       legend: { top: 0 },
       grid: { left: 10, right: 10, top: 32, bottom: 10, containLabel: true },
       xAxis: { type: "value" },
@@ -574,7 +576,7 @@ export function FinanceiroTimelineReport() {
                               </Badge>
                             </td>
                             <td className="text-end text-nowrap">
-                              <Badge bg="success" className="fw-semibold">
+                              <Badge bg="secondary" className="fw-semibold">
                                 {brl.format(r.desconto)}
                               </Badge>
                             </td>

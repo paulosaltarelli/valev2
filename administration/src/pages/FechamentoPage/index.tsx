@@ -56,7 +56,7 @@ export function FechamentoPage() {
       <VisualSummary items={[
 {label:'Filiais no recorte',value:rows.length,icon:'tabler:building'},
 {label:'Filiais com erro',value:rows.filter(r=>(r.counts?.comErro ?? 0)>0).length,icon:'tabler:alert-circle',tone:'danger'},
-{label:'Filiais aguardando envio',value:rows.filter(r=>(r.counts?.aguardandoEnvio ?? 0)>0).length,icon:'tabler:clock',tone:'warning'}
+{label:'Filiais aguardando envio',value:rows.filter(r=>(r.counts?.aguardandoEnvio ?? 0)>0).length,icon:'tabler:clock',tone:'info'}
 ]} />
       <small className="op-muted">Atualizado em {dateTime(query.data.updatedAt)}</small>
       <details className="mb-3"><summary>Como ler as contagens</summary><p className="op-muted mt-2">“—” indica ausência de execução. Completo, parcial e sem cálculo dividem os funcionários da execução. “Com erro” pode incluir pessoas com resultados parciais ou falha de envio. As colunas de envio são um recorte dos cálculos completos. Filiais sem execução não têm quantidade de funcionários conhecida.</p></details>
@@ -66,7 +66,7 @@ export function FechamentoPage() {
           {['Filial','Situação','Funcionários',...(showDetails ? ['Cálculo completo','Cálculo parcial','Sem cálculo'] : []),'Com erro','Aguardando envio',...(showDetails ? ['Enviados ao RM'] : [])].map(h=><th scope="col" key={h}>{h}</th>)}
         </tr></thead><tbody>{rows.slice((currentPage-1)*25,currentPage*25).map(r=><tr key={r.filialId}>
           <th scope="row">{r.execucaoId?<Link to={href(r.execucaoId,'acompanhamento')}>{r.filial}</Link>:<Link to={`/processamento?periodo=${query.data?.periodo}`}>{r.filial}</Link>}{!r.ativa && <small>Inativa atualmente</small>}</th>
-          <td><StatusPill label={r.situacao}/></td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
+          <td><StatusPill label={r.situacao === 'Cálculo concluído' ? 'Pronto para envio' : r.situacao}/></td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
           <td>{r.execucaoId && r.counts?.comErro ? <Link className="op-danger" to={href(r.execucaoId,'pendencias')}>{r.counts.comErro} · Ver</Link>:r.counts?.comErro ?? '—'}</td>
           <td>{r.execucaoId && r.counts?.aguardandoEnvio ? <Link to={href(r.execucaoId,'envios')}>{r.counts.aguardandoEnvio} · Ver</Link>:r.counts?.aguardandoEnvio ?? '—'}</td>
           {showDetails && <td>{r.counts?.enviados ?? '—'}</td>}

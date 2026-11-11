@@ -74,7 +74,7 @@ export function OperationalOverview({ activePeriodIds, branches }: {
             <div className="op-summary mt-3" aria-label="Progresso nas competências ativas">
               <StageCount label="Variáveis calculadas" value={totals.variables} total={totals.expectedVariables} unit="variáveis" />
               <StageCount label="Fórmulas calculadas" value={totals.formulas} total={totals.expectedFormulas} unit="fórmulas" />
-              <StageCount label="Enviados ao RM" value={totals.rm} total={totals.employees} />
+              <StageCount label="Enviados ao RM" finalStage value={totals.rm} total={totals.employees} />
             </div>
             <div className="ve-home-alerts mt-3" aria-label="Alertas e próximas ações">
               {attention.length > 0 && <div className="ve-home-alert ve-home-alert-danger">
@@ -85,7 +85,7 @@ export function OperationalOverview({ activePeriodIds, branches }: {
                 <div><strong>Falha na criação</strong><p>Verifique as execuções pendentes.</p></div>
                 <Link className="btn btn-outline-primary" to="/processamento">Ver pendências</Link>
               </div>}
-              {ready.length > 0 && <div className="ve-home-alert ve-home-alert-success">
+              {ready.length > 0 && <div className="ve-home-alert">
                 <div><strong>Pronto para envio</strong><p>{ready.length} {ready.length === 1 ? "filial" : "filiais"} · por competência</p></div>
                 <Link className="btn btn-outline-primary" to="/processamento?situacao=envio">Conferir envio</Link>
               </div>}
