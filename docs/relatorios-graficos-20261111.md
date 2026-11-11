@@ -22,6 +22,10 @@
 - Falhas: etapa sem ocorrências apresentou estado vazio; Cálculo retornou a causa existente. Mobile de 390 px sem alargar a página.
 - Variação: matriz apresentou 102 resultados = 31 alterados + 65 iguais + 6 sem comparação; filtro Com variação exibiu 31 linhas. Setas de aumento/redução conferidas. Mobile sem alargar a página.
 - Nenhum processamento, recálculo ou envio ao RM disparado para QA.
+- Validação retomada após login: extrato desktop/mobile, filtro Com erro com três funcionários, atalho individual e retorno preservando competência, filial, execução e foco=erros.
+- Fechamento mobile: filtro Enviadas ao RM apresentou uma filial confirmada. Fechamento e extrato em viewport de 390 px ficaram com largura de documento de 375 px, sem transbordamento da página.
+- Evidências locais: desktop-extrato.png, mobile-extrato.png, desktop-fechamento.png e mobile-fechamento.png em auditoria/relatorios-graficos-20261111. Validação visual desktop/mobile concluída; divergência de dados abaixo continua pendente.
 
 ## Achado preexistente de dados
 O Fechamento usa closingCounts sobre todos os resultados persistidos, enquanto Processamentos aplica seu critério operacional atual. Em Bicas, o Fechamento retornou zero funcionários completos e o detalhe operacional mostrou 104 de 107. A origem deve ser investigada na consulta do relatório (resultados ativos/históricos e estados), sem mudar o motor de cálculo. Não foi mascarada nem recalculada nesta rodada visual.
+O extrato também apresentou zero completos e 107 pendentes para essa execução, com três funcionários com erro. O filtro de erro e a navegação foram validados; a contagem de completude exige alinhar a fonte do relatório ao critério operacional.
