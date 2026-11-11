@@ -18,7 +18,7 @@ import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import { filialApi } from "../../utils/api/filialApi";
 import type { Filial } from "../../models/FilialModel";
 import {
-  dateTime,
+  dateTime, sqlLocalDateTime,
   etapaLabel,
   errorMessage,
   useOperationAction,
@@ -145,7 +145,7 @@ export function ProcessamentoPage() {
     .filter((item) => item.periodoId === query.data?.periodo?.periodo_id)
     .map((item) => item.filialId));
   const eligibleBranches = activeBranches.filter((f) =>
-    !existingBranches.has(f.filial_id) && !queuedBranches.has(f.filial_id));
+    !queuedBranches.has(f.filial_id));
   const eligibleIds = new Set(eligibleBranches.map((f) => f.filial_id));
   const selectedCreationIds = createIds.filter((id) => eligibleIds.has(id));
   const visibleBranches = activeBranches.filter((f) =>
@@ -548,7 +548,7 @@ export function ProcessamentoPage() {
                           </span>
                           {r.nextRunAt && !r.controleFila && (
                             <small>
-                              Próxima tentativa: {dateTime(r.nextRunAt)}
+                              Próxima tentativa: {sqlLocalDateTime(r.nextRunAt)}
                             </small>
                           )}
                           {r.errors > 0 && (
@@ -625,7 +625,7 @@ export function ProcessamentoPage() {
                 {q.periodoCompetencia ?? `competência #${q.periodoId}`} ·{" "}
                 {q.status === "PROCESSANDO" ? "Preparando" : "Agendada"}
                 {q.nextRunAt
-                  ? ` · próxima tentativa ${dateTime(q.nextRunAt)}`
+                  ? ` · próxima tentativa ${sqlLocalDateTime(q.nextRunAt)}`
                   : ""}
               </li>
             ))}
@@ -756,8 +756,8 @@ export function ProcessamentoPage() {
                     />
                     <span>
                       {f.nome}
-                      {existingBranches.has(f.filial_id) ? <small>Já tem execução nesta competência</small>
-                        : queuedBranches.has(f.filial_id) ? <small>Na fila de criação</small> : null}
+                      {queuedBranches.has(f.filial_id) ? <small>Na fila de criação</small>
+                         : existingBranches.has(f.filial_id) ? <small>Tem execução anterior nesta competência</small> : null}
                     </span>
                   </label>
                 ))}
@@ -801,7 +801,7 @@ export function ProcessamentoPage() {
               <details key={e.queueId}>
                 <summary>
                   {e.filialNome} · {e.periodoCompetencia} · {e.status} ·{" "}
-                  {dateTime(e.updatedAt)}
+                  {sqlLocalDateTime(e.updatedAt)}
                 </summary>
                 <pre>{e.lastError}</pre>
               </details>

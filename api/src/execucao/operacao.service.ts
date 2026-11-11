@@ -1,14 +1,17 @@
+import { transportRules, ruleKey, ruleEventValues } from './transport-rules';
+import { chunks } from 'src/utils/sql-server-ids';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, formula } from '@prisma/client';
+import { Prisma, formula, type execucao_funcionario_base, type variavel } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { operationProgress } from './operation-progress';
 import { RmService } from 'src/rm/rm.service';
+import { employeeKey, isBatchChapa, isPve2EventQuery, readPve2EventValues } from './rm-variable-batch';
 
 
 export type CalculationEvent = { referencia: string; variavel: string | null; valor: string | null; origem: string; coletadoEm: string; consulta?: string };
@@ -45,6 +48,23 @@ export const idsValidos = (value: unknown): number[] => {
 };
 const dateRm = (value: Date) =>
   `${value.toISOString().slice(0, 10)}T00:00:00-03:00`;
+
+type SendComponent = {id:number;revisao:number;[key:string]:unknown};
+type SendEvent = {id:number;revisao:number;record:Record<string,string|number|null>;componentes?:SendComponent[]};
+export function groupSendEvents<T extends SendEvent>(events:T[]):T[] {
+  const groups=new Map<string,T[]>();
+  for(const event of events) {
+    const key=JSON.stringify([event.record.CODCOLIGADA,event.record.CODFILIAL,event.record.CHAPA,event.record.DATAINI,event.record.DATAFIM,event.record.CODEVENTO,event.record.TIPO]);
+    const group=groups.get(key)??[];group.push(event);groups.set(key,group);
+  }
+  return [...groups.values()].map(group=>{
+    const first=group[0];
+    const total=group.reduce((sum,e)=>sum.plus(String(e.record.VALOR)),new Prisma.Decimal(0));
+    if(!total.isFinite())throw new BadRequestException('Valor inválido na soma do evento.');
+    return {...first,valor:total.toFixed(2),nome:group.length>1 ? "Soma de "+group.length+" parcelas" : (first as T & {nome?:string}).nome,record:{...first.record,VALOR:total.toDecimalPlaces(2).toNumber()},
+      componentes:group.map(({componentes:_,...event})=>event as SendComponent)};
+  });
+}
 
 @Injectable()
 export class OperacaoService {
@@ -127,6 +147,7 @@ export class OperacaoService {
                 valor_final: true,
                 valor_calculado: true,
                 formula_id: true,
+                codigo_regra_rm: true,
                 formula_snapshot: true,
               },
             },
@@ -147,7 +168,7 @@ export class OperacaoService {
     });
     // Aggregate in SQL instead of loading every duplicated memory row or its value.
     const memory = await this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
-      SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, m.variavel_codigo AS codigo
+      SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, CASE WHEN r.codigo_regra_rm = '' THEN m.variavel_codigo ELSE CONCAT(r.codigo_regra_rm, '|', m.variavel_codigo) END AS codigo
       FROM dbo.memoria_calculo m
       INNER JOIN dbo.execucao_funcionario r ON r.execucao_funcionario_id = m.execucao_funcionario_id
       INNER JOIN dbo.execucao e ON e.execucao_id = r.execucao_id
@@ -304,7 +325,7 @@ export class OperacaoService {
       where.status = { in: ['RESULTADOS_PROCESSADOS', 'ERRO_RM'] };
     if (filter === 'enviados') where.status = 'ENVIADO_RM';
     const safePage = Math.max(1, Math.floor(page) || 1);
-    const [total, bases, queue] = await Promise.all([
+    const [total, bases, queue, sendFailures] = await Promise.all([
       this.prisma.execucao_funcionario_base.count({ where }),
       this.prisma.execucao_funcionario_base.findMany({
         where,
@@ -326,6 +347,7 @@ export class OperacaoService {
               valor_final: true,
               ajuste_manual: true,
               formula_snapshot: true,
+              codigo_regra_rm: true,
               metadados_rm_id: true,
               formula: { select: { nome: true, codEvento: true, tipo: true } },
             },
@@ -347,6 +369,13 @@ export class OperacaoService {
           },
         },
         orderBy: { queue_id: 'asc' },
+      }),
+      this.prisma.execucao_queue.findMany({
+        where: {execucao_id:id,tipo:'ENVIAR_RM',status:'ERRO',
+          execucao_funcionario_base:{status:'ERRO_RM'}},
+        orderBy:{queue_id:'desc'},take:100,
+        select:{queue_id:true,execucao_funcionario_base_id:true,last_error:true,
+          execucao_funcionario_base:{select:{nome_funcionario:true,funcionario_id_rm:true}}},
       }),
     ]);
     return {
@@ -370,6 +399,14 @@ export class OperacaoService {
         }),
       })),
       queue,
+      sendFailures: sendFailures.filter((q,i,all)=>all.findIndex(item=>item.execucao_funcionario_base_id===q.execucao_funcionario_base_id)===i).map(q=>{
+        const lines=q.last_error?.split(/\r?\n|\\n/).filter(Boolean)??[];
+        const specific=lines.filter(line=>line.includes('[ERRO_ENVIAR_RM]')).pop();
+        return {baseId:q.execucao_funcionario_base_id,
+          chapa:q.execucao_funcionario_base.funcionario_id_rm,
+          nome:q.execucao_funcionario_base.nome_funcionario,
+          message:specific?.split('[ERRO_ENVIAR_RM] ')[1]??'O envio falhou. Consulte o histórico para mais detalhes.'};
+      }),
       updatedAt: new Date(),
     };
   }
@@ -399,6 +436,69 @@ export class OperacaoService {
     }) };
   }
 
+  async preparePve2CalculationEvents(
+    formulas: formula[],
+    variables: variavel[],
+    bases: execucao_funcionario_base[],
+    sessionId?: string,
+  ) {
+    const cache = new Map<string, CalculationEvent>();
+    if (!sessionId) return cache;
+    const byBranch = new Map<string, execucao_funcionario_base[]>();
+    for (const base of bases) {
+      if (!isBatchChapa(base.funcionario_id_rm, 20)) continue;
+      const key = JSON.stringify([base.codcoligada, base.codfilial]);
+      const group = byBranch.get(key) ?? [];
+      group.push(base);
+      byBranch.set(key, group);
+    }
+    const requested = new Map<string, { variable: string; reference: string; query: string; limit: number | null }>();
+    for (const formula of formulas) {
+      const reference = formula.codEvento?.trim() ?? '';
+      const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1];
+      if (!variable) continue;
+      const definition = variables.find(v => v.ativa && v.codigo.toUpperCase() === variable.toUpperCase());
+      const query = definition?.sql_codigo_rm ?? null;
+      if (definition?.valor_fixo != null || !isPve2EventQuery(query)) continue;
+      requested.set(variable, { variable, reference, query, limit: definition?.chapas_por_chamada ?? null });
+    }
+    for (const { variable, reference, query, limit } of requested.values()) {
+      for (const group of byBranch.values()) {
+        const byChapa = new Map<string, execucao_funcionario_base[]>();
+        for (const base of group) {
+          const matches = byChapa.get(base.funcionario_id_rm) ?? [];
+          matches.push(base);
+          byChapa.set(base.funcionario_id_rm, matches);
+        }
+        const chapas = [...byChapa.keys()];
+        const { codcoligada, codfilial } = group[0];
+        for (const pack of chunks(chapas, limit ?? chapas.length)) {
+          const employees = pack.map(chapa => ({ codcoligada, codfilial, chapa }));
+          const response = await this.rm.realizaConsultaSql(query, {
+            CHAPAS: pack.join(','),
+            CODCOLIGADA: codcoligada,
+            CODFILIAL: codfilial,
+          }, sessionId);
+          const requestedRules = group.filter(b=>pack.includes(b.funcionario_id_rm)).flatMap(b=>transportRules(b).map(regra=>({codcoligada,codfilial,chapa:b.funcionario_id_rm,regra})));
+          const values = ruleEventValues(requestedRules, response.status ? response.data : null);
+          const collected = new Date().toISOString();
+          for (const employee of employees) {
+            for (const base of byChapa.get(employee.chapa)!) for (const regra of transportRules(base)) {
+              const valor=values.get(ruleKey(employee,regra)) ?? null;
+              const key = JSON.stringify([base.execucao_funcionario_base_id, variable, query, null, regra]);
+              cache.set(key, {
+                referencia: reference, variavel: variable, valor,
+                origem: 'RM', coletadoEm: collected, consulta: query,
+              });
+            }
+          }
+        }
+      }
+    }
+    return cache;
+  }
+
+
   private async captureCalculationEvent(id: number, formula: formula, sessionId?: string,
     cache = new Map<string, CalculationEvent>()): Promise<CalculationEvent> {
     const reference = formula.codEvento?.trim() ?? '';
@@ -414,18 +514,28 @@ export class OperacaoService {
     const base = result.execucao_funcionario_base;
     const definition = base.execucao.filial.variavel.find(v => v.ativa && v.codigo.toUpperCase() === variable.toUpperCase());
     if (!definition) throw new BadRequestException('Variável de evento não configurada: ' + variable);
-    const key = JSON.stringify([base.execucao_funcionario_base_id, variable, definition.sql_codigo_rm, definition.valor_fixo]);
+    const key = JSON.stringify([base.execucao_funcionario_base_id, variable, definition.sql_codigo_rm, definition.valor_fixo, result.codigo_regra_rm]);
     const cached = cache.get(key);
-    if (cached) return cached;
+    if (cached) {
+      if (cached.valor === null) throw new BadRequestException('RM não retornou um código válido para ' + variable + '. O cálculo não foi concluído.');
+      return cached;
+    }
     let value: string;
     if (definition.valor_fixo != null) value = String(definition.valor_fixo);
     else {
       if (!definition.sql_codigo_rm || !sessionId) throw new BadRequestException('Não foi possível registrar o evento ' + variable + ': consulta ou sessão RM indisponível.');
-      const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, {
-        DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10), DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
-        CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm, KM_MAX: Number(base.execucao.filial.km_max),
-      }, sessionId) as { status: boolean; data?: Array<{ RESULTADO?: unknown }> };
-      const raw = response.status && Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
+      const employee = { codcoligada: base.codcoligada, codfilial: base.codfilial, chapa: base.funcionario_id_rm };
+      const pve2 = isPve2EventQuery(definition.sql_codigo_rm);
+      if (pve2 && !isBatchChapa(employee.chapa, 20)) throw new BadRequestException('Chapa inválida para consulta de evento em lote.');
+      const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, pve2
+        ? { CHAPAS: employee.chapa, CODCOLIGADA: employee.codcoligada, CODFILIAL: employee.codfilial }
+        : {
+          DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10), DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
+          CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm, KM_MAX: Number(base.execucao.filial.km_max),
+        }, sessionId);
+      const raw = !response.status ? null : pve2
+        ? ruleEventValues([{...employee,regra:result.codigo_regra_rm}], response.data).get(ruleKey(employee,result.codigo_regra_rm))
+        : Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
       if (!((typeof raw === 'string' && raw.trim()) || (typeof raw === 'number' && Number.isFinite(raw))))
         throw new BadRequestException('RM não retornou um código válido para ' + variable + '. O cálculo não foi concluído.');
       value = String(raw).trim();
@@ -449,6 +559,7 @@ export class OperacaoService {
         },
         execucao_funcionario: {
           select: {
+            codigo_regra_rm: true,
             formula: { select: { nome: true } },
             memoria_calculo: true,
           },
@@ -879,10 +990,12 @@ export class OperacaoService {
           ? (JSON.parse(r.formula_snapshot) as FormulaWithEvent)
           : r.formula;
         return {
+          componentes: undefined as SendComponent[] | undefined,
           id: r.execucao_funcionario_id,
           revisao: r.revisao,
           conferencia: r.conferido_revisao,
           regra: fingerprint(f),
+          codigoRegra: r.codigo_regra_rm,
           nome: f.nome,
           evento: calculationEventCode(f),
           tipo: f.tipo,
@@ -914,7 +1027,7 @@ export class OperacaoService {
         competencia: b.execucao.periodo.competencia,
         status: b.status,
         reason,
-        eventos,
+        eventos: p.etapa === 'ENVIAR_RM' ? groupSendEvents(eventos) : eventos,
       };
     });
   }
@@ -1090,32 +1203,46 @@ export class OperacaoService {
     );
   }
 
-  async approvedEvent(baseId: number, resultId: number, revision: number) {
+  async approvedSendGroups(baseId: number) {
     const q = await this.prisma.execucao_queue.findFirst({
-      where: {
-        execucao_funcionario_base_id: baseId,
-        tipo: 'ENVIAR_RM',
-        status: 'PROCESSANDO',
-      },
-      orderBy: { queue_id: 'desc' },
+      where: {execucao_funcionario_base_id:baseId,tipo:'ENVIAR_RM',status:'PROCESSANDO'},
+      orderBy:{queue_id:'desc'},
     });
-    if (!q?.revisao_payload)
-      throw new ConflictException('Envio sem revisão. Gere uma nova prévia.');
-    const payload = JSON.parse(q.revisao_payload) as {
-      usuarioId: number;
-      eventos: Array<{
-        id: number;
-        revisao: number;
-        conferencia: number;
-        record: Record<string, string | number>;
-      }>;
-    };
-    const event = payload.eventos.find((e) => e.id === resultId);
-    if (!event || event.revisao !== revision)
-      throw new ConflictException(
-        'A versão do resultado difere da versão agendada.',
-      );
-    return { record: event.record, usuarioId: payload.usuarioId };
+    if (!q?.revisao_payload) throw new ConflictException('Envio sem revisão. Gere uma nova prévia.');
+    const payload=JSON.parse(q.revisao_payload) as {usuarioId:number;eventos:SendEvent[]};
+    const [current]=await this.candidates(this.prisma,{etapa:'ENVIAR_RM',execucaoIds:[q.execucao_id],baseIds:[baseId]});
+    const rows=await this.prisma.execucao_funcionario.findMany({where:{execucao_funcionario_base_id:baseId}});
+    if (!current || !payload.eventos.length || payload.eventos.length !== current.eventos.length)
+      throw new ConflictException('O conjunto de eventos mudou. Gere uma nova prévia.');
+    return payload.eventos.map(event=>{
+      const now=current.eventos.find(e=>e.id===event.id);
+      // Compare every contribution, its revision, formula, value, event and employee scope.
+      const comparable=(e:SendEvent)=>({id:e.id,revisao:e.revisao,record:e.record,componentes:e.componentes?.map(c=>({id:c.id,revisao:c.revisao,regra:c.regra,codigoRegra:c.codigoRegra,record:c.record}))});
+      if (!now || fingerprint(comparable(now)) !== fingerprint(comparable(event)))
+        throw new ConflictException('As regras ou valores mudaram depois da revisão. Gere uma nova prévia.');
+      const components=event.componentes ?? [{id:event.id,revisao:event.revisao}];
+      const members=components.map(c=>rows.find(r=>r.execucao_funcionario_id===c.id && r.revisao===c.revisao));
+      if (members.some(r=>!r || !resultadoValido(r))) throw new ConflictException('Cálculo incompleto no envio.');
+      const rmIds=[...new Set(members.flatMap(r=>r?.metadados_rm_id?[r.metadados_rm_id]:[]))];
+      if(rmIds.length>1) throw new ConflictException('Evento com mais de um registro histórico no RM. Concilie os registros antes de reenviar.');
+      const enviado=members.every(r=>r!.status==='ENVIADO_RM' && r!.enviado_revisao===r!.revisao);
+      return {...event,componentes:components,usuarioId:payload.usuarioId,rmId:rmIds[0]??null,enviado};
+    });
+  }
+
+  async receiptGroup(components: SendComponent[], rmId: number, usuarioId: number, record: unknown) {
+    return this.prisma.$transaction(async tx=>{
+      let rows=await tx.execucao_funcionario.findMany({where:{execucao_funcionario_id:{in:components.map(c=>c.id)}}});
+      if(rows.length!==components.length)throw new ConflictException('Resultados ausentes durante o envio.');
+      await this.lock(tx,[...new Set(rows.map(r=>r.execucao_id))]);
+      rows=await tx.execucao_funcionario.findMany({where:{execucao_funcionario_id:{in:components.map(c=>c.id)}}});
+      for(const component of components) {
+        const row=rows.find(r=>r.execucao_funcionario_id===component.id)!;
+        if(row.revisao!==component.revisao)throw new ConflictException('Resultado alterado durante o envio.');
+        await tx.execucao_funcionario.update({where:{execucao_funcionario_id:row.execucao_funcionario_id},data:{metadados_rm_id:rmId,enviado_revisao:component.revisao,status:'ENVIADO_RM'}});
+        await tx.resultado_historico.create({data:{resultado_id:row.execucao_funcionario_id,execucao_id:row.execucao_id,revisao:component.revisao,usuario_id:usuarioId,tipo:'ENVIO_RM',detalhe:JSON.stringify({metadadosRmId:rmId,record,componentes:components,confirmado:true})}});
+      }
+    });
   }
 
   async beginRmInsert(execucaoId: number, id: number, revisao: number, usuarioId: number, record: unknown) {

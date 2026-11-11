@@ -17,7 +17,7 @@ import { EventGroups } from "./EventGroups";
 import { EmployeeResultsTable } from "./EmployeeResultsTable";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import {
-  dateTime,
+  dateTime, sqlLocalDateTime,
   errorMessage,
   etapaLabel,
   resultValue,
@@ -41,7 +41,7 @@ function CalculationMemory({ result: r }: { result: ResultDetail }) {
   return (
     <>
       <p>
-        Tipo {f?.tipo || "—"} ·
+        Regra {r.codigo_regra_rm || "legado"} · Tipo {f?.tipo || "—"} ·
         fórmula v{f?.versao ?? "—"}
       </p>
       {(!r.formulaUtilizada ||
@@ -98,7 +98,7 @@ function VariableTable({ rows }: { rows: VariableRow[] }) {
                   {sources.map((source) => (
                     <div key={source.memoria_id}>
                       <p>{source.detalhe || "Sem detalhe adicional"}</p>
-                      <small>{dateTime(source.data_registro)}</small>
+                      <small>{sqlLocalDateTime(source.data_registro)}</small>
                     </div>
                   ))}
                 </details>
@@ -116,10 +116,10 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
     const { results, error } = await OperacaoApi.employeeVariables(execucaoId, person.execucao_funcionario_base_id);
     const grouped = new Map<string, Map<string, Required<VariableRow>>>();
     for (const result of results) {
-      const formula = result.formula.nome;
+      const formula = [result.codigo_regra_rm, result.formula.nome].filter(Boolean).join(" · ");
       for (const entry of result.memoria_calculo) {
         const code = entry.variavel_codigo;
-        const value = String(entry.valor);
+        const value = JSON.stringify([result.codigo_regra_rm ?? "", String(entry.valor)]);
         const variants = grouped.get(code) ?? new Map<string, Required<VariableRow>>();
         grouped.set(code, variants);
         const row = variants.get(value) ?? { key: JSON.stringify([code, value]), entry, formulas: [], sources: [] };
@@ -133,7 +133,7 @@ function EmployeeVariables({ execucaoId, person }: { execucaoId: number; person:
     const rows = Array.from(grouped.values()).flatMap((variants) =>
       Array.from(variants.values(), (row) => ({
         ...row,
-        formulas: variants.size > 1 ? row.formulas : undefined,
+        formulas: row.formulas,
       })),
     ).sort((a, b) => a.entry.variavel_nome.localeCompare(b.entry.variavel_nome, "pt-BR"));
     return { rows, error };
@@ -439,7 +439,7 @@ function ResultPanel({
               {r.ajuste_manual_fk.map((a) => (
                 <div key={a.ajuste_id}>
                   <p>
-                    {dateTime(a.data_ajuste)} · {a.usuario.nome} ·{" "}
+                    {sqlLocalDateTime(a.data_ajuste)} · {a.usuario.nome} ·{" "}
                     {amount(a.valor_anterior)} → {amount(a.valor_novo)}
                   </p>
                   <p>{a.motivo}</p>
@@ -526,6 +526,7 @@ export function ProcessamentoDetalhesPage() {
   const refresh = () => {
     query.refresh();
     summary.refresh();
+    errors.refresh();
   };
   const commandDisabled =
     command.busy ||
@@ -556,6 +557,15 @@ export function ProcessamentoDetalhesPage() {
         </button>
       </header>
       <QueryNotice {...query} />
+      {Boolean(query.data?.sendFailures?.length) && (
+        <div className="op-notice op-error" role="alert">
+          <strong>Falha no envio ao RM · {query.data!.sendFailures!.length} funcionário(s)</strong>
+          {query.data!.sendFailures!.slice(0,3).map(failure=><p key={failure.baseId}>
+            <strong>{failure.nome} · {failure.chapa}</strong><br/>{failure.message}
+          </p>)}
+          <button type="button" className="btn btn-link btn-sm" onClick={()=>setShowQueue(true)}>Ver todas as falhas e o histórico</button>
+        </div>
+      )}
       {notice && (
         <div className="op-notice" role="status">
           {notice}
@@ -637,7 +647,7 @@ export function ProcessamentoDetalhesPage() {
                       </td>
                       <td>
                         {q.next_run_at
-                          ? dateTime(q.next_run_at)
+                          ? sqlLocalDateTime(q.next_run_at)
                           : q.status === "PROCESSANDO"
                             ? "Em execução"
                             : "Aguardando disponibilidade"}
@@ -654,7 +664,7 @@ export function ProcessamentoDetalhesPage() {
             Uma tentativa agendada é automática. A revisão de retomada exclui
             trabalhos já ativos.
           </p>
-          <details>
+          <details open={Boolean(query.data?.sendFailures?.length)}>
             <summary>Mensagens de falhas e histórico técnico</summary>
             <QueryNotice {...errors} />
             {errors.data?.length
@@ -663,7 +673,7 @@ export function ProcessamentoDetalhesPage() {
                     <summary>
                       {e.nomeFuncionario ?? e.funcionarioIdRm ?? "Execução"} ·{" "}
                       {e.tipo ? etapaLabel(e.tipo) : e.source} ·{" "}
-                      {dateTime(e.createdAt)}
+                      {sqlLocalDateTime(e.createdAt)}
                     </summary>
                     <pre>{e.message}</pre>
                   </details>

@@ -35,14 +35,20 @@ export function closingCounts(people: ReportPerson[]) {
   return counts;
 }
 
-function savedFormula(result: ReportResult): { formula: ReportFormula; verified: boolean } {
+export function lerSnapshotFormula(snapshot: string | null): ReportFormula | null {
   try {
-    const value = JSON.parse(result.formula_snapshot ?? 'null') as Partial<ReportFormula> | null;
-    if (value && typeof value.nome === 'string' && typeof value.expressao === 'string' && typeof value.versao === 'number') {
-      return { formula: { ...result.formula, ...value }, verified: true };
+    const value = JSON.parse(snapshot ?? 'null') as (ReportFormula & { snapshot_origem?: string }) | null;
+    if (value && value.snapshot_origem !== 'CONFERENCIA_LEGADO' && typeof value.nome === 'string' && typeof value.expressao === 'string' && typeof value.versao === 'number') {
+      return value;
     }
   } catch { /* Invalid legacy snapshots are explicitly non-comparable. */ }
-  return { formula: result.formula, verified: false };
+  return null;
+}
+function savedFormula(result: ReportResult): { formula: ReportFormula; verified: boolean } {
+  const snapshot = lerSnapshotFormula(result.formula_snapshot);
+  return snapshot
+    ? { formula: { ...result.formula, ...snapshot }, verified: true }
+    : { formula: result.formula, verified: false };
 }
 const formulaKey = (f: ReportFormula) => JSON.stringify([f.nome.trim().toLocaleLowerCase('pt-BR'), f.codEvento?.trim() ?? '', f.tipo?.trim() ?? '', f.polaridade?.trim() ?? '']);
 const personKey = (p: ReportPerson) => JSON.stringify([p.codcoligada, p.funcionario_id_rm.trim()]);

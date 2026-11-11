@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Modal } from "../../shared/components/VeModal";
 import type { BaseRow, Etapa, ResultRow } from "../../utils/api/operacaoApi";
 import { eventKey, storedEvent } from "./EventGroups";
@@ -19,7 +19,22 @@ export function resultColumns(bases: BaseRow[]) {
   });
 }
 
-function EventCell({ results, onOpen }: { results: ResultRow[]; onOpen: (id: number) => void }) {
+function EventCell({ results, onOpen, summary = false }: { results: ResultRow[]; onOpen: (id: number) => void; summary?: boolean }) {
+  if (summary && results.some(r=>r.codigo_regra_rm)) {
+    const groups=new Map<string,ResultRow[]>();
+    for(const r of results) {
+      const key=JSON.stringify([(r.formulaUtilizada??r.formula).tipo,storedEvent(r).valor]);
+      groups.set(key,[...(groups.get(key)??[]),r]);
+    }
+    return <div className="op-cell-results">{[...groups].map(([key,rows])=>{
+      const type=(rows[0].formulaUtilizada??rows[0].formula).tipo;
+      const complete=rows.every(r=>r.valor_calculado!==null && !r.status?.startsWith("ERRO"));
+      const total=rows.reduce((sum,r)=>sum+Math.round(Number(r.valor_final)*100),0)/100;
+      return <span key={key} className={type==="D"?"op-cell-value is-days":"op-cell-value"}>
+        {complete?resultValue(String(total),type):"—"}<small className="op-cell-event">{storedEvent(rows[0]).valor??"Evento pendente"}</small>
+      </span>;
+    })}</div>;
+  }
   if (!results.length) return <span className="op-cell-empty" aria-label="Sem fórmula neste grupo">—</span>;
   const ordered = [...results].sort((a, b) => Number((a.formulaUtilizada ?? a.formula).tipo === "D") - Number((b.formulaUtilizada ?? b.formula).tipo === "D"));
   const events = [...new Set(results.map(r => storedEvent(r).valor).filter((v): v is string => v !== null))];
@@ -46,6 +61,7 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
   onVariables: (base: BaseRow) => void; onOpen: (id: number) => void;
   onProcess: (stage: Etapa, ids: number[]) => void; disabled: boolean;
 }) {
+  const [expanded, setExpanded] = useState<number[]>([]);
   const [actions, setActions] = useState<BaseRow | null>(null);
   const columns = resultColumns(bases);
   const run = (stage: Etapa) => {
@@ -69,21 +85,37 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
           const failed = b.status?.startsWith("ERRO") || b.execucao_funcionario.some(r => r.status?.startsWith("ERRO"));
           const complete = ["RESULTADOS_PROCESSADOS", "ENVIADO_RM", "ERRO_RM"].includes(b.status) && b.execucao_funcionario.length > 0 && b.execucao_funcionario.every(r => ["PROCESSADO", "ENVIADO_RM"].includes(r.status) && r.valor_final !== null);
           const label = failed ? (b.status?.startsWith("ERRO") ? statusLabel(b.status) : "Falha em fórmulas") : !complete && b.status === "RESULTADOS_PROCESSADOS" ? "Fórmulas pendentes" : statusLabel(b.status);
-          return <tr key={b.execucao_funcionario_base_id}>
+          const rules=[...new Set(b.execucao_funcionario.map(r=>r.codigo_regra_rm??""))].filter(Boolean).sort();
+          const isExpanded=expanded.includes(b.execucao_funcionario_base_id);
+          return <Fragment key={b.execucao_funcionario_base_id}><tr>
             <th scope="row" className="op-person-identity"><div className="op-branch-name">
               {selecting && <input type="checkbox" aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
                 checked={selected.includes(b.execucao_funcionario_base_id)}
                 onChange={e => onSelected(e.target.checked ? [...selected, b.execucao_funcionario_base_id] : selected.filter(x => x !== b.execucao_funcionario_base_id))} />}
-              <span>{b.nome_funcionario}</span></div><small>{b.funcionario_id_rm}</small></th>
+              <span>{b.nome_funcionario}</span></div><small>{b.funcionario_id_rm}</small>
+              {rules.length>0 && <button type="button" className="btn btn-sm btn-link" aria-expanded={isExpanded}
+                aria-controls={"rules-"+b.execucao_funcionario_base_id}
+                onClick={()=>setExpanded(isExpanded?expanded.filter(id=>id!==b.execucao_funcionario_base_id):[...expanded,b.execucao_funcionario_base_id])}>
+                {isExpanded?"▾":"▸"} {rules.length} {rules.length===1?"regra":"regras"}
+              </button>}</th>
             {columns.map(c => <td key={c.key} className="op-event-cell" data-label={c.title}>
-              <EventCell results={b.execucao_funcionario.filter(r => eventKey(r).key === c.key)} onOpen={onOpen} />
+              <EventCell results={b.execucao_funcionario.filter(r => eventKey(r).key === c.key)} onOpen={onOpen} summary />
             </td>)}
             <td className="op-person-state" data-label="Situação"><span className={`op-status op-${failed ? "danger" : complete ? "success" : "info"}`}>{label}</span></td>
             <td className="op-person-tools"><button type="button" className="op-variables-button" aria-haspopup="dialog" aria-label={`Variáveis de ${b.nome_funcionario}`} onClick={() => onVariables(b)}>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M4 12h16M4 17h16M9 5v4m6 1v4m-5 1v4" /></svg><span>Variáveis</span></button>
               <button type="button" className="op-row-more" aria-haspopup="dialog" aria-label={`Ações de ${b.nome_funcionario}`} onClick={() => setActions(b)}>⋯</button>
             </td>
-          </tr>;
+          </tr>
+          {isExpanded && <tr id={"rules-"+b.execucao_funcionario_base_id}><td colSpan={columns.length+3}>
+            <table className="op-table" aria-label={"Regras de "+b.nome_funcionario}>
+              <thead><tr><th>Regra de transporte</th>{columns.map(c=><th key={c.key}>{c.title}</th>)}</tr></thead>
+              <tbody>{rules.map(rule=><tr key={rule}><th scope="row">{rule}</th>
+                {columns.map(c=><td key={c.key}><EventCell results={b.execucao_funcionario.filter(r=>r.codigo_regra_rm===rule && eventKey(r).key===c.key)} onOpen={onOpen}/></td>)}
+              </tr>)}</tbody>
+            </table>
+          </td></tr>}
+          </Fragment>;
         })}</tbody>
       </table>
     </div>

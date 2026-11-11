@@ -1,0 +1,327 @@
+.vale-ia-marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #143f38;
+}
+
+.vale-ia-modal .modal-content {
+  height: min(51rem, calc(100dvh - 2rem));
+}
+
+.vale-ia-corpo.modal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(
+    145deg,
+    var(--bs-tertiary-bg),
+    var(--bs-secondary-bg)
+  );
+}
+
+.vale-ia-navegacao {
+  display: flex;
+  gap: 1rem;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.vale-ia-navegacao button {
+  padding: 0.75rem 0.35rem;
+  color: var(--bs-secondary-color);
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  font-weight: 600;
+}
+
+.vale-ia-navegacao button[aria-pressed="true"] {
+  color: var(--bs-emphasis-color);
+  border-bottom-color: #378577;
+}
+
+.vale-ia-paineis {
+  display: flex;
+  gap: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.vale-ia-lateral,
+.vale-ia-painel,
+.vale-ia-acessos {
+  min-width: 0;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.9rem;
+  background: var(--bs-body-bg);
+}
+
+.vale-ia-lateral {
+  flex: 0 0 15.5rem;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.vale-ia-painel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vale-ia-paineis [hidden] {
+  display: none;
+}
+
+.vale-ia-identidade {
+  text-align: center;
+}
+
+.vale-ia-identidade svg {
+  display: block;
+  width: 6.25rem;
+  margin: 0 auto 0.65rem;
+}
+
+.vale-ia-identidade strong {
+  font-size: 1.25rem;
+}
+
+.vale-ia-identidade p,
+.vale-ia-contas p {
+  margin: 0.5rem 0 0.8rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.85rem;
+}
+
+.vale-ia-contas h3 {
+  font-size: 0.95rem;
+}
+
+.vale-ia-contas > div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.45rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.55rem;
+  background: var(--bs-tertiary-bg);
+  font-size: 0.85rem;
+}
+
+.vale-ia-contas span,
+.vale-ia-contexto small {
+  color: var(--bs-secondary-color);
+}
+
+.vale-ia-acessos {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.vale-ia-acessos dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1rem;
+  margin: 1rem 0;
+}
+
+.vale-ia-acessos .vale-ia-contas {
+  max-width: 30rem;
+}
+
+.vale-ia-contexto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.vale-ia-contexto small {
+  display: block;
+}
+
+.vale-ia-contexto > span {
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bs-tertiary-bg);
+  font-size: 0.8rem;
+}
+
+.vale-ia-exemplos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.vale-ia-exemplos .btn {
+  text-align: start;
+  padding: 0.5rem 0.65rem;
+}
+
+.vale-ia-conversa {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+}
+
+.vale-ia-turno {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.vale-ia-balao {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(100%, 41rem);
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.vale-ia-pergunta {
+  align-self: flex-end;
+  max-width: 85%;
+  border-end-end-radius: 0.25rem;
+  color: #fff;
+  background: #20564b;
+  white-space: pre-wrap;
+}
+
+.vale-ia-resposta {
+  align-self: flex-start;
+  border: 1px solid var(--bs-border-color);
+  border-end-start-radius: 0.25rem;
+  background: var(--bs-tertiary-bg);
+}
+
+.vale-ia-autor {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.vale-ia-compor {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.vale-ia-compor textarea {
+  min-width: 0;
+  resize: none;
+}
+
+.vale-ia-atalho {
+  display: inline-flex;
+  align-items: center;
+  position: fixed;
+  z-index: 1025;
+  inset-inline-end: max(1rem, env(safe-area-inset-right));
+  inset-block-end: max(1rem, env(safe-area-inset-bottom));
+  gap: 0.8rem;
+  padding: 0.4rem 0.45rem 0.4rem 0.9rem;
+  color: var(--bs-emphasis-color);
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 2rem;
+  box-shadow: 0 0.35rem 1.25rem #0b302a40;
+  font-weight: 700;
+}
+
+.vale-ia-atalho:hover {
+  background: var(--bs-tertiary-bg);
+}
+
+.vale-ia-atalho:focus-visible {
+  outline: 3px solid #b97814;
+  outline-offset: 3px;
+}
+
+.vale-ia-atalho-texto {
+  display: grid;
+  text-align: start;
+}
+
+.vale-ia-atalho small {
+  color: var(--bs-secondary-color);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.vale-ia-atalho svg {
+  width: 2.9rem;
+  height: 2.9rem;
+}
+
+.vale-ia-marca svg {
+  width: 2rem;
+  height: 2rem;
+}
+
+.vale-ia-modal .modal-header {
+  border-block-start: 0.25rem solid #378577;
+}
+
+.vale-ia-modal .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  line-height: 1.25;
+}
+
+.vale-ia-modal .modal-title small {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.vale-ia-marca {
+  flex: 0 0 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+}
+
+@media (max-width: 767.98px) {
+  .vale-ia-lateral {
+    display: none;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .vale-ia-modal .modal-content {
+    height: 100dvh;
+  }
+
+  .vale-ia-paineis {
+    padding: 0.5rem;
+  }
+
+  .vale-ia-exemplos {
+    grid-template-columns: 1fr;
+  }
+
+  .vale-ia-atalho {
+    padding: 0.25rem;
+  }
+
+  .vale-ia-atalho-texto {
+    display: none;
+  }
+}

@@ -40,6 +40,7 @@ export type OperationSummary = {
   updatedAt: string;
 };
 export type ResultRow = {
+  codigo_regra_rm?: string;
   execucao_funcionario_id: number;
   revisao: number;
   conferido_revisao: number | null;
@@ -83,6 +84,7 @@ export type QueueRow = {
   };
 };
 export type OperationDetail = {
+  sendFailures?: Array<{baseId:number;chapa:string;nome:string;message:string}>;
   execucao: {
     execucao_id: number;
     filial: { nome: string; filial_id: number };
@@ -168,6 +170,7 @@ export const OperacaoApi = {
   employeeVariables: (id: number, base: number) =>
     api.get(`/operacao/${id}/pessoas/${base}/variaveis?incluirFalhas=1`) as Promise<{
       results: Array<{
+        codigo_regra_rm?: string;
         formula: { nome: string };
         memoria_calculo: ResultDetail["memoria_calculo"];
       }>;

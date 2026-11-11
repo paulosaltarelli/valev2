@@ -38,6 +38,8 @@ describe('operational reports',()=>{
     const previous=[person([result('10')])];
     expect(variationRows([person([result('20',{formula_snapshot:JSON.stringify({...formula,versao:2})})])],previous,true,true)[0].situacao).toBe('Fórmula alterada');
     expect(variationRows([person([result('20',{formula_snapshot:null})])],previous,true,true)[0].diferenca).toBeNull();
+    const legacy = result('20',{formula_snapshot:JSON.stringify({...formula,snapshot_origem:'CONFERENCIA_LEGADO'})});
+    expect(variationRows([person([legacy])],previous,true,true)[0].situacao).toBe('Regra não verificável');
   });
   it('distinguishes missing execution from a person absent in an existing execution',()=>{
     expect(variationRows([person([result('10')])],[],true,false)[0].situacao).toBe('Sem execução anterior');

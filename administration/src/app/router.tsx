@@ -8,6 +8,7 @@ import { authApi } from "../shared/lib/http";
 import { FilialPage } from "../pages/FilialPage";
 import { FilialVariaveisPage } from "../components/Filiais/FilialVariaveisPage";
 import { UsuariosPage } from "../pages/UsuariosPage";
+import { AssistenteConfiguracaoPage } from "../pages/AssistenteConfiguracaoPage";
 import { FilialFormulasPage } from "../components/Filiais/FilialFormulasPage";
 import { PeriodoPage } from "../pages/PeriodoPage";
 import { ProcessamentoPage } from "../pages/ProcessamentoPage";
@@ -89,6 +90,11 @@ export const router = createBrowserRouter([
         path: "usuarios",
         loader: requireAdmin,
         element: <UsuariosPage />,
+      },
+      {
+        path: "configuracao-ia",
+        loader: requireAdmin,
+        element: <AssistenteConfiguracaoPage />,
       },
       {
         path: "filial",

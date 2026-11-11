@@ -7,6 +7,19 @@ datasource db {
   provider = "sqlserver"
 }
 
+model assistente_configuracao {
+  id                      Int      @id
+  gpt_ativo               Boolean  @default(false)
+  gpt_institucional_ativo Boolean  @default(false)
+  gpt_modelo              String   @default("gpt-5.4-mini") @db.VarChar(80)
+  gpt_chave               String?  @db.VarChar(Max)
+  claude_ativo            Boolean  @default(false)
+  claude_modelo           String   @db.VarChar(80)
+  atualizado_em           DateTime @updatedAt
+  claude_chave            String?  @db.VarChar(Max)
+  contexto                String?  @db.NVarChar(Max)
+}
+
 model ajuste_manual {
   ajuste_id               Int                  @id(map: "PK__ajuste_m__AD9C431FF53BA7CB") @default(autoincrement())
   execucao_funcionario_id Int
@@ -39,6 +52,7 @@ model execucao {
 }
 
 model execucao_funcionario {
+  codigo_regra_rm String @default("") @db.VarChar(100)
   revisao                     Int                       @default(1)
   conferido_revisao            Int?
   conferido_por               Int?
@@ -61,12 +75,13 @@ model execucao_funcionario {
   formula                      formula                   @relation(fields: [formula_id], references: [formula_id], onUpdate: NoAction, map: "fk_exec_func_formula")
   memoria_calculo              memoria_calculo[]
 
-  @@unique([execucao_id, execucao_funcionario_base_id, formula_id], map: "ux_exec_func_exec_base_formula")
+  @@unique([execucao_id, execucao_funcionario_base_id, formula_id, codigo_regra_rm], map: "ux_exec_func_exec_base_formula_regra")
   @@index([funcionario_id_rm], map: "ix_exec_func_rm")
   @@index([execucao_id, formula_id], map: "ix_exec_func_execucao_formula")
 }
 
 model execucao_funcionario_base {
+  regras_rm String? @db.NVarChar(Max)
   execucao_funcionario_base_id Int                    @id(map: "PK__execucao__39A77246061DF61B") @default(autoincrement())
   execucao_id                  Int
   funcionario_id_rm            String                 @db.VarChar(50)
@@ -197,6 +212,7 @@ model variavel {
   codigo          String            @db.VarChar(50)
   tipo            String            @db.VarChar(20)
   sql_codigo_rm   String?           @db.VarChar(100)
+  chapas_por_chamada Int?
   valor_fixo      Decimal?          @db.Decimal(18, 4)
   ativa           Boolean           @default(true, map: "DF__variavel__ativa__45F365D3")
   data_criacao    DateTime          @default(dbgenerated("sysdatetime()"), map: "DF__variavel__data_c__46E78A0C")

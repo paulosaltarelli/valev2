@@ -24,6 +24,37 @@ import { sanitizeCodigo } from "../../utils/sanitizeCodigo";
 // eslint-disable-next-line react-hooks/rules-of-hooks
 DataTable.use(DataTablesCore);
 
+function tamanhoPacoteInvalido(valor: number | null | undefined) {
+  return valor != null && (!Number.isInteger(valor) || valor < 1 || valor > 2147483647);
+}
+
+type CampoChapasPorChamadaProps = {
+  id: string;
+  valor?: number | null;
+  onChange: (valor: number | null) => void;
+};
+
+function CampoChapasPorChamada({ id, valor, onChange }: CampoChapasPorChamadaProps) {
+  return (
+    <Form.Group className="col-12 mb-2" controlId={id}>
+      <Form.Label>Chapas por chamada ao RM</Form.Label>
+      <Form.Control
+        type="number"
+        min={1}
+        max={2147483647}
+        step={1}
+        placeholder="Sem limite"
+        value={valor ?? ""}
+        isInvalid={tamanhoPacoteInvalido(valor)}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        aria-describedby={id + "_ajuda"}
+      />
+      <Form.Control.Feedback type="invalid">Informe um número inteiro positivo.</Form.Control.Feedback>
+      <Form.Text id={id + "_ajuda"}>Deixe em branco para consultar todas as chapas juntas.</Form.Text>
+    </Form.Group>
+  );
+}
+
 export function FilialVariaveisPage() {
   const { filialId } = useParams<{ filialId: string }>();
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
@@ -45,6 +76,9 @@ export function FilialVariaveisPage() {
       throw new Error("Variavel to insert is required");
     }
     const variavelToInsertCopy: Variavel = { ...variavelToInsert };
+    if (!variavelToInsertCopy.sql_codigo_rm?.startsWith("PVE2.")) {
+      variavelToInsertCopy.chapas_por_chamada = null;
+    }
     variavelToInsertCopy.codigo = sanitizeCodigo(variavelToInsertCopy.codigo);
     if (!variavelToInsertCopy.tipo) {
       variavelToInsertCopy.tipo = "string";
@@ -103,6 +137,9 @@ export function FilialVariaveisPage() {
         ...(variavelToEdit as Variavel),
         codigo: sanitizeCodigo(variavelToEdit?.codigo ?? ""),
       };
+      if (!variavelToEditCopy.sql_codigo_rm?.startsWith("PVE2.")) {
+        variavelToEditCopy.chapas_por_chamada = null;
+      }
       const response = await VariavelApi.updateById(
         variavelToEditCopy.variavel_id as number,
         variavelToEditCopy as Variavel
@@ -210,6 +247,7 @@ export function FilialVariaveisPage() {
           { data: "codigo", name: "codigo" },
           { data: "tipo", name: "tipo" },
           { data: "sql_codigo_rm", name: "sql_codigo_rm" },
+          { data: "chapas_por_chamada", name: "chapas_por_chamada", defaultContent: "Sem limite" },
           { data: "valor_fixo", name: "valor_fixo" },
           { data: null, name: "actions", orderable: false, searchable: false },
         ]}
@@ -252,6 +290,7 @@ export function FilialVariaveisPage() {
             <th>Código</th>
             <th>Tipo</th>
             <th>Consulta RM</th>
+            <th>Chapas por chamada</th>
             <th>Valor Fixo</th>
             <th>Ações</th>
           </tr>
@@ -341,6 +380,15 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
+              {variavelToEdit?.sql_codigo_rm?.startsWith("PVE2.") && (
+                <CampoChapasPorChamada
+                  id="chapas_por_chamada"
+                  valor={variavelToEdit.chapas_por_chamada}
+                  onChange={(valor) => setVariavelToEdit((prev) =>
+                    prev ? { ...prev, chapas_por_chamada: valor } : prev
+                  )}
+                />
+              )}
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
@@ -385,7 +433,12 @@ export function FilialVariaveisPage() {
           >
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleSaveEditVariavel}>
+          <Button
+            variant="primary"
+            onClick={handleSaveEditVariavel}
+            disabled={Boolean(variavelToEdit?.sql_codigo_rm?.startsWith("PVE2.")) &&
+              tamanhoPacoteInvalido(variavelToEdit?.chapas_por_chamada)}
+          >
             Salvar
           </Button>
         </Modal.Footer>
@@ -475,6 +528,15 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
+              {variavelToInsert?.sql_codigo_rm?.startsWith("PVE2.") && (
+                <CampoChapasPorChamada
+                  id="new_chapas_por_chamada"
+                  valor={variavelToInsert.chapas_por_chamada}
+                  onChange={(valor) => setVariavelToInsert((prev) =>
+                    prev ? { ...prev, chapas_por_chamada: valor } : prev
+                  )}
+                />
+              )}
               <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
@@ -519,7 +581,12 @@ export function FilialVariaveisPage() {
           >
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleInsertVariavel}>
+          <Button
+            variant="primary"
+            onClick={handleInsertVariavel}
+            disabled={Boolean(variavelToInsert?.sql_codigo_rm?.startsWith("PVE2.")) &&
+              tamanhoPacoteInvalido(variavelToInsert?.chapas_por_chamada)}
+          >
             Salvar
           </Button>
         </Modal.Footer>

@@ -1,3 +1,4 @@
+import { transportRules, ruleQueries, ruleKey, distributeRuleResult } from './transport-rules';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   execucao,
@@ -13,7 +14,12 @@ import { RmService } from 'src/rm/rm.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
 import { OperacaoService, type CalculationEvent } from './operacao.service';
 import { isRmVariableFailureFinal, readRmVariable } from './rm-variable-result';
+import {
+  BatchEmployee, distributePilotResult, employeeKey, isBatchChapa, pilotBatchQuery, pilotQuery,
+  pve2Parameters, pve2QuerySpec,
+} from './rm-variable-batch';
 import { LimitedExecutor, variableConcurrency } from 'src/utils/limited-executor';
+import { chunks, sqlServerIds } from 'src/utils/sql-server-ids';
 
 @Injectable()
 export class ExecucaoService {
@@ -198,21 +204,24 @@ export class ExecucaoService {
     execucaoFuncionarioBaseId: number;
     funcionarioIdRm: string;
     formulaId: number;
+    codigoRegra?: string;
   }) {
     const {
       execucaoId,
       execucaoFuncionarioBaseId,
       funcionarioIdRm,
       formulaId,
+      codigoRegra = '',
     } = params;
 
     // unique composto: (execucao_id, execucao_funcionario_base_id, formula_id)
     return await this.prisma.execucao_funcionario.upsert({
       where: {
-        execucao_id_execucao_funcionario_base_id_formula_id: {
+        execucao_id_execucao_funcionario_base_id_formula_id_codigo_regra_rm: {
           execucao_id: execucaoId,
           execucao_funcionario_base_id: execucaoFuncionarioBaseId,
           formula_id: formulaId,
+          codigo_regra_rm: codigoRegra,
         },
       },
       create: {
@@ -220,6 +229,7 @@ export class ExecucaoService {
         execucao_funcionario_base_id: execucaoFuncionarioBaseId,
         funcionario_id_rm: funcionarioIdRm,
         formula_id: formulaId,
+        codigo_regra_rm: codigoRegra,
         valor_calculado: null,
         valor_final: null,
         status: 'PREVIA',
@@ -393,33 +403,34 @@ export class ExecucaoService {
     execucao: Partial<execucao>,
     usuarioId: number,
     sessionId: string,
+    claim?: { queueId: number; owner: string; autoProcessar: boolean },
   ): Promise<{ status: boolean; message: string; data?: unknown }> {
+    const periodoId = Number(execucao.periodo_id);
+    filialId = Number(filialId);
+    if (![filialId, periodoId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+      return { status: false, message: 'Filial ou competência inválida.' };
+    }
     try {
-      filialId = Number(filialId);
-      const periodoId = Number(execucao.periodo_id);
-      if (![filialId, periodoId].every((id) => Number.isSafeInteger(id) && id > 0)) {
-        return { status: false, message: 'Filial ou competência inválida.' };
-      }
       return await this.prisma.$transaction(async (tx) => {
         await this.lockCreation(tx, filialId, periodoId);
-        const existing = await tx.execucao.findFirst({
-          where: { filial_id: filialId, periodo_id: periodoId },
-          orderBy: { execucao_id: 'desc' },
-          select: { execucao_id: true },
-        });
-        if (existing) return {
-          status: false,
-          message: 'Esta filial já tem execução nesta competência. Use a execução existente.',
-          data: { execucaoId: existing.execucao_id, alreadyExists: true },
+        const scope = { filial_id: filialId, periodo_id: periodoId };
+        const claimed = claim && {
+          ...scope, queue_id: claim.queueId, status: 'PROCESSANDO', lock_owner: claim.owner,
         };
+        if (claimed && !await tx.execucao_create_queue.findFirst({
+          where: claimed, select: { queue_id: true },
+        })) throw new Error('A solicitação de criação já foi concluída ou perdeu o bloqueio.');
+        if (!claim && await tx.execucao_create_queue.findFirst({
+          where: { ...scope, status: { in: ['PENDENTE', 'PROCESSANDO'] } },
+          select: { queue_id: true },
+        })) throw new Error('Já existe uma solicitação de criação em andamento.');
         if (!await this.formulaService.getActiveFormulaByFilialId(filialId)) {
           throw new NotFoundException('Formula not found');
         }
         const created = await tx.execucao.create({ data: {
-          filial_id: filialId,
-          periodo_id: periodoId,
+          ...scope,
           formula_id: null,
-          status: 'AGUARDANDO',
+          status: claim?.autoProcessar ? 'EM_PROCESSAMENTO' : 'AGUARDANDO',
           data_execucao: new Date(),
           usuario_execucao: usuarioId,
         } });
@@ -427,6 +438,31 @@ export class ExecucaoService {
         if (!bases.status) throw new Error(bases.message);
         const results = await this.createExecucaoFuncionarios(created.execucao_id, tx);
         if (!results.status) throw new Error(results.message);
+
+        if (claim?.autoProcessar) {
+          const employees = await tx.execucao_funcionario_base.findMany({
+            where: { execucao_id: created.execucao_id },
+            select: { execucao_funcionario_base_id: true },
+          });
+          const jobs = employees.flatMap((employee) =>
+            ['VARIAVEIS', 'VALORES'].map((tipo) => ({
+              execucao_id: created.execucao_id,
+              execucao_funcionario_base_id: employee.execucao_funcionario_base_id,
+              session_id: sessionId,
+              tipo,
+            })),
+          );
+          for (const data of chunks(jobs, 250)) await tx.execucao_queue.createMany({ data });
+        }
+        if (claimed) {
+          // A confirmação da fila e a execução são gravadas na mesma transação.
+          const updated = await tx.$executeRaw`
+            UPDATE dbo.execucao_create_queue
+            SET status = 'CONCLUIDO', lock_owner = NULL, locked_at = NULL, updated_at = SYSDATETIME()
+            WHERE queue_id = ${claimed.queue_id} AND status = 'PROCESSANDO' AND lock_owner = ${claimed.lock_owner}
+          `;
+          if (updated !== 1) throw new Error('A solicitação de criação perdeu o bloqueio.');
+        }
         return {
           status: true,
           message: 'Execucao criada com sucesso',
@@ -434,16 +470,8 @@ export class ExecucaoService {
         };
       }, { timeout: 120_000 });
     } catch (error) {
-      if (error instanceof Error) {
-        return {
-          status: false,
-          message: 'Erro ao criar execucao: ' + error.message,
-        };
-      }
-      return {
-        status: false,
-        message: 'Erro ao criar execucao: ' + error,
-      };
+      const message = error instanceof Error ? error.message : String(error);
+      return { status: false, message: 'Erro ao criar execucao: ' + message };
     }
   }
 
@@ -497,20 +525,31 @@ export class ExecucaoService {
         CODCOLIGADA: number;
         CODFILIAL: number;
         KM: number | null;
+        CODREGRA?: string;
       };
       const newFuncBaseData: Prisma.execucao_funcionario_baseCreateManyInput[] =
         [];
+      const grouped = new Map<string, Prisma.execucao_funcionario_baseCreateManyInput>();
+      const rules = new Map<string, Set<string>>();
       for (const funcionario of resultado.data as RmFuncionario[]) {
-        newFuncBaseData.push({
-          execucao_id: execucaoId,
-          funcionario_id_rm: funcionario.CHAPA,
-          nome_funcionario: funcionario.NOME,
-          cargo: funcionario.CARGO,
-          data_admissao: funcionario.DATAADMISSAO,
-          codcoligada: funcionario.CODCOLIGADA,
-          codfilial: funcionario.CODFILIAL,
-          km: funcionario.KM,
+        const key = employeeKey({codcoligada: Number(funcionario.CODCOLIGADA), codfilial: Number(funcionario.CODFILIAL), chapa: funcionario.CHAPA});
+        const rule = funcionario.CODREGRA?.trim();
+        if (codSentenca.startsWith('PVE2.') && !rule) throw new Error('A sentença de funcionários deve retornar CODREGRA.');
+        const prior = grouped.get(key);
+        if (prior && !rule) throw new Error('Funcionário repetido sem identificação da regra.');
+        if (!prior) grouped.set(key, {
+          execucao_id: execucaoId, funcionario_id_rm: funcionario.CHAPA,
+          nome_funcionario: funcionario.NOME, cargo: funcionario.CARGO,
+          data_admissao: funcionario.DATAADMISSAO, codcoligada: funcionario.CODCOLIGADA,
+          codfilial: funcionario.CODFILIAL, km: funcionario.KM,
         });
+        const list=rules.get(key) ?? new Set<string>();
+        if (rule) list.add(rule);
+        rules.set(key,list);
+      }
+      for (const [key,base] of grouped) {
+        const list=[...rules.get(key)!].sort();
+        newFuncBaseData.push({...base,regras_rm: list.length ? JSON.stringify(list) : null});
       }
 
       const createdFuncBase =
@@ -567,11 +606,12 @@ export class ExecucaoService {
 
       const newFuncExecData: Prisma.execucao_funcionarioCreateManyInput[] = [];
       for (const funcionarioBase of execucao.execucao_funcionario_base) {
-        for (const formula of formulasAtivas) {
+        for (const codigoRegra of transportRules(funcionarioBase)) for (const formula of formulasAtivas) {
           newFuncExecData.push({
             execucao_id: execucaoId,
             funcionario_id_rm: funcionarioBase.funcionario_id_rm,
             formula_id: formula.formula_id,
+            codigo_regra_rm: codigoRegra,
             valor_calculado: null,
             valor_final: null,
             status: 'PREVIA',
@@ -606,216 +646,9 @@ export class ExecucaoService {
     };
   }
 
-  async processarTodos(
-    execucaoId: number,
-    reprocessar: boolean = false,
-    sessionId?: string,
-  ): Promise<{ status: boolean; message: string }> {
-    const eventCache = new Map<string, CalculationEvent>();
-    const execucao = await this.getExecucaoById(execucaoId);
-
-    if (!execucao) throw new NotFoundException('Execucao not found');
-    if (
-      !execucao.execucao_funcionario_base ||
-      execucao.execucao_funcionario_base.length === 0
-    )
-      throw new NotFoundException('Execucao funcionário base not found');
-
-    const formulasAtivas = this.getFormulasAtivasDaExecucao(execucao);
-    const variaveisFixas = this.getVariaveisFixas(execucao);
-    const memoriaScopeByExecFuncId =
-      await this.loadMemoriaScopeByExecucaoId(execucaoId);
-
-    const basesComErro: number[] = [];
-    const basesParcial: number[] = [];
-    const basesOk: number[] = [];
-
-    for (const funcionarioBase of execucao.execucao_funcionario_base) {
-      let teveErro = false;
-      let teveProcessado = false;
-
-      // Regra: aqui NÃO consultamos RM. Se o funcionário ainda não teve variáveis processadas,
-      // evitamos calcular resultados (para não “inventar” valores).
-      // if (
-      //   funcionarioBase.status !==
-      //     ExecucaoService.STATUS_FUNC_BASE.VARIAVEIS_PROCESSADAS &&
-      //   !reprocessar
-      // ) {
-      //   basesParcial.push(funcionarioBase.execucao_funcionario_base_id);
-      //   continue;
-      // }
-
-      for (const formula of formulasAtivas) {
-        try {
-          const execFunc = await this.ensureResultadoPorFormula({
-            execucaoId,
-            execucaoFuncionarioBaseId:
-              funcionarioBase.execucao_funcionario_base_id,
-            funcionarioIdRm: funcionarioBase.funcionario_id_rm,
-            formulaId: formula.formula_id,
-          });
-
-          if (!reprocessar && execFunc.status === 'PROCESSADO') {
-            teveProcessado = true;
-            continue;
-          }
-
-          const codigosNecessarios = this.extractCodesFromExpressao(
-            formula.expressao,
-          );
-          const scope = await this.buildUserScopeBase({
-            execucao,
-            funcionarioBase,
-            variaveisFixas,
-            execucaoFuncionarioId: execFunc.execucao_funcionario_id,
-            memoriaScopeByExecFuncId,
-            codigosNecessarios,
-          });
-
-          // Se não tiver memória pra esse resultado/fórmula, é porque `processarVariaveis` não rodou (ou falhou).
-          if (
-            codigosNecessarios.size > 0 &&
-            memoriaScopeByExecFuncId.get(execFunc.execucao_funcionario_id) ===
-              undefined
-          ) {
-            teveErro = true;
-            await this.prisma.execucao_funcionario.update({
-              where: {
-                execucao_funcionario_id: execFunc.execucao_funcionario_id,
-              },
-              data: { status: 'ERRO' },
-            });
-            await this.prisma.log_execucao.create({
-              data: {
-                execucao_id: execucaoId,
-                nivel: 'ERROR',
-                mensagem: `Sem memoria_calculo para fórmula ${formula.formula_id} do funcionário ${funcionarioBase.funcionario_id_rm}. Rode 'processarVariaveis' antes de 'processarTodos'.`,
-              },
-            });
-            await this.appendExecucaoQueueLastError({
-              execucaoId,
-              execucaoFuncionarioBaseId:
-                funcionarioBase.execucao_funcionario_base_id,
-              tipo: 'VALORES',
-              line: formatQueueErrorLine({
-                code: 'ERRO_VALORES',
-                message:
-                  'Sem memória de cálculo para a fórmula; processe variáveis antes de calcular valores',
-                context: {
-                  funcionario: funcionarioBase.funcionario_id_rm,
-                  formulaId: formula.formula_id,
-                },
-              }),
-            });
-            continue;
-          }
-
-          const resultado = this.calculatorService.calcularFormula(
-            formula.expressao,
-            scope,
-          );
-
-          if (!resultado.status) {
-            await this.prisma.execucao_funcionario.update({
-              where: {
-                execucao_funcionario_id: execFunc.execucao_funcionario_id,
-              },
-              data: { status: 'ERRO' },
-            });
-            teveErro = true;
-            await this.prisma.log_execucao.create({
-              data: {
-                execucao_id: execucaoId,
-                nivel: 'ERROR',
-                mensagem: `Erro ao calcular fórmula ${formula.formula_id} para funcionário ${funcionarioBase.funcionario_id_rm}: ${resultado.message}`,
-              },
-            });
-            await this.appendExecucaoQueueLastError({
-              execucaoId,
-              execucaoFuncionarioBaseId:
-                funcionarioBase.execucao_funcionario_base_id,
-              tipo: 'VALORES',
-              line: formatQueueErrorLine({
-                code: 'ERRO_VALORES',
-                message: `Erro ao calcular fórmula: ${resultado.message}`,
-                context: {
-                  funcionario: funcionarioBase.funcionario_id_rm,
-                  formulaId: formula.formula_id,
-                },
-              }),
-            });
-            continue;
-          }
-
-          await this.operacao.saveCalculation(execFunc.execucao_funcionario_id, resultado.resultado!, formula, sessionId, eventCache);
-          teveProcessado = true;
-        } catch (error) {
-          console.error(error);
-          teveErro = true;
-          await this.prisma.log_execucao.create({
-            data: {
-              execucao_id: execucaoId,
-              nivel: 'ERROR',
-              mensagem: `Erro inesperado ao processar funcionário ${funcionarioBase.funcionario_id_rm}: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          });
-          await this.appendExecucaoQueueLastError({
-            execucaoId,
-            execucaoFuncionarioBaseId:
-              funcionarioBase.execucao_funcionario_base_id,
-            tipo: 'VALORES',
-            line: formatQueueErrorLine({
-              code: 'ERRO_DESCONHECIDO',
-              message:
-                error instanceof Error
-                  ? error.message
-                  : String(error ?? 'Erro inesperado'),
-              context: {
-                funcionario: funcionarioBase.funcionario_id_rm,
-                etapa: 'processarTodos',
-              },
-            }),
-          });
-          continue;
-        }
-      }
-
-      // Atualiza status do funcionário base (linha do frontend)
-      // Regras:
-      // - se teveErro => ERRO_RESULTADOS
-      // - se não teveErro e teveProcessado => RESULTADOS_PROCESSADOS
-      // - se não teveErro e não processou nada (situação rara) => mantém PREVIA
-      if (teveErro) {
-        basesComErro.push(funcionarioBase.execucao_funcionario_base_id);
-      } else if (teveProcessado) {
-        basesOk.push(funcionarioBase.execucao_funcionario_base_id);
-      } else {
-        basesParcial.push(funcionarioBase.execucao_funcionario_base_id);
-      }
-    }
-
-    if (basesComErro.length > 0) {
-      await this.prisma.execucao_funcionario_base.updateMany({
-        where: { execucao_funcionario_base_id: { in: basesComErro } },
-        data: { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_RESULTADOS },
-      });
-    }
-    if (basesOk.length > 0) {
-      await this.prisma.execucao_funcionario_base.updateMany({
-        where: { execucao_funcionario_base_id: { in: basesOk } },
-        data: {
-          status: ExecucaoService.STATUS_FUNC_BASE.RESULTADOS_PROCESSADOS,
-        },
-      });
-    }
-    if (basesParcial.length > 0) {
-      await this.prisma.execucao_funcionario_base.updateMany({
-        where: { execucao_funcionario_base_id: { in: basesParcial } },
-        data: { status: ExecucaoService.STATUS_FUNC_BASE.RESULTADOS_PARCIAL },
-      });
-    }
-
-    return { status: true, message: 'Execucao processada com sucesso' };
+  async processarTodos(execucaoId: number, sessionId: string) {
+    const rows=await this.prisma.execucao_funcionario_base.findMany({where:{execucao_id:execucaoId}});
+    return this.processarValoresBatch(execucaoId,rows,sessionId);
   }
 
   async processarValoresBatch(
@@ -856,42 +689,39 @@ export class ExecucaoService {
       const variaveisFixas = this.getVariaveisFixas(execucao);
 
       // Carrega a memória somente para os exec_funcs impactados (para não depender do include do getExecucaoById)
-      const execFuncIds = (
-        await this.prisma.execucao_funcionario.findMany({
+      const execFuncIds: number[] = [];
+      const formulaIds = formulasAtivas.map((formula) => formula.formula_id);
+      for (const ids of chunks([...selectedBaseIds], 500)) {
+        const results = await this.prisma.execucao_funcionario.findMany({
           where: {
             execucao_id: execucaoId,
-            execucao_funcionario_base_id: {
-              in: basesSelecionadas.map((b) => b.execucao_funcionario_base_id),
-            },
-            formula_id: { in: formulasAtivas.map((f) => f.formula_id) },
+            execucao_funcionario_base_id: { in: ids },
+            formula_id: { in: formulaIds },
           },
           select: { execucao_funcionario_id: true },
-        })
-      ).map((r) => r.execucao_funcionario_id);
-
-      const memoriaRows = await this.prisma.memoria_calculo.findMany({
-        where: {
-          execucao_funcionario_id: { in: execFuncIds },
-        },
-        select: {
-          execucao_funcionario_id: true,
-          variavel_codigo: true,
-          valor: true,
-        },
-      });
+        });
+        execFuncIds.push(...results.map((result) => result.execucao_funcionario_id));
+      }
 
       const memoriaScopeByExecFuncId = new Map<
         number,
         Record<string, number>
       >();
-      for (const row of memoriaRows) {
-        const scope =
-          memoriaScopeByExecFuncId.get(row.execucao_funcionario_id) ?? {};
-        scope[row.variavel_codigo] = Number(row.valor);
-        memoriaScopeByExecFuncId.set(row.execucao_funcionario_id, scope);
+      for (const ids of chunks(execFuncIds, 500)) {
+        const memoriaRows = await this.prisma.memoria_calculo.findMany({
+          where: { execucao_funcionario_id: { in: ids } },
+          select: { execucao_funcionario_id: true, variavel_codigo: true, valor: true },
+        });
+        for (const row of memoriaRows) {
+          const scope = memoriaScopeByExecFuncId.get(row.execucao_funcionario_id) ?? {};
+          scope[row.variavel_codigo] = Number(row.valor);
+          memoriaScopeByExecFuncId.set(row.execucao_funcionario_id, scope);
+        }
       }
 
-      const eventCache = new Map<string, CalculationEvent>();
+      const eventCache = await this.operacao.preparePve2CalculationEvents(
+        formulasAtivas, execucao.filial.variavel, basesSelecionadas, sessionId,
+      );
       const falhasFormulaIds = new Set<number>();
       const basesComErro: number[] = [];
       const basesOk: number[] = [];
@@ -903,7 +733,7 @@ export class ExecucaoService {
         let teveErro = false;
         let teveProcessado = false;
 
-        for (const formula of formulasAtivas) {
+        for (const codigoRegra of transportRules(funcionarioBase)) for (const formula of formulasAtivas) {
           this.logger.log(
             `Processando fórmula ${formula.formula_id} para funcionário ${funcionarioBase.funcionario_id_rm}`,
           );
@@ -915,6 +745,7 @@ export class ExecucaoService {
                 funcionarioBase.execucao_funcionario_base_id,
               funcionarioIdRm: funcionarioBase.funcionario_id_rm,
               formulaId: formula.formula_id,
+              codigoRegra,
             });
 
             const codigosNecessarios = this.extractCodesFromExpressao(
@@ -1017,15 +848,15 @@ export class ExecucaoService {
         }
       }
 
-      if (basesComErro.length > 0) {
+      for (const ids of chunks(basesComErro, 500)) {
         await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesComErro } },
+          where: { execucao_funcionario_base_id: { in: ids } },
           data: { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_RESULTADOS },
         });
       }
-      if (basesOk.length > 0) {
+      for (const ids of chunks(basesOk, 500)) {
         await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesOk } },
+          where: { execucao_funcionario_base_id: { in: ids } },
           data: {
             status: ExecucaoService.STATUS_FUNC_BASE.RESULTADOS_PROCESSADOS,
           },
@@ -1043,266 +874,17 @@ export class ExecucaoService {
     }
   }
 
-  async processarVariaveis(
-    execucaoId: number,
-    sessionId: string,
-  ): Promise<{ status: boolean; message: string }> {
-    try {
-      const execucao = await this.getContextoVariaveis(execucaoId);
-      if (!execucao) throw new NotFoundException('Execucao not found');
-      if (
-        !execucao.execucao_funcionario_base ||
-        execucao.execucao_funcionario_base.length === 0
-      )
-        throw new NotFoundException('Execucao sem funcionarios');
-
-      const formulasAtivas = this.getFormulasAtivasDaExecucao(execucao);
-      const codigosPorFormula = new Map(
-        formulasAtivas.map((formula) => [
-          formula.formula_id, this.extractCodesFromExpressao(formula.expressao),
-        ]),
-      );
-      const variaveisFixas = this.getVariaveisFixas(execucao);
-
-      const variaveisAtivas = execucao.filial.variavel.filter((v) => v.ativa);
-      const variavelByCodigo = new Map(
-        variaveisAtivas.map((v) => [v.codigo, v]),
-      );
-
-      // Importante: evita duplicar se o usuário clicar em "Processar Variaveis" mais de uma vez.
-      await this.prisma.memoria_calculo.deleteMany({
-        where: {
-          execucao_funcionario: {
-            execucao_id: execucaoId,
-          },
-        },
-      });
-      //Além disso, temos que alterar o status dos funcionarios para PREVIA
-      await this.prisma.execucao_funcionario_base.updateMany({
-        where: { execucao_id: execucaoId },
-        data: { status: ExecucaoService.STATUS_FUNC_BASE.PREVIA },
-      });
-
-      const memoriaRows: Prisma.memoria_calculoCreateManyInput[] = [];
-
-      const chunk = <T>(arr: T[], size: number): T[][] => {
-        const out: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) {
-          out.push(arr.slice(i, i + size));
-        }
-        return out;
-      };
-
-      const basesOk: number[] = [];
-      const basesComErro: number[] = [];
-
-      await this.variableWorkers.forEach(execucao.execucao_funcionario_base, async (funcionarioBase) => {
-        try {
-          const scopeBase = await this.buildUserScopeBase({
-            execucao,
-            funcionarioBase,
-            variaveisFixas,
-          });
-
-          for (const formula of formulasAtivas) {
-            const execFunc = await this.ensureResultadoPorFormula({
-              execucaoId,
-              execucaoFuncionarioBaseId:
-                funcionarioBase.execucao_funcionario_base_id,
-              funcionarioIdRm: funcionarioBase.funcionario_id_rm,
-              formulaId: formula.formula_id,
-            });
-
-            const codigos = codigosPorFormula.get(formula.formula_id)!;
-            if (codigos.size === 0) continue;
-
-            for (const codigo of codigos) {
-              const variavel = variavelByCodigo.get(codigo);
-              if (!variavel) continue;
-
-              // Variável fixa (já deve estar no scopeBase)
-              if (
-                variavel.valor_fixo !== null &&
-                variavel.valor_fixo !== undefined &&
-                String(variavel.valor_fixo).trim() !== ''
-              ) {
-                const valor = Number(variavel.valor_fixo);
-                scopeBase[codigo] = valor;
-                memoriaRows.push({
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                  variavel_id: variavel.variavel_id,
-                  variavel_codigo: codigo,
-                  variavel_nome: variavel.nome,
-                  valor,
-                  origem: 'FIXA',
-                  detalhe: 'valor_fixo da filial',
-                });
-                continue;
-              }
-
-              // Variável SQL (por usuário) - TODO: encaixar consulta no RM
-              if (variavel.sql_codigo_rm) {
-                // Cache "do bem": se já calculamos essa variável para este funcionário, não chama RM de novo.
-                // Ainda assim, registramos na memória (por fórmula) usando o mesmo valor.
-                const cached = scopeBase[codigo];
-                if (cached !== undefined) {
-                  memoriaRows.push({
-                    execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                    variavel_id: variavel.variavel_id,
-                    variavel_codigo: codigo,
-                    variavel_nome: variavel.nome,
-                    valor: cached,
-                    origem: 'SQL',
-                    detalhe: `cache_sql da filial: ${variavel.sql_codigo_rm}`,
-                  });
-                  continue;
-                }
-
-                const resultadoConsulta =
-                  (await this.rmService.realizaConsultaSql(
-                    variavel.sql_codigo_rm,
-                    {
-                      //Tomando cuidado com as datas para o formato do RM(YYYY-MM-DD) sem horas
-                      DTINICIO: execucao.periodo.data_inicio
-                        .toISOString()
-                        .split('T')[0],
-                      DTFINAL: execucao.periodo.data_fim
-                        .toISOString()
-                        .split('T')[0],
-                      CODCOLIGADA: funcionarioBase.codcoligada,
-                      CODFILIAL: funcionarioBase.codfilial,
-                      CHAPA: funcionarioBase.funcionario_id_rm,
-                    },
-                    sessionId,
-                  )) as {
-                    status: boolean;
-                    message: string;
-                    data: [{ RESULTADO?: number }];
-                  };
-                if (!resultadoConsulta.status) {
-                  basesComErro.push(
-                    funcionarioBase.execucao_funcionario_base_id,
-                  );
-                  await this.prisma.log_execucao.create({
-                    data: {
-                      execucao_id: execucaoId,
-                      nivel: 'ERROR',
-                      mensagem: `Erro ao consultar variável ${codigo} (SQL ${variavel.sql_codigo_rm}) do funcionário ${funcionarioBase.funcionario_id_rm}: ${resultadoConsulta.message}`,
-                    },
-                  });
-                  await this.appendExecucaoQueueLastError({
-                    execucaoId,
-                    execucaoFuncionarioBaseId:
-                      funcionarioBase.execucao_funcionario_base_id,
-                    tipo: 'VARIAVEIS',
-                    line: formatQueueErrorLine({
-                      code: 'ERRO_VARIAVEIS',
-                      message: `Falha ao consultar variável no RM: ${resultadoConsulta.message}`,
-                      context: {
-                        funcionario: funcionarioBase.funcionario_id_rm,
-                        variavel: codigo,
-                        sql: variavel.sql_codigo_rm,
-                      },
-                    }),
-                  });
-                  continue;
-                }
-                const valorFinal = readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data);
-                if (!Number.isFinite(valorFinal)) {
-                  throw new Error(`Dado ausente ou inválido no RM: ${variavel.codigo} (${variavel.sql_codigo_rm}).`);
-                }
-
-                scopeBase[codigo] = valorFinal;
-                memoriaRows.push({
-                  execucao_funcionario_id: execFunc.execucao_funcionario_id,
-                  variavel_id: variavel.variavel_id,
-                  variavel_codigo: codigo,
-                  variavel_nome: variavel.nome,
-                  valor: valorFinal,
-                  origem: 'SQL',
-                  detalhe: `valor_sql da filial: ${variavel.sql_codigo_rm} - ${resultadoConsulta.message}`,
-                });
-                continue;
-              }
-              // Variável calculada/local (ex.: distância, tempo de casa, etc.) - TODO
-              continue;
-            }
-          }
-
-          basesOk.push(funcionarioBase.execucao_funcionario_base_id);
-        } catch (error) {
-          console.error(error);
-          basesComErro.push(funcionarioBase.execucao_funcionario_base_id);
-          await this.prisma.log_execucao.create({
-            data: {
-              execucao_id: execucaoId,
-              nivel: 'ERROR',
-              mensagem: `Erro ao processar variáveis do funcionário ${funcionarioBase.funcionario_id_rm}: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          });
-          await this.appendExecucaoQueueLastError({
-            execucaoId,
-            execucaoFuncionarioBaseId:
-              funcionarioBase.execucao_funcionario_base_id,
-            tipo: 'VARIAVEIS',
-            line: formatQueueErrorLine({
-              code: 'ERRO_DESCONHECIDO',
-              message:
-                error instanceof Error
-                  ? error.message
-                  : String(error ?? 'Erro inesperado'),
-              context: {
-                funcionario: funcionarioBase.funcionario_id_rm,
-                etapa: 'processarVariaveis',
-              },
-            }),
-          });
-          return;
-        }
-      });
-
-      // Persistência em lote (createMany) em chunks para não estourar payload/timeout
-      const CHUNK_SIZE = 1000;
-      for (const batch of chunk(memoriaRows, CHUNK_SIZE)) {
-        if (batch.length === 0) continue;
-        await this.prisma.memoria_calculo.createMany({
-          data: batch,
-        });
-      }
-
-      if (basesOk.length > 0) {
-        await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesOk } },
-          data: {
-            status: ExecucaoService.STATUS_FUNC_BASE.VARIAVEIS_PROCESSADAS,
-          },
-        });
-      }
-      if (basesComErro.length > 0) {
-        await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesComErro } },
-          data: { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_VARIAVEIS },
-        });
-      }
-
-      return {
-        status: true,
-        message: 'Processamento de variáveis concluído com sucesso',
-      };
-    } catch (error) {
-      console.error(error);
-      return {
-        status: false,
-        message: 'Erro ao processar variáveis',
-      };
-    }
+  async processarVariaveis(execucaoId: number, sessionId: string) {
+    const rows=await this.prisma.execucao_funcionario_base.findMany({where:{execucao_id:execucaoId}});
+    return this.processarVariaveisBatch(execucaoId,rows,sessionId);
   }
 
   async processarVariaveisBatch(
     execucaoId: number,
     rows: execucao_funcionario_base[],
     sessionId: string,
-  ): Promise<{ status: boolean; message: string; falhasSemRetryIds?: number[] }> {
+    claim?: { owner: string; queueIds: number[]; batchSize: number },
+  ): Promise<{ status: boolean; message: string; falhasSemRetryIds?: number[]; retryNotBefore?: number }> {
     const startedAt = process.hrtime.bigint();
     let cacheHits = 0;
     const timings = new Map<string, { chamadas: number; totalMs: number; maxMs: number }>();
@@ -1310,9 +892,12 @@ export class ExecucaoService {
       this.logger.log(
         `Processando variáveis batch para execução ${execucaoId} com ${rows.length} funcionários`,
       );
+      const selectedBaseIds = new Set(
+        (rows ?? []).map((r) => r.execucao_funcionario_base_id).filter(Boolean),
+      );
       const execucao = await this.getContextoVariaveis(
         execucaoId,
-        (rows ?? []).map((r) => r.execucao_funcionario_base_id).filter(Boolean),
+        selectedBaseIds.size <= 500 ? [...selectedBaseIds] : undefined,
       );
       if (!execucao) throw new NotFoundException('Execucao not found');
       if (
@@ -1325,9 +910,6 @@ export class ExecucaoService {
         return { status: false, message: 'Nenhum funcionário selecionado' };
       }
 
-      const selectedBaseIds = new Set(
-        rows.map((r) => r.execucao_funcionario_base_id).filter(Boolean),
-      );
       const basesSelecionadas = execucao.execucao_funcionario_base.filter((b) =>
         selectedBaseIds.has(b.execucao_funcionario_base_id),
       );
@@ -1350,43 +932,106 @@ export class ExecucaoService {
       const variavelByCodigo = new Map(
         variaveisAtivas.map((v) => [v.codigo, v]),
       );
+      const periodParams = {
+        DTINICIO: execucao.periodo.data_inicio.toISOString().slice(0, 10),
+        DTFINAL: execucao.periodo.data_fim.toISOString().slice(0, 10),
+      };
+      type RmResult = Awaited<ReturnType<RmService['realizaConsultaSql']>>;
+      const batchResults = new Map<string, Map<string, RmResult>>();
+      let retryNotBefore = 0;
+      const batchQueryFor = (query: string) =>
+        claim?.batchSize && query === pilotQuery ? pilotBatchQuery : query;
+      const batchKey = (query: string, limit?: number | null) =>
+        JSON.stringify([query, limit ?? null]);
+      const batchQueries = new Map<string, { query: string; limit: number | null }>();
+      for (const codes of codigosPorFormula.values()) {
+        for (const code of codes) {
+          const variable = variavelByCodigo.get(code);
+          const query = variable?.sql_codigo_rm;
+          if (!query || variaveisFixas[code] !== undefined) continue;
+          const target = batchQueryFor(query);
+          const limit = variable.chapas_por_chamada ?? null;
+          if (pve2QuerySpec(target)) batchQueries.set(batchKey(target, limit), { query: target, limit });
+          else if (target.startsWith('PVE2.')) throw new Error(`Sentença sem contrato de variáveis em lote: ${target}`);
+        }
+      }
+      for (const [key, { query, limit }] of batchQueries) {
+        const spec = pve2QuerySpec(query)!;
+        const values = new Map<string, RmResult>();
+        batchResults.set(key, values);
+        // A execução, competência, ambiente e sessão já são comuns ao claim.
+        const groups = new Map<string, Map<string, BatchEmployee>>();
+        for (const base of basesSelecionadas) {
+          const employee = { codcoligada: base.codcoligada, codfilial: base.codfilial, chapa: base.funcionario_id_rm };
+          if (!isBatchChapa(employee.chapa, spec.maxChapaLength)) continue;
+          const branchKey = JSON.stringify([employee.codcoligada, employee.codfilial]);
+          const group = groups.get(branchKey) ?? new Map<string, BatchEmployee>();
+          group.set(employeeKey(employee), employee);
+          groups.set(branchKey, group);
+        }
+        for (const group of groups.values()) {
+          const allEmployees = [...group.values()];
+          for (const employees of chunks(allEmployees, limit ?? allEmployees.length)) {
+            const { codcoligada, codfilial } = employees[0];
+            const began = process.hrtime.bigint();
+            const result = await this.rmService.realizaConsultaSql(query, pve2Parameters(query, {
+              ...periodParams,
+              CODCOLIGADA: codcoligada,
+              CODFILIAL: codfilial,
+              CHAPAS: employees.map((employee) => employee.chapa).join(','),
+            }), sessionId);
+            retryNotBefore = Math.max(retryNotBefore, result.http?.retryNotBefore ?? 0);
+            const requestedRules = basesSelecionadas
+              .filter(b => b.codcoligada === codcoligada && b.codfilial === codfilial && employees.some(e => e.chapa === b.funcionario_id_rm))
+              .flatMap(b => transportRules(b).map(regra => ({codcoligada,codfilial,chapa:b.funcionario_id_rm,regra})));
+            const byRule=ruleQueries.has(query);
+            const distributed = result.status ? (byRule ? distributeRuleResult(requestedRules,result.data,query) : distributePilotResult(employees, result.data, query)) : undefined;
+            this.logger.log('[variables.rm.batch] ' + JSON.stringify({
+              execucaoId, sentenca: query, codcoligada, codfilial, chapas: employees.length,
+              http: result.http?.status, duracaoMs: Number(process.hrtime.bigint() - began) / 1e6,
+              outside: distributed?.outside, malformed: distributed?.malformed,
+              duplicated: distributed?.duplicated, missing: distributed?.missing,
+            }));
+            for (const employee of (byRule ? requestedRules : employees)) {
+              const key = byRule ? ruleKey(employee,(employee as BatchEmployee & {regra:string}).regra) : employeeKey(employee);
+              const parsed = distributed?.results.get(key);
+              values.set(key, parsed === undefined ? result : 'error' in parsed
+                ? { status: false, data: null, message: parsed.error }
+                : { status: true, data: [{ RESULTADO: parsed.value }], message: `lote RM ${query}` });
+            }
+          }
+        }
+      }
 
       // Limpa a memória APENAS dos funcionários selecionados (e fórmulas ativas)
-      const execFuncsParaLimpar =
-        await this.prisma.execucao_funcionario.findMany({
+      const execFuncIdsParaLimpar: number[] = [];
+      const formulaIds = formulasAtivas.map((formula) => formula.formula_id);
+      for (const ids of chunks(basesSelecionadas.map((base) => base.execucao_funcionario_base_id), 500)) {
+        const execFuncsParaLimpar = await this.prisma.execucao_funcionario.findMany({
           where: {
             execucao_id: execucaoId,
-            execucao_funcionario_base_id: {
-              in: basesSelecionadas.map((b) => b.execucao_funcionario_base_id),
-            },
-            formula_id: { in: formulasAtivas.map((f) => f.formula_id) },
+            execucao_funcionario_base_id: { in: ids },
+            formula_id: { in: formulaIds },
           },
           select: { execucao_funcionario_id: true },
         });
-      const execFuncIdsParaLimpar = execFuncsParaLimpar.map(
-        (r) => r.execucao_funcionario_id,
-      );
-      if (execFuncIdsParaLimpar.length > 0) {
-        await this.prisma.memoria_calculo.deleteMany({
-          where: { execucao_funcionario_id: { in: execFuncIdsParaLimpar } },
-        });
+        execFuncIdsParaLimpar.push(...execFuncsParaLimpar.map((row) => row.execucao_funcionario_id));
       }
 
       // Reprocesso forçado (batch): volta status para PREVIA apenas dos selecionados
-      await this.prisma.execucao_funcionario_base.updateMany({
-        where: { execucao_funcionario_base_id: { in: [...selectedBaseIds] } },
-        data: { status: ExecucaoService.STATUS_FUNC_BASE.PREVIA },
-      });
+      if (!claim) {
+        for (const ids of chunks(execFuncIdsParaLimpar, 500)) {
+          await this.prisma.memoria_calculo.deleteMany({ where: { execucao_funcionario_id: { in: ids } } });
+        }
+        for (const ids of chunks([...selectedBaseIds], 500)) {
+          await this.prisma.execucao_funcionario_base.updateMany({
+            where: { execucao_funcionario_base_id: { in: ids } },
+            data: { status: ExecucaoService.STATUS_FUNC_BASE.PREVIA },
+          });
+        }
+      }
 
       const memoriaRows: Prisma.memoria_calculoCreateManyInput[] = [];
-
-      const chunk = <T>(arr: T[], size: number): T[][] => {
-        const out: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) {
-          out.push(arr.slice(i, i + size));
-        }
-        return out;
-      };
 
       const basesOk: number[] = [];
       const basesComErro: number[] = [];
@@ -1395,6 +1040,7 @@ export class ExecucaoService {
       await this.variableWorkers.forEach(basesSelecionadas, async (funcionarioBase) => {
         let funcionarioOk = true;
 
+        for (const codigoRegra of transportRules(funcionarioBase)) {
         const scopeBase = await this.buildUserScopeBase({
           execucao,
           funcionarioBase,
@@ -1408,6 +1054,7 @@ export class ExecucaoService {
               funcionarioBase.execucao_funcionario_base_id,
             funcionarioIdRm: funcionarioBase.funcionario_id_rm,
             formulaId: formula.formula_id,
+            codigoRegra,
           });
 
           const codigos = codigosPorFormula.get(formula.formula_id)!;
@@ -1457,39 +1104,34 @@ export class ExecucaoService {
               }
 
               const dataToConsulta = {
-                DTINICIO: execucao.periodo.data_inicio
-                  .toISOString()
-                  .split('T')[0],
-                DTFINAL: execucao.periodo.data_fim.toISOString().split('T')[0],
+                ...periodParams,
                 CODCOLIGADA: funcionarioBase.codcoligada,
                 CODFILIAL: funcionarioBase.codfilial,
                 CHAPA: funcionarioBase.funcionario_id_rm,
                 KM_MAX: execucao.filial.km_max.toNumber(),
               };
               const queryStartedAt = process.hrtime.bigint();
-              const resultadoConsulta =
-                (await this.rmService.realizaConsultaSql(
-                  variavel.sql_codigo_rm,
-                  dataToConsulta,
-                  sessionId,
-                )) as {
-                  status: boolean;
-                  message: string;
-                  data: [{ RESULTADO?: number }];
-                  http?: {
-                    status?: number;
-                    statusText?: string;
-                    url?: string;
-                    method?: string;
-                    axiosCode?: string;
-                  };
-                };
-              const elapsedMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
-              const timing = timings.get(variavel.sql_codigo_rm) ?? { chamadas: 0, totalMs: 0, maxMs: 0 };
-              timing.chamadas++;
-              timing.totalMs += elapsedMs;
-              timing.maxMs = Math.max(timing.maxMs, elapsedMs);
-              timings.set(variavel.sql_codigo_rm, timing);
+              const key = batchKey(batchQueryFor(variavel.sql_codigo_rm), variavel.chapas_por_chamada);
+              const grouped = batchResults.get(key)?.get((ruleQueries.has(variavel.sql_codigo_rm) ? (employee: BatchEmployee) => ruleKey(employee,codigoRegra) : employeeKey)({
+                codcoligada: dataToConsulta.CODCOLIGADA,
+                codfilial: dataToConsulta.CODFILIAL,
+                chapa: dataToConsulta.CHAPA,
+              }));
+              const invalidChapa = variavel.sql_codigo_rm.startsWith('PVE2.') && !grouped;
+              const resultadoConsulta = grouped ?? (invalidChapa
+                ? { status: true, message: 'Chapa fora do contrato da sentença em lote.', data: null }
+                : await this.rmService.realizaConsultaSql(
+                variavel.sql_codigo_rm, dataToConsulta, sessionId,
+              ));
+              retryNotBefore = Math.max(retryNotBefore, resultadoConsulta.http?.retryNotBefore ?? 0);
+              if (!grouped && !invalidChapa) {
+                const elapsedMs = Number(process.hrtime.bigint() - queryStartedAt) / 1e6;
+                const timing = timings.get(variavel.sql_codigo_rm) ?? { chamadas: 0, totalMs: 0, maxMs: 0 };
+                timing.chamadas++;
+                timing.totalMs += elapsedMs;
+                timing.maxMs = Math.max(timing.maxMs, elapsedMs);
+                timings.set(variavel.sql_codigo_rm, timing);
+              }
               const valorFinal = resultadoConsulta.status
                 ? readRmVariable(variavel.sql_codigo_rm, resultadoConsulta.data)
                 : NaN;
@@ -1497,7 +1139,7 @@ export class ExecucaoService {
                 funcionarioOk = false;
                 if (isRmVariableFailureFinal(resultadoConsulta))
                   falhasSemRetryIds.push(funcionarioBase.execucao_funcionario_base_id);
-                const reason = resultadoConsulta.status
+                const reason = invalidChapa ? resultadoConsulta.message : resultadoConsulta.status
                   ? 'Dado ausente ou inválido no RM.'
                   : resultadoConsulta.message;
                 const message = `${variavel.codigo} (${variavel.sql_codigo_rm}): ${reason}`;
@@ -1508,6 +1150,7 @@ export class ExecucaoService {
                   tipo: 'VARIAVEIS',
                   line: formatQueueErrorLine({ code: 'ERRO_VARIAVEIS', message }),
                   onlyProcessing: true,
+                  lockOwner: claim?.owner,
                 });
                 await this.prisma.log_execucao.create({
                   data: {
@@ -1538,6 +1181,7 @@ export class ExecucaoService {
           if (!funcionarioOk) break;
         }
 
+        }
         if (funcionarioOk) {
           basesOk.push(funcionarioBase.execucao_funcionario_base_id);
         } else {
@@ -1549,36 +1193,42 @@ export class ExecucaoService {
         `Inserção em lote de ${memoriaRows.length} memoria_calculo para execução ${execucaoId}`,
       );
 
-      // Inserção em lote
-      const CHUNK_SIZE = 1000;
-      for (const batch of chunk(memoriaRows, CHUNK_SIZE)) {
-        if (batch.length === 0) continue;
-        const created = await this.prisma.memoria_calculo.createMany({
-          data: batch,
-        });
-        this.logger.log(
-          `Inserção em lote de ${created.count} memoria_calculo para execução ${execucaoId} com sucesso`,
-        );
-      }
-
-      if (basesOk.length > 0) {
-        await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesOk } },
-          data: {
-            status: ExecucaoService.STATUS_FUNC_BASE.VARIAVEIS_PROCESSADAS,
-          },
-        });
-      }
-      if (basesComErro.length > 0) {
-        this.logger.log(
-          `Atualização de status para ERRO_VARIAVEIS para ${basesComErro.length} funcionários para execução ${execucaoId}`,
-        );
-        this.logger.error(`Bases com erro: ${basesComErro.join(', ')}`);
-        await this.prisma.execucao_funcionario_base.updateMany({
-          where: { execucao_funcionario_base_id: { in: basesComErro } },
-          data: { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_VARIAVEIS },
-        });
-      }
+      const persist = async (tx: Prisma.TransactionClient) => {
+        if (claim) {
+          const held = await tx.$executeRaw`UPDATE dbo.execucao_queue SET locked_at = SYSDATETIME()
+            WHERE queue_id IN (${sqlServerIds(claim.queueIds)}) AND lock_owner = ${claim.owner}
+              AND status = 'PROCESSANDO'`;
+          if (held !== claim.queueIds.length) throw new Error('Lote de variáveis perdeu o lock da fila.');
+          for (const ids of chunks(execFuncIdsParaLimpar, 500)) {
+            await tx.memoria_calculo.deleteMany({ where: { execucao_funcionario_id: { in: ids } } });
+          }
+        }
+        for (const batch of chunks(memoriaRows, 200)) {
+          await tx.memoria_calculo.createMany({ data: batch });
+        }
+        if (basesOk.length) {
+          for (const ids of chunks(basesOk, 500)) {
+            await tx.execucao_funcionario_base.updateMany({
+              where: { execucao_funcionario_base_id: { in: ids } },
+              data: { status: ExecucaoService.STATUS_FUNC_BASE.VARIAVEIS_PROCESSADAS },
+            });
+          }
+          if (claim) {
+            await tx.$executeRaw`UPDATE dbo.execucao_queue
+              SET status = 'CONCLUIDO', lock_owner = NULL, locked_at = NULL, updated_at = SYSDATETIME()
+              WHERE queue_id IN (${sqlServerIds(claim.queueIds)}) AND lock_owner = ${claim.owner}
+                AND status = 'PROCESSANDO' AND execucao_funcionario_base_id IN (${sqlServerIds(basesOk)})`;
+          }
+        }
+        for (const ids of chunks(basesComErro, 500)) {
+          await tx.execucao_funcionario_base.updateMany({
+            where: { execucao_funcionario_base_id: { in: ids } },
+            data: { status: ExecucaoService.STATUS_FUNC_BASE.ERRO_VARIAVEIS },
+          });
+        }
+      };
+      if (claim) await this.prisma.$transaction(persist, { timeout: 30_000 });
+      else await persist(this.prisma);
 
       this.logger.log('[variables.batch] ' + JSON.stringify({
         execucaoId, funcionarios: basesSelecionadas.length,
@@ -1593,6 +1243,7 @@ export class ExecucaoService {
         status: true,
         message: 'Processamento de variáveis (batch) concluído com sucesso',
         falhasSemRetryIds,
+        retryNotBefore,
       };
     } catch (error) {
       console.error(error);
@@ -1739,10 +1390,11 @@ export class ExecucaoService {
         }
 
         let teveErro = false;
-        for (const execFunc of execFuncs) {
+        const pendingGroups = await this.operacao.approvedSendGroups(base.execucao_funcionario_base_id);
+        for (const approved of pendingGroups) {
+          const execFunc = execFuncs.find(r => r.execucao_funcionario_id === approved.id)!;
           try {
-            if (execFunc.status === 'ENVIADO_RM' && execFunc.enviado_revisao === execFunc.revisao) continue;
-            const approved = await this.operacao.approvedEvent(base.execucao_funcionario_base_id, execFunc.execucao_funcionario_id, execFunc.revisao);
+            if (approved.enviado) continue;
             const codevento = approved.record.CODEVENTO;
             const tipo = approved.record.TIPO;
             const valor = execFunc.valor_final;
@@ -1766,7 +1418,7 @@ export class ExecucaoService {
 
             const record = approved.record;
 
-            if (!execFunc.metadados_rm_id) {
+            if (!approved.rmId) {
               await this.operacao.beginRmInsert(
                 execucaoId, execFunc.execucao_funcionario_id, execFunc.revisao, approved.usuarioId, record,
               );
@@ -1788,9 +1440,12 @@ export class ExecucaoService {
                 throw new Error(resp.message);
               }
               if (!resp.status || !insertedId)
-                throw new Error('Aguardando confirmação do RM. Verifique se o evento foi gravado antes de reenviar.');
+                throw new Error(
+                  (!resp.status ? resp.message : 'RM respondeu sem identificador do lançamento.') +
+                  ' Envio sem confirmação: verifique se o evento foi gravado no RM antes de reenviar.',
+                );
 
-              await this.operacao.receipt(execFunc.execucao_funcionario_id, execFunc.revisao, insertedId, approved.usuarioId, record);
+              await this.operacao.receiptGroup(approved.componentes, insertedId, approved.usuarioId, record);
             } else {
               this.logger.log(
                 `processarEnviarRmBatch: atualizando metadados para funcionário ${base.funcionario_id_rm}`,
@@ -1798,11 +1453,11 @@ export class ExecucaoService {
               await this.rmService.putRecordMetaData(
                 dataServer,
                 tableName,
-                Number(execFunc.metadados_rm_id),
+                Number(approved.rmId),
                 record,
                 sessionId,
               );
-              await this.operacao.receipt(execFunc.execucao_funcionario_id, execFunc.revisao, Number(execFunc.metadados_rm_id), approved.usuarioId, record);
+              await this.operacao.receiptGroup(approved.componentes, Number(approved.rmId), approved.usuarioId, record);
             }
           } catch (e) {
             this.logger.error(
@@ -2083,6 +1738,7 @@ export class ExecucaoService {
     tipo: 'VARIAVEIS' | 'VALORES' | 'ENVIAR_RM';
     line: string;
     onlyProcessing?: boolean;
+    lockOwner?: string;
   }): Promise<void> {
     const { execucaoId, execucaoFuncionarioBaseId, tipo, line } = params;
     if (!execucaoId || !execucaoFuncionarioBaseId || !tipo) return;
@@ -2098,7 +1754,8 @@ export class ExecucaoService {
       WHERE execucao_id = ${execucaoId}
         AND execucao_funcionario_base_id = ${execucaoFuncionarioBaseId}
         AND tipo = ${tipo}
-        ${params.onlyProcessing ? Prisma.sql`AND status = 'PROCESSANDO'` : Prisma.empty};
+        ${params.onlyProcessing ? Prisma.sql`AND status = 'PROCESSANDO'` : Prisma.empty}
+        ${params.lockOwner ? Prisma.sql`AND lock_owner = ${params.lockOwner}` : Prisma.empty};
     `,
     );
   }
@@ -2132,7 +1789,6 @@ export class ExecucaoService {
         const queued = await this.prisma.$transaction(async (tx) => {
           await this.lockCreation(tx, filialId, periodoId);
           const scope = { filial_id: filialId, periodo_id: periodoId };
-          if (await tx.execucao.findFirst({ where: scope, select: { execucao_id: true } })) return false;
           if (await tx.execucao_create_queue.findFirst({
             where: { ...scope, status: { in: ['PENDENTE', 'PROCESSANDO'] } },
             select: { queue_id: true },
@@ -2151,8 +1807,8 @@ export class ExecucaoService {
       return {
         status: inserted > 0,
         message: inserted === 0
-          ? 'As filiais selecionadas já têm execução ou estão na fila de criação.'
-          : `${inserted} execução(ões) agendada(s).${inserted < uniqueFiliais.length ? ' As demais filiais já têm execução ou estão na fila.' : ''}`,
+          ? 'As filiais selecionadas já estão na fila de criação.'
+          : `${inserted} execução(ões) agendada(s).${inserted < uniqueFiliais.length ? ' As demais filiais já estão na fila de criação.' : ''}`,
         data: { inserted, skipped: uniqueFiliais.length - inserted },
       };
     } catch (error) {

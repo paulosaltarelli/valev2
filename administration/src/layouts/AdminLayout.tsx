@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router";
 import { Footer } from "../shared/components/Footer";
 import { Navbar } from "../shared/components/Navbar";
 import { Sidebar } from "../shared/components/Sidebar";
+import { AssistenteVale } from "../components/Processamento/AssistenteVale";
 import { useThemeContext } from "../contexts/ThemeContext/useThemeContext";
 import "../components/Processamento/operacao.css";
 import "./visual.css";
@@ -29,6 +30,7 @@ export function AdminLayout() {
         </div>
         <Footer />
       </main>
+      <AssistenteVale />
     </section>
   );
 }

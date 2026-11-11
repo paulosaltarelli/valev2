@@ -5,14 +5,18 @@ import { ExecucaoService } from 'src/execucao/execucao.service';
 import { Prisma } from '@prisma/client';
 import { GeoService } from 'src/geo/geo.service';
 import { formatQueueErrorLine } from 'src/utils/queueError';
+import { randomUUID } from 'node:crypto';
+import { pilotBatchSize, pilotQuery, pve2VariableCodes } from 'src/execucao/rm-variable-batch';
+import { chunks, sqlServerIds } from 'src/utils/sql-server-ids';
 
 @Injectable()
 export class CronService {
   private tickRunning = false;
   private tickRunningGeo = false;
   private tickRunningCreateExecucao = false;
-  private readonly lockOwner = `api-${process.pid}`;
+  private readonly lockOwner = `api-${randomUUID()}`;
   private readonly batchSize = 25;
+  private readonly geoBatchSize = 49;
   private readonly createExecucaoBatchSize = 1;
   private readonly staleLockMinutes = 1; //tempo em minutos para destravar locks antigos
   private readonly maxAttempts = 2;
@@ -35,6 +39,7 @@ export class CronService {
       // 0) Destrava locks antigos (caso de crash/restart)
       await this.prisma.$executeRaw(
         Prisma.sql`
+        DECLARE @staleVariables TABLE (base_id INT, tipo VARCHAR(20), status VARCHAR(20));
         UPDATE q
         SET
           status = CASE WHEN e.controle_fila = 'CANCELADA' THEN 'CANCELADO'
@@ -54,10 +59,16 @@ export class CronService {
           lock_owner = NULL,
           locked_at = NULL,
           updated_at = SYSDATETIME()
+        OUTPUT inserted.execucao_funcionario_base_id, inserted.tipo, inserted.status INTO @staleVariables
         FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
         WHERE q.status = 'PROCESSANDO'
           AND locked_at IS NOT NULL
           AND locked_at < DATEADD(MINUTE, -${this.staleLockMinutes}, SYSDATETIME());
+
+        UPDATE b SET status = 'ERRO_VARIAVEIS'
+        FROM dbo.execucao_funcionario_base b
+        JOIN @staleVariables expired ON expired.base_id = b.execucao_funcionario_base_id
+        WHERE expired.tipo = 'VARIAVEIS' AND expired.status = 'ERRO';
 
         UPDATE q SET status = 'CANCELADO', next_run_at = NULL, updated_at = SYSDATETIME()
         FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
@@ -107,9 +118,9 @@ export class CronService {
     if (!execucaoId) return false;
 
     // 2) Decide qual tipo rodar agora (prioriza VARIAVEIS)
-    const tipoRows = await this.prisma.$queryRaw<Array<{ tipo: string }>>(
+    const tipoRows = await this.prisma.$queryRaw<Array<{ tipo: string; session_id: string | null }>>(
       Prisma.sql`
-      SELECT TOP 1 tipo
+      SELECT TOP 1 tipo, session_id
       FROM dbo.execucao_queue q
       WHERE q.execucao_id = ${execucaoId}
         AND ${runnable}
@@ -120,7 +131,7 @@ export class CronService {
           WHEN tipo = 'ENVIAR_RM' THEN 2
           ELSE 3
         END,
-        created_at ASC;
+        created_at ASC, queue_id ASC;
       `,
     );
     const tipo = tipoRows?.[0]?.tipo;
@@ -129,6 +140,11 @@ export class CronService {
       await this.syncExecucaoStatus(execucaoId);
       return false;
     }
+    const sessionId = tipoRows[0].session_id;
+    const sessionFilter = sessionId === null
+      ? Prisma.sql`AND q.session_id IS NULL`
+      : Prisma.sql`AND q.session_id = ${sessionId}`;
+    const pilotSize = tipo === 'VARIAVEIS' ? pilotBatchSize() : 0;
 
     // 3) Claim (lock) de um batch de itens para esta execução/tipo
     const claimed = await this.prisma.$transaction(async (tx) => {
@@ -136,6 +152,14 @@ export class CronService {
         Prisma.sql`SELECT controle_fila FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${execucaoId}`,
       );
       if (controle_fila) return [];
+      const sqlCodes = tipo === 'VARIAVEIS' || tipo === 'VALORES' ? await tx.variavel.findMany({
+        where: { ativa: true, filial: { execucao: { some: { execucao_id: execucaoId } } },
+          sql_codigo_rm: { in: pilotSize ? [...pve2VariableCodes, pilotQuery] : pve2VariableCodes } },
+        select: { sql_codigo_rm: true },
+      }) : [];
+      const hasPve2 = sqlCodes.some((v) => v.sql_codigo_rm?.startsWith('PVE2.'));
+      const claimLimit = hasPve2 ? Prisma.empty : Prisma.sql`TOP (${sqlCodes.length ? pilotSize : this.batchSize})`;
+      const claimOrder = hasPve2 ? Prisma.empty : Prisma.sql`ORDER BY q.created_at, q.queue_id`;
       const rows = await tx.$queryRaw<
       Array<{
         queue_id: number;
@@ -145,7 +169,14 @@ export class CronService {
       }>
     >(
       Prisma.sql`
-      UPDATE TOP (${Prisma.raw(String(this.batchSize))}) q
+      ;WITH ready AS (
+        SELECT ${claimLimit} q.queue_id
+        FROM dbo.execucao_queue q
+        WHERE q.execucao_id = ${execucaoId} AND q.tipo = ${tipo}
+          AND ${runnable} ${sessionFilter}
+        ${claimOrder}
+      )
+      UPDATE q
       SET
         status = 'PROCESSANDO',
         lock_owner = ${this.lockOwner},
@@ -153,20 +184,20 @@ export class CronService {
         updated_at = SYSDATETIME()
       OUTPUT inserted.queue_id, inserted.execucao_funcionario_base_id, inserted.session_id, inserted.revisao_payload
       FROM dbo.execucao_queue q
-      WHERE q.execucao_id = ${execucaoId}
-        AND q.tipo = ${tipo}
-        AND ${runnable};
+      JOIN ready ON ready.queue_id = q.queue_id;
       `,
     );
       if (tipo !== 'ENVIAR_RM') {
         const baseIds = rows.filter((row) => row.revisao_payload).map((row) => row.execucao_funcionario_base_id);
-        if (baseIds.length) await tx.execucao_funcionario.updateMany({
-          where: { execucao_funcionario_base_id: { in: baseIds } },
-          data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
-        });
+        for (const ids of chunks(baseIds, 500)) {
+          await tx.execucao_funcionario.updateMany({
+            where: { execucao_funcionario_base_id: { in: ids } },
+            data: { status: 'PREVIA', conferido_revisao: null, conferido_por: null, conferido_em: null },
+          });
+        }
       }
       return rows;
-    });
+    }, { timeout: 30_000 });
 
     if (!claimed || claimed.length === 0) {
       await this.syncExecucaoStatus(execucaoId);
@@ -174,10 +205,8 @@ export class CronService {
     }
 
     const baseIds = claimed.map((c) => c.execucao_funcionario_base_id);
-    const sessionId =
-      tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM'
-        ? (claimed.find((c) => c.session_id)?.session_id ?? null)
-        : null;
+    const queueIds = claimed.map((item) => item.queue_id);
+    const claimedIdsSql = sqlServerIds(queueIds);
 
     if ((tipo === 'VARIAVEIS' || tipo === 'ENVIAR_RM') && !sessionId) {
       // Sem session_id não dá pra chamar o RM; devolve itens para pendente com backoff.
@@ -204,49 +233,71 @@ export class CronService {
         WHERE execucao_id = ${execucaoId}
           AND tipo = ${tipo}
           AND status = 'PROCESSANDO'
-          AND lock_owner = ${this.lockOwner};
+          AND lock_owner = ${this.lockOwner}
+          AND queue_id IN (${claimedIdsSql});
         `,
       );
       await this.syncExecucaoStatus(execucaoId);
       return true;
     }
 
-    const rows = await this.prisma.execucao_funcionario_base.findMany({
-      where: { execucao_funcionario_base_id: { in: baseIds } },
-    });
+    const rows = (await Promise.all([...chunks(baseIds, 500)].map((ids) =>
+      this.prisma.execucao_funcionario_base.findMany({
+        where: { execucao_funcionario_base_id: { in: ids } },
+      }),
+    ))).flat();
 
     const errosSemRetry = new Set<number>();
+    let failedCall = false;
+    let retryNotBefore = 0;
     // 4) Processa (usa seus métodos batch existentes)
-    if (tipo === 'VARIAVEIS') {
-      const resultado = await this.execucaoService.processarVariaveisBatch(
-        execucaoId,
-        rows,
-        sessionId!,
-      );
-      for (const id of resultado.falhasSemRetryIds ?? []) errosSemRetry.add(id);
-    } else if (tipo === 'VALORES') {
-      const aptos = rows.filter((row) => {
-        if (row.status !== 'ERRO_VARIAVEIS') return true;
-        errosSemRetry.add(row.execucao_funcionario_base_id);
-        return false;
-      });
-      if (aptos.length) {
-        const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos, sessionId!);
-        for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
+    const heartbeat = tipo === 'VARIAVEIS' || tipo === 'VALORES'
+      ? setInterval(() => {
+        void this.prisma.$executeRaw`UPDATE dbo.execucao_queue SET locked_at = SYSDATETIME()
+          WHERE queue_id IN (${claimedIdsSql}) AND lock_owner = ${this.lockOwner}
+            AND status = 'PROCESSANDO'`
+          .catch((error) => console.error('[CronService] heartbeat do cálculo', error));
+      }, 20_000) : undefined;
+    try {
+      if (tipo === 'VARIAVEIS') {
+        const resultado = await this.execucaoService.processarVariaveisBatch(
+          execucaoId, rows, sessionId!, { owner: this.lockOwner, queueIds, batchSize: pilotSize },
+        );
+        failedCall = !resultado.status;
+        retryNotBefore = resultado.retryNotBefore ?? 0;
+        if (failedCall) {
+          await this.prisma.$executeRaw`UPDATE b SET status = 'ERRO_VARIAVEIS'
+            FROM dbo.execucao_funcionario_base b
+            JOIN dbo.execucao_queue q ON q.execucao_funcionario_base_id = b.execucao_funcionario_base_id
+            WHERE q.queue_id IN (${claimedIdsSql}) AND q.lock_owner = ${this.lockOwner}
+              AND q.status = 'PROCESSANDO'`;
+        }
+        for (const id of resultado.falhasSemRetryIds ?? []) errosSemRetry.add(id);
+      } else if (tipo === 'VALORES') {
+        const aptos = rows.filter((row) => {
+          if (row.status !== 'ERRO_VARIAVEIS') return true;
+          errosSemRetry.add(row.execucao_funcionario_base_id);
+          return false;
+        });
+        if (aptos.length) {
+          const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos, sessionId!);
+          failedCall = !resultado.status;
+          for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
+        }
+      } else if (tipo === 'ENVIAR_RM') {
+        await this.execucaoService.processarEnviarRmBatch(execucaoId, rows, sessionId!);
       }
-    } else if (tipo === 'ENVIAR_RM') {
-      await this.execucaoService.processarEnviarRmBatch(
-        execucaoId,
-        rows,
-        sessionId!,
-      );
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
     }
 
     // 5) Marca cada item como CONCLUIDO/ERRO baseado no status do funcionario_base
-    const refreshed = await this.prisma.execucao_funcionario_base.findMany({
-      where: { execucao_funcionario_base_id: { in: baseIds } },
-      select: { execucao_funcionario_base_id: true, status: true },
-    });
+    const refreshed = (await Promise.all([...chunks(baseIds, 500)].map((ids) =>
+      this.prisma.execucao_funcionario_base.findMany({
+        where: { execucao_funcionario_base_id: { in: ids } },
+        select: { execucao_funcionario_base_id: true, status: true },
+      }),
+    ))).flat();
 
     const okIds: number[] = [];
     const errIds: number[] = [];
@@ -254,7 +305,9 @@ export class CronService {
       if (errosSemRetry.has(r.execucao_funcionario_base_id)) {
         errIds.push(r.execucao_funcionario_base_id);
       } else if (tipo === 'VARIAVEIS') {
-        if (r.status === 'VARIAVEIS_PROCESSADAS') {
+        if (failedCall) {
+          errIds.push(r.execucao_funcionario_base_id);
+        } else if (r.status === 'VARIAVEIS_PROCESSADAS') {
           okIds.push(r.execucao_funcionario_base_id);
         } else if (r.status === 'ERRO_VARIAVEIS') {
           errIds.push(r.execucao_funcionario_base_id);
@@ -262,7 +315,7 @@ export class CronService {
       } else if (tipo === 'VALORES') {
         if (r.status === 'RESULTADOS_PROCESSADOS') {
           okIds.push(r.execucao_funcionario_base_id);
-        } else if (r.status === 'ERRO_RESULTADOS') {
+        } else if (failedCall || r.status === 'ERRO_RESULTADOS') {
           errIds.push(r.execucao_funcionario_base_id);
         }
       } else if (tipo === 'ENVIAR_RM') {
@@ -287,21 +340,26 @@ export class CronService {
           AND tipo = ${tipo}
           AND status = 'PROCESSANDO'
           AND lock_owner = ${this.lockOwner}
-          AND execucao_funcionario_base_id IN (${Prisma.join(okIds)});
+          AND queue_id IN (${claimedIdsSql})
+          AND execucao_funcionario_base_id IN (${sqlServerIds(okIds)});
         `,
       );
     }
 
     if (errIds.length > 0) {
-      const terminal = Prisma.sql`execucao_funcionario_base_id IN (${Prisma.join([...errosSemRetry, -1])}) OR tentativas + 1 >= ${this.maxAttempts}`;
+      const terminal = Prisma.sql`execucao_funcionario_base_id IN (${sqlServerIds(errosSemRetry)}) OR tentativas + 1 >= ${this.maxAttempts}`;
+      const retrySeconds = Math.min(2_147_483_647, Math.max(0, Math.ceil((retryNotBefore - Date.now()) / 1000)));
       await this.prisma.$executeRaw(
         Prisma.sql`
-        UPDATE dbo.execucao_queue
+        UPDATE q
         SET
-          status = CASE WHEN ${terminal} THEN 'ERRO' ELSE 'PENDENTE' END,
+          status = CASE WHEN e.controle_fila = 'CANCELADA' THEN 'CANCELADO'
+                        WHEN ${terminal} THEN 'ERRO' ELSE 'PENDENTE' END,
           tentativas = tentativas + 1,
           next_run_at = CASE
-            WHEN ${terminal} THEN NULL
+            WHEN e.controle_fila = 'CANCELADA' OR ${terminal} THEN NULL
+            WHEN ${retrySeconds} > 300 * (tentativas + 1)
+              THEN DATEADD(SECOND, ${retrySeconds}, SYSDATETIME())
             ELSE DATEADD(MINUTE, 5 * (tentativas + 1), SYSDATETIME())
           END,
           last_error = COALESCE(last_error, '') + '\n' + ${formatQueueErrorLine(
@@ -315,11 +373,13 @@ export class CronService {
           lock_owner = NULL,
           locked_at = NULL,
           updated_at = SYSDATETIME()
-        WHERE execucao_id = ${execucaoId}
+        FROM dbo.execucao_queue q JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+        WHERE q.execucao_id = ${execucaoId}
           AND tipo = ${tipo}
-          AND status = 'PROCESSANDO'
+          AND q.status = 'PROCESSANDO'
           AND lock_owner = ${this.lockOwner}
-          AND execucao_funcionario_base_id IN (${Prisma.join(errIds)});
+          AND queue_id IN (${claimedIdsSql})
+          AND execucao_funcionario_base_id IN (${sqlServerIds(errIds)});
         `,
       );
     }
@@ -390,7 +450,7 @@ export class CronService {
         }>
       >(
         Prisma.sql`
-        UPDATE TOP (${Prisma.raw(String(this.batchSize))}) q
+        UPDATE TOP (${Prisma.raw(String(this.geoBatchSize))}) q
         SET
           status = 'PROCESSANDO',
           lock_owner = ${this.lockOwner},
@@ -652,64 +712,14 @@ export class CronService {
             { periodo_id: item.periodo_id },
             item.usuario_execucao,
             item.session_id,
+            { queueId: item.queue_id, owner: this.lockOwner, autoProcessar: Boolean(item.processar_variaveis_valores) },
           );
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           result = { status: false, message: msg };
         }
 
-        const alreadyExists = typeof result?.data === 'object' && result.data !== null &&
-          'alreadyExists' in result.data && result.data.alreadyExists === true;
-        if (result?.status || alreadyExists) {
-          // Auto-enfileira VARIAVEIS + VALORES (todos) quando o flag estiver ligado
-          const shouldAutoEnqueue = !alreadyExists && Boolean(item.processar_variaveis_valores);
-          const createdId =
-            result &&
-            typeof result.data === 'object' &&
-            result.data !== null &&
-            'execucaoId' in result.data
-              ? (result.data as { execucaoId?: unknown }).execucaoId
-              : undefined;
-          const execucaoId = Number(createdId);
-          if (
-            shouldAutoEnqueue &&
-            Number.isFinite(execucaoId) &&
-            execucaoId > 0
-          ) {
-            const bases = await this.prisma.execucao_funcionario_base.findMany({
-              where: { execucao_id: execucaoId },
-              select: { execucao_funcionario_base_id: true },
-            });
-            const ids = bases.map((b) => b.execucao_funcionario_base_id);
-            if (ids.length > 0) {
-              // enfileira na ordem desejada (cron já prioriza VARIAVEIS antes)
-              await this.execucaoService.enqueueVariaveisBatch(
-                execucaoId,
-                ids,
-                item.session_id,
-              );
-              await this.execucaoService.enqueueValoresBatch(
-                execucaoId,
-                ids,
-                item.session_id,
-              );
-            }
-          }
-
-          await this.prisma.$executeRaw(
-            Prisma.sql`
-            UPDATE dbo.execucao_create_queue
-            SET
-              status = 'CONCLUIDO',
-              lock_owner = NULL,
-              locked_at = NULL,
-              updated_at = SYSDATETIME()
-            WHERE queue_id = ${item.queue_id}
-              AND status = 'PROCESSANDO'
-              AND lock_owner = ${this.lockOwner};
-            `,
-          );
-        } else {
+        if (!result?.status) {
           const errorMsg = result?.message ?? 'worker_error';
           const isNonRetryable =
             errorMsg.includes('Nenhum funcionário retornado pelo SQL RM') ||

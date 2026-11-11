@@ -3,6 +3,7 @@ import { analisarExpressao } from '../helpers/calculator/formula-expression';
 type Formula = { formula_id: number; expressao: string };
 type Result = {
   formula_id: number;
+  codigo_regra_rm?: string;
   formula_snapshot: string | null;
   status: string;
   valor_calculado: unknown;
@@ -26,20 +27,23 @@ export function operationProgress(
       }
     } catch { /* Legacy records can have no usable snapshot. */ }
   }
+  const rules=[...new Set(results.map(r=>r.codigo_regra_rm??""))];
+  if(!rules.length) rules.push("");
+  const ruleCode=(rule:string,code:string|number)=>rule ? rule+"|"+code : String(code);
   const registered = new Set(variableCodes);
   const expected = new Set<string>();
   for (const expression of expressions.values()) {
     for (const code of analisarExpressao(expression).codigos) {
-      if (registered.has(code)) expected.add(code);
+      if (registered.has(code)) for(const rule of rules) expected.add(ruleCode(rule,code));
     }
   }
   // Retain saved variables when a configuration changed after processing.
   const saved = new Set(savedCodes);
   for (const code of saved) expected.add(code);
-  const formulaIds = new Set([...expressions.keys(), ...results.map((r) => r.formula_id)]);
+  const formulaIds = new Set([...expressions.keys()].flatMap(id=>rules.map(rule=>ruleCode(rule,id))));
   const calculated = new Set(results.filter((r) =>
     ['PROCESSADO', 'ENVIADO_RM'].includes(r.status) && r.valor_calculado !== null &&
-    r.valor_calculado !== undefined).map((r) => r.formula_id));
+    r.valor_calculado !== undefined).map((r) => ruleCode(r.codigo_regra_rm??"",r.formula_id)));
   return {
     variaveisCalculadas: saved.size,
     variaveisPrevistas: expected.size,

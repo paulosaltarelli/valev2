@@ -13,14 +13,22 @@ export const money = (value: unknown) =>
         style: "currency",
         currency: "BRL",
       });
-export const dateTime = (value?: string | null) =>
+const formatDateTime = (value: string | null | undefined, timeZone: string) =>
   value
     ? new Date(value).toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
+        timeZone,
         dateStyle: "short",
         timeStyle: "short",
       })
     : "—";
+
+export const dateTime = (value?: string | null) =>
+  formatDateTime(value, "America/Sao_Paulo");
+
+// O SQL Server grava estes campos em hora local sem fuso. O driver
+// serializa a hora gravada com Z, então preservamos o relógio do banco.
+export const sqlLocalDateTime = (value?: string | null) =>
+  formatDateTime(value, "UTC");
 export const resultValue = (value: unknown, type?: string | null) => {
   if (type?.trim() !== "D" || value == null) return money(value);
   const days = Number(value);

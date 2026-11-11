@@ -13,13 +13,15 @@ type RmUserResponse = {
   data?: RmUserModel[];
 };
 
+const pve2ScheduleQueries = new Set(['PVE2.DIAS_TRABAL', 'PVE2.D.RECEB.PAS']);
+
 function joinUrl(base: string, path: string) {
   const b = base.endsWith('/') ? base : `${base}/`;
   const p = path.startsWith('/') ? path.slice(1) : path;
   return `${b}${p}`;
 }
 
-function extractAxiosResponseMessage(data: unknown): string | undefined {
+export function extractAxiosResponseMessage(data: unknown): string | undefined {
   if (!data) return undefined;
   if (typeof data === 'string') {
     const trimmed = data.trim();
@@ -47,6 +49,14 @@ function extractAxiosResponseMessage(data: unknown): string | undefined {
     if (typeof c === 'string' && c.trim().length) return c.trim();
   }
 
+  if (Array.isArray(obj.messages)) {
+    const messages = obj.messages.map(item => {
+      if (!item || typeof item !== 'object') return '';
+      return [item.detail, item.message, item.Message].find(v => typeof v === 'string' && v.trim()) ?? '';
+    }).filter(Boolean);
+    if (messages.length) return messages.join('; ');
+  }
+
   const nestedError = obj.error;
   if (nestedError && typeof nestedError === 'object') {
     const ne = nestedError as Record<string, unknown>;
@@ -63,6 +73,24 @@ function extractAxiosResponseMessage(data: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+// This RM rejection occurs before the class can be instantiated or a record persisted.
+// Do not classify generic HTTP 500s or transport timeouts as safe to retry.
+export function rmClassNotFound(dataServer: string, status: number | undefined, data: unknown): boolean {
+  if (status !== 500 || !data || typeof data !== 'object') return false;
+  const body = data as {data?:unknown;length?:unknown;messages?:Array<{code?:unknown;type?:unknown;detail?:unknown}>};
+  return body.data === null && body.length === 0 && Array.isArray(body.messages) && body.messages.length > 0 &&
+    body.messages.every(m => ['0004','0007'].includes(String(m?.code)) && m.type === 'error' &&
+      m.detail === 'Classe não encontrada: ' + dataServer);
+}
+
+export function extractRmApplicationError(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const messages=(data as {messages?:Array<{type?:unknown}>}).messages;
+  return Array.isArray(messages) && messages.some(m=>m?.type==='error')
+    ? extractAxiosResponseMessage(data) ?? 'RM retornou erro sem detalhe.'
+    : undefined;
 }
 
 @Injectable()
@@ -175,6 +203,7 @@ export class RmService {
       url?: string;
       method?: string;
       axiosCode?: string;
+      retryNotBefore?: number;
     };
   }> {
     try {
@@ -182,7 +211,10 @@ export class RmService {
       if (!rmBase) throw new Error('RM_NEW_API_URL not configured');
 
       //coloca a sentença, coligada 0 e codSistema na url: baseUrl + codSentenca + 0 + G
-      const baseUrl = `${rmBase}consultaSQLServer/RealizaConsulta/${codSentenca}/${process.env.RM_COLIGADA_GLOBAL}/${process.env.RM_COD_SISTEMA}`;
+      const statementCompany = codSentenca.startsWith('PVE2.')
+        ? process.env.RM_PVE2_COLIGADA ?? '1'
+        : process.env.RM_COLIGADA_GLOBAL;
+      const baseUrl = `${rmBase}consultaSQLServer/RealizaConsulta/${codSentenca}/${statementCompany}/${process.env.RM_COD_SISTEMA}`;
 
       //constroi a url com os parametros: baseUrl + ?parameters=paramKey1=paramVAlue1;paramKey2=paramValue2;...
       const parameters = this.buildRmParameters(params);
@@ -191,6 +223,8 @@ export class RmService {
 
       const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
       const response = await this.http.get<unknown>(url, {
+        timeout: pve2ScheduleQueries.has(codSentenca) ? 240_000
+          : codSentenca.startsWith('PVE2.') ? 90_000 : undefined,
         headers: {
           Authorization: authorization,
           Accept: 'application/json',
@@ -227,6 +261,7 @@ export class RmService {
             url: error.config?.url,
             method: error.config?.method,
             axiosCode: error.code,
+            retryNotBefore: error.response?.status === 429 ? this.traffic.retryNotBefore : undefined,
           },
         };
       }
@@ -365,6 +400,11 @@ export class RmService {
           Accept: 'application/json',
         },
       });
+      const applicationError = extractRmApplicationError(response.data);
+      if (applicationError) return {
+        status: false, message: 'RM recusou a gravação: ' + applicationError,
+        data: response.data, notSent: false,
+      };
       return {
         status: true,
         message: 'Record meta data saved successfully',
@@ -386,7 +426,7 @@ export class RmService {
             httpStatus ? ` (HTTP ${httpStatus})` : ''
           }: ${responseMsg ?? error.message ?? 'Erro desconhecido'}`,
           data: error.response?.data ?? {},
-          notSent: !dispatched || [401, 403, 429].includes(httpStatus ?? 0),
+          notSent: !dispatched || [401, 403, 429].includes(httpStatus ?? 0) || rmClassNotFound(dataServer, httpStatus, error.response?.data),
         };
       }
       return {
@@ -450,7 +490,14 @@ export class RmService {
         Authorization: authorization,
         Accept: 'application/json',
       },
+    }).catch((error: unknown) => {
+      if (!axios.isAxiosError(error)) throw error;
+      const detail=extractAxiosResponseMessage(error.response?.data) ?? error.message;
+      throw new Error('Erro ao atualizar metadados no RM' +
+        (error.response?.status ? ' (HTTP ' + error.response.status + ')' : '') + ': ' + detail);
     });
+    const applicationError=extractRmApplicationError(response.data);
+    if(applicationError) throw new Error('RM recusou a atualização: ' + applicationError);
     return {
       status: true,
       message: 'Record meta data put successfully',
