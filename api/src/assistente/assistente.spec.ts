@@ -248,6 +248,37 @@ describe('Assistente do Vale', () => {
       .expect(400);
   });
 
+  it('mostra a causa de créditos esgotados no teste administrativo', async () => {
+    prisma.usuario.findUnique.mockResolvedValueOnce({
+      ativo: true,
+      perfil: 'admin',
+    });
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: 'credit_balance_exhausted' } },
+          { status: 429 },
+        ),
+      );
+    try {
+      const resposta = await request(app.getHttpServer())
+        .post('/assistente/configuracao/testar')
+        .set('Cookie', cookie(20, 'teste-creditos'))
+        .send({
+          ativo: false,
+          modelo: 'claude-haiku-5-5',
+          provedorTeste: 'gpt-institucional',
+          gptModelo: 'gpt-5.4-mini',
+          gptChave: 'sk-proj-credencial-de-teste',
+        })
+        .expect(503);
+      expect(resposta.body.message).toContain('saldo de créditos');
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it('aplica as flags no chat e bloqueia GPT até o login pessoal estar disponível', async () => {
     const sessao = cookie(13, 'operador-provedores');
     const http = request(app.getHttpServer());

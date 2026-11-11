@@ -64,6 +64,11 @@ export async function selecionarConsulta(
     if (intents.includes(answer as Intent)) return answer as Intent;
   } catch (error) {
     if (error instanceof ForbiddenException) throw error;
+    if (
+      exigirRespostaDoProvedor &&
+      error instanceof ServiceUnavailableException
+    )
+      throw error;
     if (!exigirRespostaDoProvedor && local !== 'esclarecer') return local;
     throw new ServiceUnavailableException(
       'O provedor está indisponível. Selecione uma consulta sugerida.',
@@ -167,7 +172,7 @@ export async function consultarModelo(
     )
       throw error;
     throw new ServiceUnavailableException(
-      'Não foi possível obter uma resposta do provedor. Tente novamente.',
+      'O provedor está indisponível. Tente novamente.',
     );
   }
 }
