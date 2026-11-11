@@ -1051,10 +1051,35 @@ export class OperacaoService {
     });
   }
 
+  private async periodExecutionIds(periodoId: number) {
+    idsValidos([periodoId]);
+    const rows = await this.prisma.execucao.findMany({
+      where: { periodo_id: periodoId }, orderBy: { execucao_id: 'desc' },
+      distinct: ['filial_id'], select: { execucao_id: true, filial_id: true },
+    });
+    return rows.map(row => row.execucao_id);
+  }
+
+  async periodPendingScope(periodoId: number) {
+    return this.pendingScopeIds(await this.periodExecutionIds(periodoId), true);
+  }
+
+  async executePeriodPending(periodoId: number, etapa: Etapa, usuarioId: number, sessionId: string) {
+    if (!['VARIAVEIS', 'VALORES'].includes(etapa)) throw new BadRequestException('Escolha variáveis ou fórmulas.');
+    const execucaoIds = await this.periodExecutionIds(periodoId);
+    if (!execucaoIds.length) throw new BadRequestException('Nenhuma execução nesta competência.');
+    return this.execute({ etapa, execucaoIds, somentePendencias: true }, usuarioId, sessionId);
+  }
+
   async retryScope(execucaoId: number, pending = false) {
+    return this.pendingScopeIds([execucaoId], pending);
+  }
+
+  private async pendingScopeIds(execucaoIds: number[], pending: boolean) {
+    if (!execucaoIds.length) return { VARIAVEIS: { elegiveis: 0, bloqueados: 0, filiais: 0 }, VALORES: { elegiveis: 0, bloqueados: 0, filiais: 0 } };
     const counts = await Promise.all((['VARIAVEIS', 'VALORES'] as const).map(async etapa => {
-      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds: [execucaoId], ...(pending ? { somentePendencias: true } : { somenteErros: true }) }));
-      return [etapa, { elegiveis: items.filter(item => !item.reason).length, bloqueados: items.filter(item => item.reason).length }] as const;
+      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds, ...(pending ? { somentePendencias: true } : { somenteErros: true }) }));
+      return [etapa, { elegiveis: items.filter(item => !item.reason).length, bloqueados: items.filter(item => item.reason).length, filiais: new Set(items.filter(item => !item.reason).map(item => item.execucaoId)).size }] as const;
     }));
     return Object.fromEntries(counts);
   }

@@ -37,7 +37,7 @@ describe('Retentativa somente de falhas', () => {
     };
     db.$transaction = (fn: any) => fn(db);
     const service = new OperacaoService(db, {} as never);
-    expect(await service.retryScope(1)).toEqual({VARIAVEIS: {elegiveis: 1, bloqueados: 1}, VALORES: {elegiveis: 1, bloqueados: 0}});
+    expect(await service.retryScope(1)).toMatchObject({VARIAVEIS: {elegiveis: 1, bloqueados: 1}, VALORES: {elegiveis: 1, bloqueados: 0}});
     await service.execute({ etapa: 'VALORES', execucaoIds: [1], somenteErros: true }, 1, 'test');
     expect(db.execucao_queue.create).toHaveBeenCalledTimes(1);
     const inserted = db.execucao_queue.create.mock.calls[0][0].data;
@@ -119,7 +119,7 @@ describe('Pendências ainda não processadas', () => {
     const db: any = {execucao_funcionario_base: {findMany: jest.fn(async () => rows)}, execucao_queue: {findMany: jest.fn(async () => []), create: jest.fn()}, execucao: {updateMany: jest.fn()}, $queryRaw: jest.fn(async () => [{execucao_id: 1}])};
     db.$transaction = (fn: any) => fn(db);
     const service = new OperacaoService(db, {} as never);
-    expect(await service.retryScope(1, true)).toEqual({VARIAVEIS: {elegiveis: 1, bloqueados: 1}, VALORES: {elegiveis: 2, bloqueados: 0}});
+    expect(await service.retryScope(1, true)).toMatchObject({VARIAVEIS: {elegiveis: 1, bloqueados: 1}, VALORES: {elegiveis: 2, bloqueados: 0}});
     await service.execute({etapa: 'VALORES', execucaoIds: [1], somentePendencias: true}, 1, 'test');
     expect(db.execucao_queue.create.mock.calls.map((call: any[]) => call[0].data.execucao_funcionario_base_id)).toEqual([2, 3]);
     for (const [call] of db.execucao_queue.create.mock.calls) expect(JSON.parse(call.data.revisao_payload).somentePendencias).toBe(true);

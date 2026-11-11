@@ -133,6 +133,7 @@ export type ResultDetail = ResultRow & {
   }>;
 };
 export type OperationRequest = {
+  periodoId?: number;
   etapa: Etapa;
   execucaoIds: number[];
   baseIds?: number[];
@@ -167,7 +168,8 @@ export type OperationPreview = {
   }>;
 };
 export const OperacaoApi = {
-  retryScope: (id: number) => api.get(`/operacao/${id}/escopo-pendencias`) as Promise<Record<"VARIAVEIS" | "VALORES", { elegiveis: number; bloqueados: number }>>,
+  periodPendingScope: (id: number) => api.get(`/operacao/competencia/${id}/pendencias`) as Promise<Record<"VARIAVEIS" | "VALORES", { elegiveis: number; bloqueados: number; filiais: number }>>,
+  retryScope: (id: number) => api.get(`/operacao/${id}/escopo-pendencias`) as Promise<Record<"VARIAVEIS" | "VALORES", { elegiveis: number; bloqueados: number; filiais?: number }>>,
   employeeFailures: (id: number, base: number) => api.get(`/operacao/${id}/pessoas/${base}/falhas`) as Promise<Array<{ etapa: string; mensagens: string[]; atualizadoEm: string | null }>>,
   controlQueue: (id: number, action: QueueAction) =>
     api.post(`/operacao/${id}/fila/${action}`) as Promise<{ message: string }>,
@@ -185,7 +187,7 @@ export const OperacaoApi = {
       eligible: number;
       excluded: Record<string, number>;
     }>,
-  execute: (pedido: OperationRequest) => api.post("/operacao/executar", pedido) as Promise<{ status: boolean; message: string }>,
+  execute: (pedido: OperationRequest) => (pedido.periodoId ? api.post(`/operacao/competencia/${pedido.periodoId}/pendencias`, { etapa: pedido.etapa }) : api.post("/operacao/executar", pedido)) as Promise<{ status: boolean; message: string }>,
   summary: (periodo?: string) =>
     api.get(
       `/operacao${periodo ? `?periodo=${encodeURIComponent(periodo)}` : ""}`,

@@ -1,3 +1,4 @@
+import { RetryErrors } from "../../components/Processamento/RetryErrors";
 import { PageHeading } from "../../shared/components/PageHeading";
 import {
   useCallback,
@@ -253,6 +254,9 @@ export function ProcessamentoPage() {
         title="Processamentos"
         description="Acompanhe cada etapa e avance com o contexto da competência."
         actions={(
+          <>
+          {query.data?.periodo && <RetryErrors key={query.data.periodo.periodo_id} periodoId={query.data.periodo.periodo_id} competencia={query.data.periodo.competencia}
+            disabled={query.loading || Boolean(query.error) || command.busy || saving || queueSaving} onDone={query.refresh} onNotice={setNotice} />}
           <button
             className="btn btn-primary"
             disabled={!query.data?.periodo?.ativo || Boolean(query.error)}
@@ -260,6 +264,7 @@ export function ProcessamentoPage() {
           >
             Nova execução
           </button>
+          </>
         )}
       />
       <section className="op-context" aria-label="Contexto da operação">
