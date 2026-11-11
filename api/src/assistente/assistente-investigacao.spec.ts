@@ -210,31 +210,26 @@ it('pede apenas a identificação indispensável e não inventa causa para pesso
 
 it('lista o grupo capturado com banco e código e não envia nomes ou matrículas ao provedor', async () => {
   const { service, prisma } = preparar();
-  const fetchMock = jest
-    .spyOn(global, 'fetch')
-    .mockResolvedValueOnce(
-      Response.json({
-        output: [
-          {
-            type: 'message',
-            content: [
-              {
-                type: 'output_text',
-                text: JSON.stringify({
-                  casos: [
-                    {
-                      referencia: 'Caso 1',
-                      explicacao:
-                        'Evidência histórica: rejeição da calculadora. Limitação: causa atual não confirmada. Próximo passo: conferir o log na execução.',
-                    },
-                  ],
-                }),
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+    Response.json({
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: JSON.stringify({
+                casos: {
+                  'Caso 1':
+                    'Evidência histórica: rejeição da calculadora. Limitação: causa atual não confirmada. Próximo passo: conferir o log na execução.',
+                },
+              }),
+            },
+          ],
+        },
+      ],
+    }),
+  );
   try {
     const resposta = await service.responderGrupo(
       grupo,
@@ -297,30 +292,23 @@ it('não consulta dados de execuções que ficaram duplicadas após o panorama',
 
 it('não associa uma explicação do modelo a uma referência de pessoa inventada', async () => {
   const { service } = preparar();
-  const fetchMock = jest
-    .spyOn(global, 'fetch')
-    .mockResolvedValueOnce(
-      Response.json({
-        output: [
-          {
-            type: 'message',
-            content: [
-              {
-                type: 'output_text',
-                text: JSON.stringify({
-                  casos: [
-                    {
-                      referencia: 'Caso 999',
-                      explicacao: 'Causa falsa inventada',
-                    },
-                  ],
-                }),
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+    Response.json({
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: JSON.stringify({
+                casos: { 'Caso 999': 'Causa falsa inventada' },
+              }),
+            },
+          ],
+        },
+      ],
+    }),
+  );
   try {
     const result = await service.responderGrupo(
       grupo,
@@ -341,6 +329,101 @@ it('expõe somente categorias seguras de erro da calculadora', () => {
   );
   expect(erro?.evidencia).toContain('símbolo não definido: DIAS');
   expect(JSON.stringify(erro)).not.toContain('SEGREDO');
+});
+
+it('exige a cobertura de todos os casos no schema enviado ao GPT e mantém cada explicação na pessoa correspondente', async () => {
+  const outra = {
+    ...pessoa,
+    execucao_funcionario_base_id: 2,
+    funcionario_id_rm: '000124',
+    nome_funcionario: 'OUTRA PESSOA DE TESTE',
+  };
+  const { service } = preparar([pessoa, outra]);
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValueOnce(
+      Response.json({
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  casos: {
+                    'Caso 1': 'Orientação do primeiro caso.',
+                    'Caso 2': 'Orientação do segundo caso.',
+                  },
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  try {
+    const r = await service.responderGrupo(
+      { ...grupo, funcionarioBaseIds: [1, 2], total: 2 },
+      'gpt-institucional',
+      credencial,
+    );
+    expect(r.texto).not.toContain('síntese do provedor está indisponível');
+    expect(r.tabela?.linhas[0][7]).toContain('Orientação do primeiro caso.');
+    expect(r.tabela?.linhas[1][7]).toContain('Orientação do segundo caso.');
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.text.format.type).toBe('json_schema');
+    expect(body.text.format.strict).toBe(true);
+    expect(body.text.format.schema.properties.casos.required).toEqual([
+      'Caso 1',
+      'Caso 2',
+    ]);
+    expect(body.text.format.schema.properties.casos.additionalProperties).toBe(
+      false,
+    );
+    expect(body.store).toBe(false);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+it('não trata uma resposta sobre apenas uma pessoa como diagnóstico completo do grupo', async () => {
+  const outra = {
+    ...pessoa,
+    execucao_funcionario_base_id: 2,
+    funcionario_id_rm: '000124',
+  };
+  const { service } = preparar([pessoa, outra]);
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValueOnce(
+      Response.json({
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  casos: { 'Caso 1': 'Resposta incompleta.' },
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  try {
+    const r = await service.responderGrupo(
+      { ...grupo, funcionarioBaseIds: [1, 2], total: 2 },
+      'gpt-institucional',
+      credencial,
+    );
+    expect(r.texto).toContain('síntese do provedor está indisponível');
+    expect(r.tabela?.linhas).toHaveLength(2);
+    expect(JSON.stringify(r)).not.toContain('Resposta incompleta.');
+  } finally {
+    fetchMock.mockRestore();
+  }
 });
 
 it('não associa matrícula por prefixo e não expõe mensagens técnicas arbitrárias', () => {

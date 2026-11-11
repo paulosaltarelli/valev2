@@ -232,7 +232,18 @@ export class AssistenteInvestigacao {
           regrasFixas +
             '\n' +
             (contexto || promptSugerido) +
-            '\nExplique os funcionários do grupo anterior usando exclusivamente fatos e código anexados. Retorne somente JSON {"casos":[{"referencia":"Caso 1","explicacao":"Evidência: ... Limitação: ... Próximo passo: ..."}]}. Use cada referência exatamente uma vez; não invente outras. Até 700 caracteres por caso. Não há identificação pessoal nos dados enviados. Não peça filtros ou identificação já resolvidos. Não transcreva fórmula nem código. Filas são da execução inteira. Logs são históricos: não confirmam causa atual. Com memórias existentes, não conclua ausência total de memória. Resultado zero, ausência e erro são diferentes. Explique somente os casos lidos; para leituraFalhou declare indisponibilidade. Oriente pela tela Processamentos; não execute reprocessamento.',
+            '\nExplique os funcionários do grupo anterior usando exclusivamente fatos e código anexados. Retorne somente um objeto JSON no formato ' +
+            JSON.stringify({
+              casos: Object.fromEntries(
+                casos.map((c) => [
+                  c.referencia,
+                  'Evidência: ... Limitação: ... Próximo passo: ...',
+                ]),
+              ),
+            }) +
+            '. É obrigatório explicar TODOS os ' +
+            casos.length +
+            ' casos, cada referência exatamente uma vez; não invente outras nem agrupe pessoas em uma única resposta. Até 700 caracteres por caso. Não há identificação pessoal nos dados enviados. Não peça filtros ou identificação já resolvidos. Não transcreva fórmula nem código. Filas são da execução inteira. Logs são históricos: não confirmam causa atual. Com memórias existentes, não conclua ausência total de memória. Resultado zero, ausência e erro são diferentes. Explique somente os casos lidos; para leituraFalhou declare indisponibilidade. Oriente pela tela Processamentos; não execute reprocessamento.',
           JSON.stringify({
             casos: casos.map((c) => {
               const f = c.dados[fatosInternos];
@@ -278,25 +289,45 @@ export class AssistenteInvestigacao {
             codigo: codigo.trechos,
           }),
           4000,
+          {
+            nome: 'vale_ia_grupo_erros',
+            schema: {
+              type: 'object',
+              properties: {
+                casos: {
+                  type: 'object',
+                  properties: Object.fromEntries(
+                    casos.map((c) => [c.referencia, { type: 'string' }]),
+                  ),
+                  required: casos.map((c) => c.referencia),
+                  additionalProperties: false,
+                },
+              },
+              required: ['casos'],
+              additionalProperties: false,
+            },
+          },
         );
         const plano = JSON.parse(texto) as {
-          casos?: { referencia?: unknown; explicacao?: unknown }[];
+          casos?: Record<string, unknown>;
         };
         if (
           !plano ||
-          !Array.isArray(plano.casos) ||
-          plano.casos.length !== casos.length
+          !plano.casos ||
+          typeof plano.casos !== 'object' ||
+          Array.isArray(plano.casos) ||
+          Object.keys(plano.casos).length !== casos.length
         )
           throw new Error('Invalid group response');
-        for (const item of plano.casos) {
+        for (const [referencia, explicacao] of Object.entries(plano.casos)) {
           if (
-            typeof item.referencia !== 'string' ||
-            typeof item.explicacao !== 'string' ||
-            !casos.some((c) => c.referencia === item.referencia) ||
-            explicacoes.has(item.referencia)
+            typeof explicacao !== 'string' ||
+            !explicacao.trim() ||
+            !casos.some((c) => c.referencia === referencia) ||
+            explicacoes.has(referencia)
           )
             throw new Error('Invalid case reference');
-          explicacoes.set(item.referencia, item.explicacao.slice(0, 1600));
+          explicacoes.set(referencia, explicacao.slice(0, 1600));
         }
       } catch {
         explicacoes.clear();
