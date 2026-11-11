@@ -221,7 +221,7 @@ export class AssistenteInvestigacao {
     const fatos = {
       competencia: escopo.competencia,
       statusFuncionario: pessoa.status,
-      filas: filas.map((f) => ({ status: f.status, quantidade: f._count })),
+      filasDaExecucaoInteiraIncluindoHistorico: filas.map((f) => ({ status: f.status, quantidade: f._count })),
       formulasAtivasNoCadastroAtual: formulasAtivas,
       resultados: evidencias,
       logsHistoricos: historico,
@@ -240,7 +240,7 @@ export class AssistenteInvestigacao {
         regrasFixas +
           '\n' +
           (contexto || promptSugerido) +
-          '\nExplique este caso com as seções Evidências, Limitação ou hipótese e Próximo passo, em até 1800 caracteres. Use exclusivamente os fatos estruturados e o código fornecido. Não transcreva código nem sintaxe de fórmulas. Cite caminhos e linhas do código quando sustentarem a regra. Logs são históricos: não confirme causa atual apenas com eles. Memórias são por fórmula e podem repetir uma variável. Variáveis sem memória não provam falha na consulta ao RM. Cadastro atual não comprova vigência histórica. Não prometa reprocessamento nem gere arquivos ou links. Não afirme ausência de valores se houver resultados calculados. Identificação pessoal foi removida por minimização de dados.',
+          '\nExplique este caso em texto simples, sem Markdown, em no máximo 7 frases curtas, separando Evidências, Limitação ou hipótese e Próximo passo. A tabela já detalha as fórmulas: não repita todos os IDs e valores no texto. Use exclusivamente os fatos e o código fornecidos. Cite somente o caminho e a linha relevantes. Não transcreva código nem sintaxe de fórmulas. Filas são históricas e da execução inteira: não atribua suas falhas ao funcionário. O status ERRO do resultado por fórmula não equivale ao status da execução. Logs históricos não confirmam causa atual. Memórias são por fórmula e podem repetir variáveis. Variáveis sem memória não provam falha no RM. Cadastro atual não comprova vigência histórica. Oriente pela tela Processamentos, sem sugerir executar métodos internos ou pedir novamente filtros já resolvidos. Não prometa reprocessamento nem gere arquivos ou links. Não afirme ausência de valores se houver calculados. Identificação pessoal foi removida por minimização de dados.',
         JSON.stringify({ fatos, codigo: codigo.trechos }),
         1800,
       );
