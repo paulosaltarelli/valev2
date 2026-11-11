@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import { Modal } from "../../shared/components/VeModal";
 import { QueryNotice, dateTime, useOperationQuery } from "../../components/Processamento/OperationCommon";
+import { RetryErrors } from "../../components/Processamento/RetryErrors";
 import { PendingPeople } from "../../components/Processamento/PendingPeople";
 import { OperacaoApi, type OperationSummary } from "../../utils/api/operacaoApi";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
@@ -14,8 +15,9 @@ const percent = (value: number, total: number) => !total ? "—" : value > 0 && 
 const n = (value: number) => value.toLocaleString("pt-BR");
 const branchCount = (value: number) => `${value} ${value === 1 ? "filial" : "filiais"}`;
 
-function PeriodOverview({ summary, branches, creation }: { summary: OperationSummary; branches: Branch[]; creation: Creation }) {
+function PeriodOverview({ summary, branches, creation, onRefresh, disabled }: { summary: OperationSummary; branches: Branch[]; creation: Creation; onRefresh: () => void; disabled: boolean }) {
   const period = summary.periodo!;
+  const [notice, setNotice] = useState("");
   const all = summary.rows;
   const rows = all.filter(r => r.latest);
   const ids = rows.map(r => r.id).sort((a,b) => a-b).join(",");
@@ -55,9 +57,10 @@ function PeriodOverview({ summary, branches, creation }: { summary: OperationSum
   const queueText = processing ? `${n(processing)} em execução · ${n(queued)} na fila` : queued || preparing.length ? `${n(queued)} etapas na fila${preparing.length ? ` · ${preparing.length} filiais em preparação` : ""}` : stopped.length ? `${stopped.length} filas pausadas ou canceladas` : incomplete || errors || creationErrors.length ? "Fila parada com pendências" : "Sem tarefas na fila";
   const tile = (heading: string, text: string) => <><span><strong>{heading}</strong><small>{text}</small></span><span aria-hidden="true">↗</span></>;
   return <article className="vo-period" aria-label={`Competência ${period.competencia}`}>
-    <header className="vo-period-head"><div><h3>{period.competencia}</h3><span className={`ve-status-pill ve-status-${finished ? "success" : errors || creationErrors.length ? "danger" : "info"}`}>{finished ? "Enviado ao RM" : errors || creationErrors.length ? "Exige ação" : processing || queued || preparing.length ? "Em andamento" : !rows.length ? "Não iniciado" : incomplete ? "Cálculo pendente" : "Conferir envio"}</span></div><Link to={base} className="btn btn-outline-primary btn-sm">Abrir competência</Link></header>
+    <header className="vo-period-head"><div><h3>{period.competencia}</h3><span className={`ve-status-pill ve-status-${finished ? "success" : errors || creationErrors.length ? "danger" : "info"}`}>{finished ? "Enviado ao RM" : errors || creationErrors.length ? "Exige ação" : processing || queued || preparing.length ? "Em andamento" : !rows.length ? "Não iniciado" : incomplete ? "Cálculo pendente" : "Conferir envio"}</span></div><div className="vo-period-tools"><RetryErrors periodoId={period.periodo_id} competencia={period.competencia} disabled={disabled} onNotice={setNotice} onDone={() => { scope.refresh(); onRefresh(); }}/><Link to={base} className="btn btn-outline-primary btn-sm">Abrir competência</Link></div></header>
+    {notice && <div className="op-notice mt-3" role="status">{notice}<button type="button" className="op-dismiss" aria-label="Dispensar aviso" onClick={() => setNotice("")}>×</button></div>}
     <div className="vo-meters">
-      {([{label:"Variáveis",value:variables,total:variableTotal,kind:"variables"},{label:"Fórmulas",value:formulas,total:formulaTotal,kind:"formulas"},{label:"Enviados ao RM",value:sent,total,kind:"sent"}] as const).map(m => <button key={m.kind} type="button" className={`vo-meter ${m.kind === "sent" && total > 0 && sent === total ? "vo-sent" : ""}`} onClick={() => setDrill(m.kind)} aria-label={`${m.label}: ${n(m.value)} de ${n(m.total)}. Ver detalhes`}><span>{m.label}<strong>{percent(m.value,m.total)}</strong></span><small>{n(m.value)} / {n(m.total)}</small><progress max={m.total || 1} value={m.value}/></button>)}
+      {([{label:"Variáveis",value:variables,total:variableTotal,kind:"variables"},{label:"Fórmulas",value:formulas,total:formulaTotal,kind:"formulas"},{label:"Enviados ao RM",value:sent,total,kind:"sent"}] as const).map(m => <button key={m.kind} type="button" className={`vo-meter ${m.kind === "sent" && total > 0 && sent === total ? "vo-sent" : ""}`} onClick={() => setDrill(m.kind)} aria-label={`${m.label}: ${n(m.value)} de ${n(m.total)}. Ver detalhes`}><span className="vo-ring" aria-hidden="true"><svg viewBox="0 0 64 64"><circle className="vo-ring-track" cx="32" cy="32" r="27"/><circle className="vo-ring-value" cx="32" cy="32" r="27" pathLength="100" strokeDasharray={`${m.total ? Math.max(0,Math.min(100,m.value*100/m.total)) : 0} 100`}/></svg><strong>{percent(m.value,m.total)}</strong></span><span className="vo-meter-caption"><span>{m.label}</span><small>{n(m.value)} / {n(m.total)}</small></span></button>)}
     </div>
     {scope.loading && <p className="op-muted" role="status">Consultando ações disponíveis…</p>}
     <div className="vo-actions" aria-label={`Ações prioritárias de ${period.competencia}`}>
@@ -96,6 +99,6 @@ export function OperationalOverview({ activePeriodIds, branches }: { activePerio
     <div className="ve-operation-head"><div><h2 id="ve-operation-heading">Acompanhamento por competência</h2><small className="op-muted">{activePeriodIds.length} ativas{query.at ? ` · Atualizado ${dateTime(query.at)}` : ""}</small></div><button type="button" className="btn btn-outline-primary btn-sm" disabled={query.loading} onClick={query.refresh}>Atualizar</button></div>
     <QueryNotice {...query}/>
     {!activePeriodIds.length && <p>Nenhuma competência ativa.</p>}
-    <div className="vo-periods">{query.data?.summaries.filter(s => s.periodo?.ativo).map(s => <PeriodOverview key={s.periodo!.periodo_id} summary={s} branches={branches} creation={query.data!.creation}/>)}</div>
+    <div className="vo-periods">{query.data?.summaries.filter(s => s.periodo?.ativo).map(s => <PeriodOverview key={s.periodo!.periodo_id} summary={s} branches={branches} creation={query.data!.creation} onRefresh={query.refresh} disabled={query.loading || Boolean(query.error)}/>)}</div>
   </div></section>;
 }

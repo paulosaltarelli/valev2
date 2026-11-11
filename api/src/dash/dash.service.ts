@@ -1,3 +1,4 @@
+import { savedCalculationEventSql } from './saved-event.sql';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { analisarExpressao } from 'src/helpers/calculator/formula-expression';
@@ -544,7 +545,7 @@ export class DashService {
     >(
       Prisma.sql`
       SELECT TOP 12
-        COALESCE(NULLIF(LTRIM(RTRIM(fo.codEvento)), ''), fo.nome) as evento,
+        ${savedCalculationEventSql} as evento,
         CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
       FROM dbo.execucao_funcionario ef
@@ -558,7 +559,7 @@ export class DashService {
         AND b.status = 'ENVIADO_RM'
         AND fo.tipo = 'V'
         AND COALESCE(ef.valor_final, ef.valor_calculado) IS NOT NULL
-      GROUP BY COALESCE(NULLIF(LTRIM(RTRIM(fo.codEvento)), ''), fo.nome)
+      GROUP BY ${savedCalculationEventSql}
       ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
     `,
     );
@@ -1081,7 +1082,7 @@ export class DashService {
     >(
       Prisma.sql`
       SELECT TOP 12
-        COALESCE(NULLIF(LTRIM(RTRIM(fo.codEvento)), ''), fo.nome) as evento,
+        ${savedCalculationEventSql} as evento,
         CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
       FROM dbo.execucao_funcionario ef
@@ -1093,7 +1094,7 @@ export class DashService {
         AND b.status = 'ENVIADO_RM'
         AND fo.tipo = 'V'
         AND COALESCE(ef.valor_final, ef.valor_calculado) IS NOT NULL
-      GROUP BY COALESCE(NULLIF(LTRIM(RTRIM(fo.codEvento)), ''), fo.nome)
+      GROUP BY ${savedCalculationEventSql}
       ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
     `,
     );

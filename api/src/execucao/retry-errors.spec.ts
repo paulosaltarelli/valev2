@@ -12,7 +12,7 @@ const base = (id: number, status: string, results: any[] = [], queued = false) =
   execucao_funcionario_base_id: id, execucao_id: 1, status, nome_funcionario: 'Teste', funcionario_id_rm: '001',
   codcoligada: 1, codfilial: 1, execucao_funcionario: results,
   execucao_queue: queued ? [{ queue_id: 1 }] : [],
-  execucao: { filial: { nome: 'Teste' }, periodo: { competencia: '10/2026', data_inicio: new Date('2026-10-01Z'), data_fim: new Date('2026-10-31Z') } },
+  execucao: { filial: { nome: 'Teste', formula: [{ formula_id: 1 }, { formula_id: 2 }] }, periodo: { competencia: '10/2026', data_inicio: new Date('2026-10-01Z'), data_fim: new Date('2026-10-31Z') } },
 });
 
 describe('Retentativa somente de falhas', () => {

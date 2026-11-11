@@ -460,7 +460,7 @@ export function FinanceiroTimelineReport() {
                       </span>
                     </div>
 
-                    <div className="mt-3">
+                    <div className="mt-3" style={{ overflowX: "auto", maxWidth: "100%" }}>
                       <DataTable
                         className="table striped-table mb-0 w-100"
                         ref={timelineTableRef}
