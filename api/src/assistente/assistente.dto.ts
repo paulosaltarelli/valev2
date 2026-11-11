@@ -70,6 +70,10 @@ export class AssistenteTesteDto extends AssistenteConfiguracaoDto {
 const provedores = ['local', 'gpt', 'gpt-institucional', 'claude'] as const;
 
 export class AssistenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
+
   @IsString()
   @Length(1, 500)
   pergunta!: string;

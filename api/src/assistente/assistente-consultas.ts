@@ -73,6 +73,106 @@ export class AssistenteConsultas {
     private readonly relatorios: OperationalReportsService,
   ) {}
 
+  private async errosPorFilial(filtros: AssistenteDto, consultadoEm: string) {
+    const periodo = await this.prisma.periodo.findUnique({
+      where: { periodo_id: filtros.periodoId! },
+      select: { competencia: true },
+    });
+    if (!periodo) throw new BadRequestException('Competência não encontrada.');
+    const runs = await this.prisma.execucao.findMany({
+      where: {
+        periodo_id: filtros.periodoId!,
+        filial: filtros.filialId
+          ? { filial_id: filtros.filialId }
+          : { ativa: true },
+      },
+      select: {
+        execucao_id: true,
+        filial_id: true,
+        filial: { select: { nome: true } },
+      },
+      take: limite + 1,
+    });
+    if (runs.length > limite)
+      throw new BadRequestException(
+        'O recorte excedeu o limite de execuções. Refine a consulta.',
+      );
+    const ids = runs.map((r) => r.execucao_id);
+    const counts = ids.length
+      ? await this.prisma.execucao_funcionario_base.groupBy({
+          by: ['execucao_id'],
+          where: {
+            execucao_id: { in: ids },
+            OR: [
+              { status: { startsWith: 'ERRO_' } },
+              {
+                execucao_funcionario: {
+                  some: { status: 'ERRO', execucao_id: { in: ids } },
+                },
+              },
+            ],
+          },
+          _count: true,
+        })
+      : [];
+    const grupos = new Map<number, typeof runs>();
+    for (const run of runs)
+      grupos.set(run.filial_id, [...(grupos.get(run.filial_id) ?? []), run]);
+    let total = 0,
+      duplicadas = 0;
+    const rows: Cell[][] = [];
+    for (const filiaisRuns of grupos.values()) {
+      const run = filiaisRuns[0];
+      if (filiaisRuns.length > 1) {
+        duplicadas++;
+        rows.push([
+          run.filial.nome,
+          filiaisRuns.map((r) => r.execucao_id).join(', '),
+          null,
+          'Execuções duplicadas — contagem não consolidada',
+        ]);
+        continue;
+      }
+      const quantidade =
+        counts.find((c) => c.execucao_id === run.execucao_id)?._count ?? 0;
+      total += quantidade;
+      if (quantidade)
+        rows.push([
+          run.filial.nome,
+          run.execucao_id,
+          quantidade,
+          'Erro registrado na base ou em resultado por fórmula',
+        ]);
+    }
+    return {
+      texto:
+        (total
+          ? `Sim. Há ${total} registro(s) de funcionário com erro em ${rows.filter((r) => r[2] !== null).length} filial(is).`
+          : 'Não há funcionário com erro registrado nas execuções sem duplicidade deste recorte.') +
+        (duplicadas
+          ? ` ${duplicadas} filial(is) têm execuções duplicadas e não foram consolidadas.`
+          : ''),
+      competencia: periodo.competencia,
+      filial: filtros.filialId
+        ? (runs[0]?.filial.nome ?? 'Filial selecionada')
+        : 'Todas as filiais ativas',
+      consultadoEm,
+      fonte: 'Banco do Vale · estados atuais de funcionários e resultados',
+      detalhes:
+        'A contagem considera cada registro de funcionário na execução uma vez, mesmo com várias fórmulas em erro. Usa status ERRO_* da base ou resultado em ERRO, sem transformar prévia, ausência de cálculo ou valor zero em erro. Logs históricos e filas antigas não definem esta contagem. Uma mesma pessoa pode ter registros em filiais diferentes. Duplicidades são apresentadas sem escolha silenciosa de execução.',
+      tabela: tabela(
+        [
+          'Filial',
+          'Execução',
+          'Registros de funcionário com erro',
+          'Evidência',
+        ],
+        rows,
+      ),
+      links: [{ texto: 'Processamentos', url: '/processamento' }],
+    };
+  }
+
   async consultar(intent: Intent, filtros: AssistenteDto, perfil: string) {
     const consultadoEm = new Date().toISOString();
     if (intent === 'ajuda') {
@@ -97,6 +197,8 @@ export class AssistenteConsultas {
       };
     if (!filtros.periodoId)
       return { texto: 'Selecione uma competência para consultar os dados.' };
+    if (intent === 'erros' && !filtros.matricula)
+      return this.errosPorFilial(filtros, consultadoEm);
     if (!filtros.filialId && intent !== 'pendencias')
       return { texto: 'Selecione uma filial para esta consulta.' };
     if (intent === 'formulas' && perfil !== 'admin') {

@@ -14,7 +14,7 @@ import type { Periodo } from "../../models/PeriodoModel";
 import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
-import { contextoDaPergunta } from "./contextoDaPergunta";
+import { contextoDaPergunta, respostaTodasFiliais } from "./contextoDaPergunta";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
@@ -254,15 +254,18 @@ export function AssistenteVale() {
     )?.nome;
     const completouPergunta =
       pendente &&
-      nomeFilial &&
-      pedido
-        .replace(/^filial\s+(?:de\s+)?/i, "")
-        .replace(/[.!?]+$/, "")
-        .localeCompare(nomeFilial.replace(/^filial\s+/i, ""), "pt-BR", {
-          sensitivity: "base",
-        }) === 0;
+      (respostaTodasFiliais(pedido) ||
+        (nomeFilial &&
+          pedido
+            .replace(/^filial\s+(?:de\s+)?/i, "")
+            .replace(/[.!?]+$/, "")
+            .localeCompare(nomeFilial.replace(/^filial\s+/i, ""), "pt-BR", {
+              sensitivity: "base",
+            }) === 0));
     const textoConsulta = completouPergunta
-      ? pendente.texto + " · " + pedido
+      ? pendente.texto +
+        " · " +
+        (respostaTodasFiliais(pedido) ? "todas as filiais" : pedido)
       : pedido;
     const consultaEfetiva = completouPergunta ? pendente.consulta : consulta;
     const { aviso, ...filtros } = contextoDaPergunta(

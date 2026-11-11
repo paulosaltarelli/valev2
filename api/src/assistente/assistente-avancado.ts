@@ -64,6 +64,32 @@ function lerJson(texto: string): unknown {
   }
 }
 
+// A continuação de escopo é resolvida no servidor, inclusive após reabrir o chat.
+export function retomarTodasFiliais(
+  input: AssistenteDto,
+  historico: { pergunta: string; resposta: string }[],
+): AssistenteDto {
+  const somenteEscopo = /^(?:todas(?: as filiais)?|todas elas|geral)[.!?\s]*$/i;
+  if (
+    !somenteEscopo.test(input.pergunta.trim()) ||
+    !/qual filial|selecione (?:uma |a )?filial/i.test(
+      historico.at(-1)?.resposta ?? '',
+    )
+  )
+    return input;
+  const anterior = [...historico]
+    .reverse()
+    .find((t) => !somenteEscopo.test(t.pergunta.trim()));
+  return anterior
+    ? {
+        ...input,
+        pergunta: anterior.pergunta.slice(0, 470) + ' · todas as filiais',
+        filialId: undefined,
+        todasFiliais: true,
+      }
+    : input;
+}
+
 @Injectable()
 export class AssistenteAvancado {
   constructor(
@@ -87,6 +113,7 @@ export class AssistenteAvancado {
     historico: { pergunta: string; resposta: string }[],
     usuarioId?: number,
   ): Promise<ResultadoAssistente> {
+    input = retomarTodasFiliais(input, historico);
     const regras =
       regrasFixas +
       '\n\nContexto administrativo:\n' +
@@ -109,12 +136,17 @@ export class AssistenteAvancado {
         `\nPlaneje uma única ação. Retorne somente JSON, sem Markdown.
 Formato {"acao":"consulta|sql|conhecimento|investigar","consulta":"${intents.join('|')}","periodoId":numero_ou_null,"filialId":numero_ou_null,"titulo":"título curto"}. Para investigar, acrescente "funcionario":"nome ou matrícula citado na pergunta" quando disponível. Não invente identificação.
 Use investigar para explicar por que um funcionário teve problema, ficou sem valores, teve falhas ou não foi calculado. Esta ferramenta consulta banco, memórias, erros e código em conjunto. Não troque a investigação por uma resposta genérica de conhecimento.
+Perguntas como “tem funcionário com erro?” ou “há funcionários com problemas?” usam consulta erros, em todas as filiais quando a tela não seleciona uma. Não peça filial para esse panorama. “Todas” em resposta a uma pergunta de filial mantém a pergunta original e a competência e abrange todas as filiais.
 Use conhecimento para dúvidas sobre telas, regras, estrutura e processos. Use consulta para pendências, evidências de erro, memórias e comparações que já tenham um serviço pertinente. Use sql para perguntas sobre valores, totais, rankings, descontos, relatórios, dashboards e consultas personalizadas: a próxima ferramenta construirá e executará um SELECT validado sobre dados reais.
 Os campos periodoId e filialId devem usar IDs da lista fornecida. Null em filialId significa todas as filiais ativas. Use a competência e a filial do contexto quando a pergunta não as mudar. Se perguntar quais filiais têm pendências, use pendencias e filialId null. Se perguntar qual filial teve maior ou menor valor, ou um ranking de filiais, use sql e filialId null, mesmo que a tela atual tenha uma filial selecionada. Mês 10 significa outubro do ano do contexto, e deve selecionar a competência ativa correspondente.
 Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e fórmula), variaveis (memórias de cálculo e variáveis), erros (evidências e situações), comparacao (competência anterior, com regras históricas), financeiro (relatório financeiro existente), km (distâncias), formulas (cadastro, só admin). Não troque ausência de suporte por uma consulta de assunto diferente.`,
       JSON.stringify({
         pergunta: input.pergunta,
-        contexto: { periodoId: input.periodoId, filialId: input.filialId },
+        contexto: {
+          periodoId: input.periodoId,
+          filialId: input.filialId,
+          todasFiliais: input.todasFiliais,
+        },
         periodos: periodos.map((p) => ({
           id: p.periodo_id,
           competencia: p.competencia,
@@ -136,12 +168,30 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
     )
       throw new ServiceUnavailableException('O plano retornado é inválido.');
 
+    const perguntaNormalizada = input.pergunta
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase();
+    const panoramaErros =
+      !input.matricula &&
+      !plano.funcionario &&
+      /funcionar|colaborador/.test(perguntaNormalizada) &&
+      /erro|falh|problema/.test(perguntaNormalizada) &&
+      /\b(?:tem|ha|existe|existem|quais|quantos|liste|listar|mostre|mostrar)\b/.test(
+        perguntaNormalizada,
+      ) &&
+      !/por que|porque|\bpq\b/.test(perguntaNormalizada);
+    if (panoramaErros) {
+      plano.acao = 'consulta';
+      plano.consulta = 'erros';
+    }
     const investigar =
-      plano.acao === 'investigar' ||
-      (/funcion[aá]rio|colaborador/i.test(input.pergunta) &&
-        /por qu[eê]|\bpq\b|problema|sem valor|n[aã]o (?:vieram|teve|calcul)/i.test(
-          input.pergunta,
-        ));
+      !panoramaErros &&
+      (plano.acao === 'investigar' ||
+        (/funcion[aá]rio|colaborador/i.test(input.pergunta) &&
+          /por qu[eê]|\bpq\b|problema|sem valor|n[aã]o (?:vieram|teve|calcul)/i.test(
+            input.pergunta,
+          )));
     if (plano.acao === 'conhecimento' && !investigar) {
       const texto = await consultarModelo(
         provedor,
@@ -175,10 +225,6 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       throw new BadRequestException(
         'Não há competência ativa compatível com a consulta.',
       );
-    const perguntaNormalizada = input.pergunta
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase();
     const comparaFiliais =
       /\bqual(?:is)?\s+(?:a\s+|as\s+)?filia(?:l|is)\b/.test(
         perguntaNormalizada,
@@ -186,8 +232,18 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       /\b(?:ranking|compar\w*)\s+(?:de\s+|entre\s+|das\s+)?filiais\b/.test(
         perguntaNormalizada,
       );
+    const panoramaSemRecorte =
+      panoramaErros &&
+      !input.filialId &&
+      /^(?:tem|ha|existe|existem|quais|quantos)\s+(?:(?:alguns?|algumas?|os|as)\s+)?(?:funcionarios?|colaboradores?)\s+(?:com|em)\s+(?:erros?|falhas?|problemas?)(?:\s+(?:nesta|nessa|na)\s+competencia)?[\s?!.]*$/.test(
+        perguntaNormalizada,
+      );
     const filialId =
-      comparaFiliais || plano.filialId === null
+      input.todasFiliais ||
+      panoramaSemRecorte ||
+      /\btodas (?:as )?filiais\b/.test(perguntaNormalizada) ||
+      comparaFiliais ||
+      plano.filialId === null
         ? undefined
         : (plano.filialId ?? input.filialId);
     if (filialId && !filiais.some((f) => f.filial_id === filialId))
