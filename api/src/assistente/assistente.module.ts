@@ -39,8 +39,13 @@ import { AssistenteConhecimento } from './assistente-conhecimento';
 import { promptSugerido } from './assistente-prompt';
 import { AssistenteSql } from './assistente-sql';
 import { AssistenteInvestigacao } from './assistente-investigacao';
+import {
+  contextoConsulta,
+  type ResultadoAssistente,
+  type TurnoAssistente,
+} from './assistente-tipos';
 
-type Turno = { pergunta: string; resposta: string; em: string };
+type Turno = TurnoAssistente & { em: string };
 const ttl = 30 * 60_000;
 
 @Injectable()
@@ -174,7 +179,9 @@ export class AssistenteController {
           ),
         },
       ],
-      historico: this.sessoes.ler(usuario.chave),
+      historico: this.sessoes
+        .ler(usuario.chave)
+        .map(({ pergunta, resposta, em }) => ({ pergunta, resposta, em })),
     };
   }
 
@@ -390,6 +397,7 @@ export class AssistenteController {
         this.sessoes.gravar(usuario.chave, {
           pergunta: input.pergunta,
           resposta: resultado.texto.slice(0, 4000),
+          contexto: resultado[contextoConsulta],
           em: new Date().toISOString(),
         });
         return resultado;
@@ -410,7 +418,7 @@ export class AssistenteController {
             'Remova a matrícula para consultar indicadores do conjunto de funcionários.',
         };
       }
-      const resultado = await this.consultas.consultar(
+      const resultado: ResultadoAssistente = await this.consultas.consultar(
         intent,
         input,
         usuario.perfil,
@@ -418,6 +426,7 @@ export class AssistenteController {
       this.sessoes.gravar(usuario.chave, {
         pergunta: input.pergunta,
         resposta: resultado.texto,
+        contexto: resultado[contextoConsulta],
         em: new Date().toISOString(),
       });
       return resultado;

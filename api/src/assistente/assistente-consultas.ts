@@ -5,9 +5,24 @@ import { lerSnapshotFormula } from '../dash/operational-reports';
 import { ExecucaoService } from '../execucao/execucao.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssistenteDto, Intent } from './assistente.dto';
+import { contextoConsulta, type ResultadoAssistente } from './assistente-tipos';
 
 type Cell = string | number | null;
 const limite = 2000;
+
+function filtroFuncionariosComErro(execucaoIds: number[]) {
+  return {
+    execucao_id: { in: execucaoIds },
+    OR: [
+      { status: { startsWith: 'ERRO_' } },
+      {
+        execucao_funcionario: {
+          some: { status: 'ERRO', execucao_id: { in: execucaoIds } },
+        },
+      },
+    ],
+  };
+}
 
 function tabela(colunas: string[], dados: Cell[][]) {
   return {
@@ -73,7 +88,10 @@ export class AssistenteConsultas {
     private readonly relatorios: OperationalReportsService,
   ) {}
 
-  private async errosPorFilial(filtros: AssistenteDto, consultadoEm: string) {
+  private async errosPorFilial(
+    filtros: AssistenteDto,
+    consultadoEm: string,
+  ): Promise<ResultadoAssistente> {
     const periodo = await this.prisma.periodo.findUnique({
       where: { periodo_id: filtros.periodoId! },
       select: { competencia: true },
@@ -101,17 +119,7 @@ export class AssistenteConsultas {
     const counts = ids.length
       ? await this.prisma.execucao_funcionario_base.groupBy({
           by: ['execucao_id'],
-          where: {
-            execucao_id: { in: ids },
-            OR: [
-              { status: { startsWith: 'ERRO_' } },
-              {
-                execucao_funcionario: {
-                  some: { status: 'ERRO', execucao_id: { in: ids } },
-                },
-              },
-            ],
-          },
+          where: filtroFuncionariosComErro(ids),
           _count: true,
         })
       : [];
@@ -144,7 +152,35 @@ export class AssistenteConsultas {
           'Erro registrado na base ou em resultado por fórmula',
         ]);
     }
+    const execucaoIds = [...grupos.values()]
+      .filter((g) => g.length === 1)
+      .map((g) => g[0].execucao_id);
+    const cohort = execucaoIds.length
+      ? await this.prisma.execucao_funcionario_base.findMany({
+          where: filtroFuncionariosComErro(execucaoIds),
+          select: { execucao_funcionario_base_id: true },
+          orderBy: { execucao_funcionario_base_id: 'asc' },
+          take: 101,
+        })
+      : [];
+    const filial = filtros.filialId
+      ? (runs[0]?.filial.nome ?? 'Filial selecionada')
+      : 'Todas as filiais ativas';
     return {
+      [contextoConsulta]: {
+        tipo: 'funcionarios_com_erro',
+        periodoId: filtros.periodoId!,
+        competencia: periodo.competencia,
+        filialId: filtros.filialId,
+        filial,
+        execucaoIds,
+        funcionarioBaseIds: cohort
+          .slice(0, 100)
+          .map((p) => p.execucao_funcionario_base_id),
+        total,
+        parcial: cohort.length > 100 || cohort.length !== total,
+        capturadoEm: consultadoEm,
+      },
       texto:
         (total
           ? `Sim. Há ${total} registro(s) de funcionário com erro em ${rows.filter((r) => r[2] !== null).length} filial(is).`
@@ -153,9 +189,7 @@ export class AssistenteConsultas {
           ? ` ${duplicadas} filial(is) têm execuções duplicadas e não foram consolidadas.`
           : ''),
       competencia: periodo.competencia,
-      filial: filtros.filialId
-        ? (runs[0]?.filial.nome ?? 'Filial selecionada')
-        : 'Todas as filiais ativas',
+      filial,
       consultadoEm,
       fonte: 'Banco do Vale · estados atuais de funcionários e resultados',
       detalhes:

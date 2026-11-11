@@ -19,6 +19,12 @@ it('consulta erros em todas as filiais e evidencia duplicidades sem consolidá-l
       ]),
     },
     execucao_funcionario_base: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { execucao_funcionario_base_id: 910001 },
+          { execucao_funcionario_base_id: 910002 },
+        ]),
       groupBy: jest.fn().mockResolvedValue([
         { execucao_id: 1, _count: 2 },
         { execucao_id: 2, _count: 9 },
@@ -71,13 +77,11 @@ it('recupera a pergunta original após o loop antigo de respostas “todas”', 
 
 it('resolve panorama e continuação sem pedir filtro, mesmo se o modelo sugerir uma filial', async () => {
   const consultas = {
-    consultar: jest
-      .fn()
-      .mockResolvedValue({
-        texto: 'Sim. Há 2 registros com erro.',
-        competencia: '10/2026',
-        filial: 'Todas as filiais ativas',
-      }),
+    consultar: jest.fn().mockResolvedValue({
+      texto: 'Sim. Há 2 registros com erro.',
+      competencia: '10/2026',
+      filial: 'Todas as filiais ativas',
+    }),
   };
   const relatorios = {
     options: async () => ({
@@ -85,29 +89,27 @@ it('resolve panorama e continuação sem pedir filtro, mesmo se o modelo sugerir
       filiais: [{ filial_id: 9, nome: 'Alfa', ativa: true }],
     }),
   };
-  const fetchMock = jest
-    .spyOn(global, 'fetch')
-    .mockImplementation(async () =>
-      Response.json({
-        output: [
-          {
-            type: 'message',
-            content: [
-              {
-                type: 'output_text',
-                text: JSON.stringify({
-                  acao: 'investigar',
-                  consulta: 'erros',
-                  periodoId: 7,
-                  filialId: 9,
-                  titulo: 'Erros',
-                }),
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () =>
+    Response.json({
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: JSON.stringify({
+                acao: 'investigar',
+                consulta: 'erros',
+                periodoId: 7,
+                filialId: 9,
+                titulo: 'Erros',
+              }),
+            },
+          ],
+        },
+      ],
+    }),
+  );
   try {
     const service = new AssistenteAvancado(
       consultas as unknown as AssistenteConsultas,

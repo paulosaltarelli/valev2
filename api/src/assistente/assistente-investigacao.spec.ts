@@ -4,9 +4,21 @@ import {
 } from './assistente-investigacao';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AssistenteConhecimento } from './assistente-conhecimento';
+import type { ContextoErros } from './assistente-tipos';
 
 const contexto = { periodoId: 7, competencia: '10/2026', filialId: 9 };
 const credencial = { modelo: 'gpt-5.4-mini', chave: 'teste' };
+const grupo: ContextoErros = {
+  tipo: 'funcionarios_com_erro',
+  periodoId: 7,
+  competencia: '10/2026',
+  filial: 'Todas as filiais ativas',
+  execucaoIds: [44],
+  funcionarioBaseIds: [1],
+  total: 1,
+  parcial: false,
+  capturadoEm: '2026-11-11T12:00:00Z',
+};
 const pessoa = {
   execucao_funcionario_base_id: 1,
   funcionario_id_rm: '000123',
@@ -20,10 +32,15 @@ const pessoa = {
 };
 function preparar(candidatos = [pessoa]) {
   const prisma = {
+    periodo: { findUnique: jest.fn().mockResolvedValue({ ativo: true }) },
     execucao_funcionario_base: {
       findMany: jest.fn().mockResolvedValue(candidatos),
     },
-    execucao: { findMany: jest.fn().mockResolvedValue([{ execucao_id: 44 }]) },
+    execucao: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ execucao_id: 44, filial_id: 9 }]),
+    },
     execucao_funcionario: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -51,15 +68,13 @@ function preparar(candidatos = [pessoa]) {
       ]),
     },
     log_execucao: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            mensagem:
-              'Erro ao calcular fórmula 1 para funcionário 000123: password=SEGREDO_NAO_EXPORTAR',
-            data_log: new Date('2026-11-01T12:00:00Z'),
-          },
-        ]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          mensagem:
+            'Erro ao calcular fórmula 1 para funcionário 000123: password=SEGREDO_NAO_EXPORTAR',
+          data_log: new Date('2026-11-01T12:00:00Z'),
+        },
+      ]),
     },
     execucao_queue: {
       groupBy: jest.fn().mockResolvedValue([{ status: 'ERRO', _count: 1 }]),
@@ -90,23 +105,21 @@ function preparar(candidatos = [pessoa]) {
 
 it('distingue erro, ausência e zero e cruza fatos do banco com código sem enviar identificação pessoal ou log bruto', async () => {
   const { prisma, service } = preparar();
-  const fetchMock = jest
-    .spyOn(global, 'fetch')
-    .mockResolvedValueOnce(
-      Response.json({
-        output: [
-          {
-            type: 'message',
-            content: [
-              {
-                type: 'output_text',
-                text: 'Evidências: há resultados parciais. Limitação: log histórico. Próximo passo: conferir a execução.',
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce(
+    Response.json({
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: 'Evidências: há resultados parciais. Limitação: log histórico. Próximo passo: conferir a execução.',
+            },
+          ],
+        },
+      ],
+    }),
+  );
   try {
     const resposta = await service.responder(
       '000123',
@@ -193,6 +206,141 @@ it('pede apenas a identificação indispensável e não inventa causa para pesso
       )
     ).texto,
   ).toContain('não confirma falha na importação');
+});
+
+it('lista o grupo capturado com banco e código e não envia nomes ou matrículas ao provedor', async () => {
+  const { service, prisma } = preparar();
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValueOnce(
+      Response.json({
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  casos: [
+                    {
+                      referencia: 'Caso 1',
+                      explicacao:
+                        'Evidência histórica: rejeição da calculadora. Limitação: causa atual não confirmada. Próximo passo: conferir o log na execução.',
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  try {
+    const resposta = await service.responderGrupo(
+      grupo,
+      'gpt-institucional',
+      credencial,
+    );
+    expect(prisma.execucao_funcionario_base.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          execucao_id: { in: [44] },
+          execucao_funcionario_base_id: { in: [1] },
+        },
+      }),
+    );
+    expect(resposta.competencia).toBe('10/2026');
+    expect(resposta.filial).toBe('Todas as filiais ativas');
+    expect(resposta.tabela?.linhas[0].slice(0, 7)).toEqual([
+      '000123',
+      'PESSOA DE TESTE',
+      'Filial de teste',
+      44,
+      'ERRO_RESULTADOS',
+      1,
+      1,
+    ]);
+    expect(resposta.tabela?.linhas[0][7]).toContain('rejeição da calculadora');
+    expect(resposta.tabela?.parcial).toBe(false);
+    expect(resposta.fonte).toContain('execucao.service.ts');
+    const enviado = String(fetchMock.mock.calls[0][1]?.body);
+    expect(enviado).not.toContain('PESSOA DE TESTE');
+    expect(enviado).not.toContain('000123');
+    expect(enviado).not.toContain('SEGREDO_NAO_EXPORTAR');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+it('não consulta dados de execuções que ficaram duplicadas após o panorama', async () => {
+  const { service, prisma } = preparar();
+  prisma.execucao.findMany.mockResolvedValue([
+    { execucao_id: 44, filial_id: 9 },
+    { execucao_id: 45, filial_id: 9 },
+  ]);
+  prisma.execucao_funcionario_base.findMany.mockResolvedValue([]);
+  const result = await service.responderGrupo(
+    grupo,
+    'gpt-institucional',
+    credencial,
+  );
+  expect(prisma.execucao_funcionario_base.findMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({ execucao_id: { in: [] } }),
+    }),
+  );
+  expect(result.tabela?.linhas).toHaveLength(0);
+  expect(result.tabela?.parcial).toBe(true);
+  expect(prisma.execucao_funcionario.findMany).not.toHaveBeenCalled();
+});
+
+it('não associa uma explicação do modelo a uma referência de pessoa inventada', async () => {
+  const { service } = preparar();
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValueOnce(
+      Response.json({
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  casos: [
+                    {
+                      referencia: 'Caso 999',
+                      explicacao: 'Causa falsa inventada',
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  try {
+    const result = await service.responderGrupo(
+      grupo,
+      'gpt-institucional',
+      credencial,
+    );
+    expect(result.texto).toContain('síntese do provedor está indisponível');
+    expect(JSON.stringify(result)).not.toContain('Causa falsa inventada');
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
+
+it('expõe somente categorias seguras de erro da calculadora', () => {
+  const erro = resumirLogInvestigacao(
+    'Erro ao calcular fórmula 3 para funcionário 000123: Erro ao calcular fórmula: Undefined symbol DIAS. password=SEGREDO',
+    '000123',
+  );
+  expect(erro?.evidencia).toContain('símbolo não definido: DIAS');
+  expect(JSON.stringify(erro)).not.toContain('SEGREDO');
 });
 
 it('não associa matrícula por prefixo e não expõe mensagens técnicas arbitrárias', () => {

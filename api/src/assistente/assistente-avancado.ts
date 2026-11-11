@@ -20,7 +20,7 @@ import { AssistenteConsultas } from './assistente-consultas';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { consultarModelo } from './assistente-intencao';
 import { promptSugerido, regrasFixas } from './assistente-prompt';
-import type { ResultadoAssistente } from './assistente-tipos';
+import type { ResultadoAssistente, TurnoAssistente } from './assistente-tipos';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { AssistenteSql } from './assistente-sql';
 import { AssistenteInvestigacao } from './assistente-investigacao';
@@ -110,7 +110,7 @@ export class AssistenteAvancado {
     provedor: 'claude' | 'gpt-institucional',
     credencial: { modelo: string; chave: string },
     contexto: string | null | undefined,
-    historico: { pergunta: string; resposta: string }[],
+    historico: TurnoAssistente[],
     usuarioId?: number,
   ): Promise<ResultadoAssistente> {
     input = retomarTodasFiliais(input, historico);
@@ -121,6 +121,28 @@ export class AssistenteAvancado {
     const opcoes = await this.relatorios.options();
     const periodos = opcoes.periodos.filter((p) => p.ativo);
     const filiais = opcoes.filiais.filter((f) => f.ativa);
+    const grupoAnterior = historico.at(-1)?.contexto;
+    const continuacao = input.pergunta
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase();
+    if (
+      grupoAnterior?.tipo === 'funcionarios_com_erro' &&
+      /\b(?:eles|elas|esses|essas|estes|estas)\b/.test(continuacao) &&
+      /\b(?:quais|quem|liste|listar|mostre|mostrar|erro|erros|falha|falhas)\b|por que|porque/.test(
+        continuacao,
+      ) &&
+      !/\b\d{1,2}\/\d{4}\b|\b(?:outra|nova) (?:filial|competencia)\b|\b(?:competencia|mes|periodo) (?:anterior|seguinte|passad[oa]|proxim[oa])\b/.test(
+        continuacao,
+      )
+    ) {
+      return this.investigacao.responderGrupo(
+        grupoAnterior,
+        provedor,
+        credencial,
+        contexto,
+      );
+    }
     const memoria = historico.slice(-3).map((turno) => ({
       pergunta: turno.pergunta.slice(0, 500),
       resposta: turno.resposta.slice(0, 800),

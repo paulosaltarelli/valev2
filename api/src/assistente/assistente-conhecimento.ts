@@ -47,6 +47,10 @@ export class AssistenteConhecimento {
   investigacao() {
     const alvos = [
       [
+        'api/src/helpers/calculator/calculator.service.ts',
+        'A fórmula deve retornar um número finito',
+      ],
+      [
         'api/src/execucao/execucao.service.ts',
         'Sem memoria_calculo para fórmula',
       ],
