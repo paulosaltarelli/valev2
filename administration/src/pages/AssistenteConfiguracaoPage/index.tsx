@@ -38,6 +38,14 @@ type Configuracao = {
   gptCredencialConfigurada: boolean;
   modelo: string;
   credencialConfigurada: boolean;
+  contexto: string;
+  promptSugerido: string;
+  conhecimento: {
+    arquivos: number;
+    frontend: boolean;
+    revisao: string | null;
+    atualizadoEm: string | null;
+  };
 };
 
 export function AssistenteConfiguracaoPage() {
@@ -96,6 +104,7 @@ export function AssistenteConfiguracaoPage() {
             ...dados,
             gptAtivo: config.gptAtivo,
             gptInstitucionalAtivo: config.gptInstitucionalAtivo,
+            contexto: config.contexto,
           },
         );
         setConfig(data);
@@ -139,6 +148,43 @@ export function AssistenteConfiguracaoPage() {
         {!config && !erro && <p role="status">Carregando configuração…</p>}
         {config && (
           <Form onSubmit={salvar}>
+            <fieldset disabled={Boolean(acao)}>
+              <h2>Contexto de atuação</h2>
+              <Form.Group controlId="vale-ia-contexto" className="mb-3">
+                <Form.Label>Orientações para o assistente</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={12}
+                  required
+                  maxLength={24000}
+                  value={config.contexto}
+                  onChange={(event) =>
+                    setConfig({ ...config, contexto: event.target.value })
+                  }
+                />
+                <Form.Text>
+                  Descreva objetivos, vocabulário, processos e formato das
+                  respostas. Evite senhas, chaves e dados pessoais. As
+                  orientações complementam as permissões e regras de consulta do
+                  Vale.
+                </Form.Text>
+              </Form.Group>
+              <Button
+                type="button"
+                variant="outline-secondary"
+                className="mb-3"
+                onClick={() =>
+                  setConfig({ ...config, contexto: config.promptSugerido })
+                }
+              >
+                Carregar prompt sugerido
+              </Button>
+              <p>
+                {config.conhecimento?.arquivos
+                  ? `Conhecimento do código — ${config.conhecimento.arquivos} arquivos, revisão ${config.conhecimento.revisao}. ${config.conhecimento.frontend ? "API e telas incluídas." : "Somente API incluída."}`
+                  : "Conhecimento do código indisponível. O assistente usa o guia operacional."}
+              </p>
+            </fieldset>
             <h2>ChatGPT</h2>
             <Form.Check
               id="vale-gpt-ativo"

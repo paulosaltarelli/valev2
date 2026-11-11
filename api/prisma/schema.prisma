@@ -17,6 +17,7 @@ model assistente_configuracao {
   claude_modelo           String   @db.VarChar(80)
   atualizado_em           DateTime @updatedAt
   claude_chave            String?  @db.VarChar(Max)
+  contexto                String?  @db.NVarChar(Max)
 }
 
 model ajuste_manual {

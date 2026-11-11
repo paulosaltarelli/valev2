@@ -27,7 +27,15 @@ As flags administrativas de ChatGPT pessoal e Claude institucional são independ
 
 O **GPT institucional** usa uma chave de projeto da API da OpenAI e tem flag própria. Aplique a migração aditiva `20261109120000_assistente_gpt_institucional` antes de publicar a API. O administrador cadastra e testa a chave na tela **Configuração do Vale IA**. Quando Claude e GPT institucional estão disponíveis, o operador escolhe o provedor em **Contexto e acessos**.
 
-GPT e Claude classificam a pergunta em um catálogo fechado. O Vale executa a consulta parametrizada e monta as tabelas, indicadores, links e arquivos. O histórico, os filtros estruturados, os registros e as credenciais do banco ficam no Vale. O usuário pode selecionar **Consultas do Vale** para interpretação local. Ao escolher um modelo externo, envie apenas a pergunta sem dados pessoais e use o campo de matrícula para identificar funcionários.
+O chat contextual usa GPT ou Claude para planejar uma consulta de leitura, explicar as fontes do código ou montar um relatório a partir das colunas disponíveis. O servidor valida a ação, os filtros, a competência ativa e as permissões antes de executar os serviços existentes. O modelo recebe o contexto administrativo, as perguntas recentes, os nomes das colunas e os trechos de código pertinentes ao perfil. As linhas operacionais usadas nos relatórios e as credenciais do banco ficam no Vale.
+
+Em **Administração → Configuração do Vale IA**, o campo **Contexto de atuação** aceita até 24.000 caracteres e oferece um prompt sugerido com as regras do negócio. A migração aditiva é `20261111100000_assistente_contexto`. O contexto complementa as regras fixas do servidor.
+
+O build da API gera `assistente-knowledge.json`. Antes de criar a imagem Docker, execute `node api/scripts/build-assistente-knowledge.cjs` sobre a candidata completa, incluindo `administration/src`. O build dentro do Docker atualiza a parte da API e preserva o pacote do frontend. O índice contém fontes operacionais e o esquema permitido, exclui testes, autenticação, segurança e o cliente RM, e é identificado por hash. Operadores recebem o guia operacional. Administradores podem consultar trechos técnicos. A tela de configuração informa o número de arquivos e a revisão do pacote.
+
+Os relatórios permitem filtros por coluna, projeção, ordenação, contagem, soma, mínimo e máximo. Consultas por todas as filiais são limitadas a 25 filiais e 2.000 linhas. Agregações são recusadas quando a base estiver parcial. Esses limites são explícitos e as operações não executam SQL nem cálculos de benefício gerados pelo modelo.
+
+**Abrir relatório HTML** mostra o resultado dentro do Vale e permite baixar um HTML autônomo com pesquisa, ordenação, paginação, impressão e gráficos. O documento usa um template do sistema com conteúdo escapado e rede bloqueada. O preview roda em iframe sandbox. A exportação Excel existente permanece disponível.
 
 | Opção | Integração | US$ por milhão de tokens de entrada e saída | Cenário de mil perguntas |
 | --- | --- | --- | --- |

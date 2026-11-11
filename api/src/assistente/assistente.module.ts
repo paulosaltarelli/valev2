@@ -34,6 +34,9 @@ import {
   AssistenteTesteDto,
 } from './assistente.dto';
 import { selecionarConsulta } from './assistente-intencao';
+import { AssistenteAvancado } from './assistente-avancado';
+import { AssistenteConhecimento } from './assistente-conhecimento';
+import { promptSugerido } from './assistente-prompt';
 
 type Turno = { pergunta: string; resposta: string; em: string };
 const ttl = 30 * 60_000;
@@ -106,6 +109,7 @@ export class AssistenteController {
     private readonly consultas: AssistenteConsultas,
     private readonly relatorios: OperationalReportsService,
     private readonly crypto: CryptoService,
+    private readonly avancado: AssistenteAvancado,
   ) {}
 
   private async autorizar(req: Request, apenasAdmin = false) {
@@ -190,6 +194,7 @@ export class AssistenteController {
     gpt_institucional_ativo: boolean;
     gpt_modelo: string;
     gpt_chave: string | null;
+    contexto?: string | null;
   }) {
     return {
       ativo: config.claude_ativo,
@@ -199,6 +204,9 @@ export class AssistenteController {
       gptInstitucionalAtivo: Boolean(config.gpt_institucional_ativo),
       gptModelo: config.gpt_modelo,
       gptCredencialConfigurada: Boolean(config.gpt_chave),
+      contexto: config.contexto || promptSugerido,
+      promptSugerido,
+      conhecimento: this.avancado.estadoConhecimento(),
     };
   }
 
@@ -225,6 +233,7 @@ export class AssistenteController {
       where: { id: 1 },
       data: {
         claude_ativo: input.ativo,
+        ...(input.contexto !== undefined && { contexto: input.contexto }),
         ...(input.gptAtivo != null && { gpt_ativo: input.gptAtivo }),
         ...(input.gptInstitucionalAtivo != null && {
           gpt_institucional_ativo: input.gptInstitucionalAtivo,
@@ -324,7 +333,11 @@ export class AssistenteController {
 
   @Post('consultar')
   @Header('Cache-Control', 'no-store')
-  async consultar(@Req() req: Request, @Body() input: AssistenteDto) {
+  async consultar(
+    @Req() req: Request,
+    @Body() input: AssistenteDto,
+    usarPlanejador = false,
+  ) {
     const usuario = await this.autorizar(req);
     this.validarOrigem(req);
     input.pergunta = input.pergunta.trim();
@@ -358,6 +371,26 @@ export class AssistenteController {
         provedor !== 'local' && habilitado
           ? this.lerChave(gpt ? config?.gpt_chave : config?.claude_chave)
           : undefined;
+      if (usarPlanejador && provedor !== 'local' && !input.consulta) {
+        if (!config || !chave)
+          throw new BadRequestException(
+            'O provedor escolhido está desabilitado ou sem credencial.',
+          );
+        const resultado = await this.avancado.responder(
+          input,
+          usuario.perfil,
+          provedor,
+          { modelo: gpt ? config.gpt_modelo : config.claude_modelo, chave },
+          config.contexto,
+          this.sessoes.ler(usuario.chave),
+        );
+        this.sessoes.gravar(usuario.chave, {
+          pergunta: input.pergunta,
+          resposta: resultado.texto.slice(0, 4000),
+          em: new Date().toISOString(),
+        });
+        return resultado;
+      }
       const intent = await selecionarConsulta(
         { ...input, provedor },
         config && chave
@@ -387,11 +420,22 @@ export class AssistenteController {
       return resultado;
     });
   }
+
+  @Post('conversar')
+  @Header('Cache-Control', 'no-store')
+  async conversar(@Req() req: Request, @Body() input: AssistenteDto) {
+    return this.consultar(req, input, true);
+  }
 }
 
 @Module({
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
-  providers: [AssistenteSessoes, AssistenteConsultas],
+  providers: [
+    AssistenteSessoes,
+    AssistenteConsultas,
+    AssistenteConhecimento,
+    AssistenteAvancado,
+  ],
 })
 export class AssistenteModule {}

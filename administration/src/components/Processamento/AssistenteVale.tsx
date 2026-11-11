@@ -15,6 +15,7 @@ import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
 import { contextoDaPergunta } from "./contextoDaPergunta";
+import { criarRelatorioHtml, baixarRelatorioHtml } from "./relatorioHtml";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
@@ -309,14 +310,14 @@ export function AssistenteVale() {
     setOcupado(true);
     try {
       const { data } = await http.post<Resposta>(
-        "/assistente/consultar",
+        "/assistente/conversar",
         {
           pergunta: textoConsulta.slice(0, 500),
           consulta: consultaEfetiva,
           provedor,
           ...filtros,
         },
-        { timeout: 30000 },
+        { timeout: 100000 },
       );
       const faltaFilial =
         data.texto === "Selecione uma filial para esta consulta.";
@@ -686,6 +687,7 @@ function MensagemVale({
   exportando?: Resposta;
 }) {
   const [mostrarTodas, setMostrarTodas] = useState(false);
+  const [dashboard, setDashboard] = useState<string>();
   const moeda = (valor: number) =>
     valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return (
@@ -737,9 +739,18 @@ function MensagemVale({
       )}
       {resposta.tabela && (
         <>
+          <Button
+            size="sm"
+            variant="outline-secondary"
+            className="me-2"
+            onClick={() => setDashboard(criarRelatorioHtml(resposta))}
+          >
+            Abrir relatório HTML
+          </Button>
           {resposta.tabela.parcial && (
             <p className="text-warning-emphasis">
-              A consulta excedeu 2.000 linhas. Refine o filtro para exportar.
+              A base da consulta está parcial. Confira os detalhes e refine os
+              filtros para exportar o conjunto completo.
             </p>
           )}
           {!resposta.tabela.parcial && (
@@ -790,6 +801,31 @@ function MensagemVale({
           </details>
         </>
       )}
+      <Modal
+        show={Boolean(dashboard)}
+        onHide={() => setDashboard(undefined)}
+        size="xl"
+        fullscreen="sm-down"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Relatório do Vale IA</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {dashboard && (
+            <iframe
+              title="Dashboard da consulta"
+              srcDoc={dashboard}
+              sandbox="allow-scripts"
+              style={{ width: "100%", height: "70vh", border: 0 }}
+            />
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button onClick={() => dashboard && baixarRelatorioHtml(dashboard)}>
+            Baixar HTML
+          </Button>
+        </Modal.Footer>
+      </Modal>
       <div className="d-flex gap-3 mt-2">
         {resposta.links?.map((link) => (
           <Link key={link.url} to={link.url} onClick={fechar}>

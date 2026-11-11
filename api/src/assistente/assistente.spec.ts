@@ -17,6 +17,7 @@ import {
 } from './assistente-consultas';
 import { AssistenteController, AssistenteSessoes } from './assistente.module';
 import { intencaoLocal, selecionarConsulta } from './assistente-intencao';
+import { AssistenteAvancado } from './assistente-avancado';
 
 describe('Assistente do Vale', () => {
   let app: INestApplication;
@@ -25,6 +26,12 @@ describe('Assistente do Vale', () => {
   let chaveDeCriptografia: string | undefined;
   const consultas = {
     consultar: jest.fn().mockResolvedValue({ texto: 'Resultado verificado' }),
+  };
+  const avancado = {
+    responder: jest
+      .fn()
+      .mockResolvedValue({ texto: 'Resposta contextual verificada' }),
+    estadoConhecimento: jest.fn().mockReturnValue({ arquivos: 0 }),
   };
   const prisma = {
     usuario: {
@@ -61,6 +68,7 @@ describe('Assistente do Vale', () => {
         JwtStrategy,
         AssistenteSessoes,
         CryptoService,
+        { provide: AssistenteAvancado, useValue: avancado },
         { provide: PrismaService, useValue: prisma },
         { provide: AssistenteConsultas, useValue: consultas },
         {
@@ -109,7 +117,11 @@ describe('Assistente do Vale', () => {
 
   it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {
     const sessao = cookie(10, 'operador-config');
-    const dados = { ativo: false, modelo: 'claude-haiku-5-5' };
+    const dados = {
+      ativo: false,
+      modelo: 'claude-haiku-5-5',
+      contexto: 'Contexto de teste do Vale.',
+    };
     await request(app.getHttpServer())
       .get('/assistente/configuracao')
       .set('Cookie', sessao)
@@ -132,7 +144,7 @@ describe('Assistente do Vale', () => {
       .get('/assistente/configuracao')
       .set('Cookie', sessao)
       .expect(200);
-    expect(leitura.body).toEqual({
+    expect(leitura.body).toMatchObject({
       ativo: false,
       gptAtivo: false,
       modelo: 'claude-haiku-5-5',
@@ -152,7 +164,11 @@ describe('Assistente do Vale', () => {
       .expect(200);
     expect(prisma.assistente_configuracao.update).toHaveBeenCalledWith({
       where: { id: 1 },
-      data: { claude_ativo: false, claude_modelo: 'claude-haiku-5-5' },
+      data: {
+        claude_ativo: false,
+        claude_modelo: 'claude-haiku-5-5',
+        contexto: dados.contexto,
+      },
     });
   });
 
@@ -180,7 +196,7 @@ describe('Assistente do Vale', () => {
         gptChave,
       })
       .expect(200);
-    expect(resposta.body).toEqual({
+    expect(resposta.body).toMatchObject({
       ativo: true,
       gptAtivo: true,
       modelo,
@@ -195,6 +211,41 @@ describe('Assistente do Vale', () => {
     expect(new CryptoService().decryptJson(claude_chave)).toBe(chave);
     expect(gpt_chave).not.toContain(gptChave);
     expect(new CryptoService().decryptJson(gpt_chave)).toBe(gptChave);
+  });
+
+  it('autoriza o chat contextual no servidor e recusa provedor desativado', async () => {
+    const sessao = cookie(19, 'chat-contextual');
+    const config = {
+      claude_ativo: false,
+      gpt_institucional_ativo: true,
+      gpt_modelo: 'gpt-5.4-mini',
+      gpt_chave: new CryptoService().encryptJson('chave-teste'),
+      contexto: 'Ajude os operadores do Vale.',
+    };
+    prisma.assistente_configuracao.findUnique
+      .mockResolvedValueOnce(config)
+      .mockResolvedValueOnce(config);
+    await request(app.getHttpServer())
+      .post('/assistente/conversar')
+      .set('Cookie', sessao)
+      .send({
+        pergunta: 'Como funciona a fila?',
+        provedor: 'gpt-institucional',
+      })
+      .expect(201);
+    expect(avancado.responder).toHaveBeenCalledWith(
+      expect.objectContaining({ pergunta: 'Como funciona a fila?' }),
+      'operator',
+      'gpt-institucional',
+      { modelo: 'gpt-5.4-mini', chave: 'chave-teste' },
+      config.contexto,
+      expect.any(Array),
+    );
+    await request(app.getHttpServer())
+      .post('/assistente/conversar')
+      .set('Cookie', sessao)
+      .send({ pergunta: 'Como funciona a fila?', provedor: 'claude' })
+      .expect(400);
   });
 
   it('aplica as flags no chat e bloqueia GPT até o login pessoal estar disponível', async () => {

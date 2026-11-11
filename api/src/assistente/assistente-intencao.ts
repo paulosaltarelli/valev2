@@ -34,6 +34,10 @@ export async function selecionarConsulta(
   exigirRespostaDoProvedor = false,
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
+  if (provedor === 'gpt')
+    throw new BadRequestException(
+      'O login pessoal do ChatGPT aguarda liberação.',
+    );
   if (provedor !== 'local' && !credencial)
     throw new BadRequestException(
       provedor === 'claude'
@@ -43,14 +47,45 @@ export async function selecionarConsulta(
   if (input.consulta) return input.consulta;
   const local = intencaoLocal(input.pergunta);
   if (provedor === 'local' || !credencial) return local;
-  const { chave, modelo } = credencial;
   const instructions =
     'Classifique a pergunta sobre o Vale Expresso. Responda com exatamente uma opção: ' +
     intents.join(', ') +
     '. Use esclarecer quando faltar contexto ou a pergunta pedir alterações ou dados fora do catálogo.';
+  try {
+    const answer = (
+      await consultarModelo(
+        provedor,
+        credencial,
+        instructions,
+        input.pergunta,
+        32,
+      )
+    ).trim();
+    if (intents.includes(answer as Intent)) return answer as Intent;
+  } catch (error) {
+    if (error instanceof ForbiddenException) throw error;
+    if (!exigirRespostaDoProvedor && local !== 'esclarecer') return local;
+    throw new ServiceUnavailableException(
+      'O provedor está indisponível. Selecione uma consulta sugerida.',
+    );
+  }
+  if (exigirRespostaDoProvedor)
+    throw new ServiceUnavailableException(
+      'O provedor não retornou uma classificação válida.',
+    );
+  return local;
+}
+
+export async function consultarModelo(
+  provedor: 'claude' | 'gpt-institucional',
+  credencial: { modelo: string; chave: string },
+  instructions: string,
+  pergunta: string,
+  limite: number,
+): Promise<string> {
+  const { chave, modelo } = credencial;
   const gpt = provedor === 'gpt-institucional';
   try {
-    // Apenas o texto do usuário é enviado. Consultas, histórico e dados ficam no Vale.
     const response = await fetch(
       gpt
         ? 'https://api.openai.com/v1/responses'
@@ -58,7 +93,7 @@ export async function selecionarConsulta(
       {
         method: 'POST',
         redirect: 'error',
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(limite > 32 ? 25000 : 8000),
         headers: gpt
           ? {
               'Content-Type': 'application/json',
@@ -74,16 +109,16 @@ export async function selecionarConsulta(
             ? {
                 model: modelo,
                 instructions,
-                input: input.pergunta,
+                input: pergunta,
                 store: false,
-                max_output_tokens: 32,
+                max_output_tokens: limite,
               }
             : {
                 model: modelo,
                 system: instructions,
-                messages: [{ role: 'user', content: input.pergunta }],
+                messages: [{ role: 'user', content: pergunta }],
                 thinking: { type: 'disabled' },
-                max_tokens: 32,
+                max_tokens: limite,
               },
         ),
       },
@@ -93,6 +128,10 @@ export async function selecionarConsulta(
         'O provedor recusou a chave. Confira o acesso à API e ao modelo.',
       );
     }
+    if (response.status === 429)
+      throw new ServiceUnavailableException(
+        'O provedor atingiu o limite de uso ou de créditos. Confira a conta institucional.',
+      );
     if (!response.ok) throw new Error('Resposta inválida do provedor');
     type TextPart = { type: string; text?: string };
     const body = (await response.json()) as {
@@ -109,17 +148,16 @@ export async function selecionarConsulta(
       .map((part) => part.text)
       .join('')
       .trim();
-    if (intents.includes(answer as Intent)) return answer as Intent;
+    if (!answer) throw new Error('Resposta vazia');
+    return answer;
   } catch (error) {
-    if (error instanceof ForbiddenException) throw error;
-    if (!exigirRespostaDoProvedor && local !== 'esclarecer') return local;
+    if (
+      error instanceof ForbiddenException ||
+      error instanceof ServiceUnavailableException
+    )
+      throw error;
     throw new ServiceUnavailableException(
-      'O provedor está indisponível. Selecione uma consulta sugerida.',
+      'Não foi possível obter uma resposta do provedor. Tente novamente.',
     );
   }
-  if (exigirRespostaDoProvedor)
-    throw new ServiceUnavailableException(
-      'O provedor não retornou uma classificação válida.',
-    );
-  return local;
 }

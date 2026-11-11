@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
   Length,
   Matches,
   Max,
@@ -24,6 +25,11 @@ export const intents = [
 ] as const;
 export type Intent = (typeof intents)[number];
 export class AssistenteConfiguracaoDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 24000)
+  contexto?: string;
+
   @IsBoolean()
   ativo!: boolean;
 
@@ -94,4 +100,17 @@ export class AssistenteDto {
   @Length(1, 50)
   @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
   matricula?: string;
+}
+
+export class FiltroRelatorioDto {
+  @IsString()
+  @Length(1, 120)
+  coluna!: string;
+
+  @IsIn(['igual', 'diferente', 'contem', 'maior', 'menor', 'vazio'])
+  operador!: 'igual' | 'diferente' | 'contem' | 'maior' | 'menor' | 'vazio';
+
+  @IsString()
+  @MaxLength(150)
+  valor!: string;
 }
