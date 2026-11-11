@@ -105,7 +105,19 @@ Vazio (—), zero e erro mantêm os significados da consulta de origem. O relat�
   function atualizar() {
     const termo = normalizar(busca.value);
     const filtradas = linhas.filter(linha => normalizar(linha.textContent).includes(termo));
-    if(coluna >= 0) filtradas.sort((a,b) => sentido * a.cells[coluna].textContent.localeCompare(b.cells[coluna].textContent,'pt-BR',{numeric:true}));
+    if(coluna >= 0) filtradas.sort((a,b) => {
+      const va = a.cells[coluna].textContent, vb = b.cells[coluna].textContent;
+      const numero = /^-?\\d+(\\.\\d+)?$/;
+      let resultado;
+      if(numero.test(va) && numero.test(vb)) {
+        const fa = (va.split('.')[1] || '').length, fb = (vb.split('.')[1] || '').length;
+        const casas = Math.max(fa, fb);
+        const na = BigInt(va.replace('.', '') + '0'.repeat(casas - fa));
+        const nb = BigInt(vb.replace('.', '') + '0'.repeat(casas - fb));
+        resultado = na < nb ? -1 : na > nb ? 1 : 0;
+      } else resultado = va.localeCompare(vb,'pt-BR',{numeric:true});
+      return sentido * resultado;
+    });
     const limite = Number(tamanho.value);
     const total = Math.max(1, Math.ceil(filtradas.length / limite));
     pagina = Math.max(0, Math.min(pagina, total - 1));

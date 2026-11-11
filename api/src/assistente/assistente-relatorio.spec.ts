@@ -65,6 +65,29 @@ it('recusa planos com SQL, colunas ausentes e totais sobre base parcial', () => 
   ).toThrow('parcial');
 });
 
+it('ordena valores decimais pelo valor numérico', () => {
+  const resultado = transformarRelatorio(
+    {
+      texto: 'Dados',
+      tabela: {
+        colunas: ['Valor'],
+        linhas: [['2.1'], ['2.02'], ['2.5']],
+        parcial: false,
+      },
+    },
+    validarTransformacao({
+      filtros: [],
+      agrupar: [],
+      metricas: [],
+      colunas: [],
+      ordenarPor: 'Valor',
+      decrescente: false,
+      grafico: false,
+    }),
+  );
+  expect(resultado.tabela?.linhas).toEqual([['2.02'], ['2.1'], ['2.5']]);
+});
+
 it('resolve competência ativa e faz relatório real por ferramentas sem enviar as linhas ao modelo', async () => {
   const consultas = { consultar: jest.fn().mockResolvedValue(base) };
   const relatorios = {

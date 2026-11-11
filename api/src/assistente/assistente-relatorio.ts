@@ -197,9 +197,13 @@ export function transformarRelatorio(
     dados.sort((a, b) => {
       if (a[i] === null) return b[i] === null ? 0 : 1;
       if (b[i] === null) return -1;
-      const result = String(a[i]).localeCompare(String(b[i]), 'pt-BR', {
-        numeric: true,
-      });
+      const aTexto = String(a[i]);
+      const bTexto = String(b[i]);
+      const numerico = /^-?\d+(\.\d+)?$/;
+      const result =
+        numerico.test(aTexto) && numerico.test(bTexto)
+          ? new Prisma.Decimal(aTexto).comparedTo(new Prisma.Decimal(bTexto))
+          : aTexto.localeCompare(bTexto, 'pt-BR', { numeric: true });
       return plano.decrescente ? -result : result;
     });
   }
