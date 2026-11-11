@@ -211,6 +211,7 @@ Use somente as visões e colunas exatas abaixo. Nunca use dbo, sys, INFORMATION_
 As visões já estão filtradas pelo servidor à competência, filial e matrícula autorizadas. Não altere esse escopo no SQL. Projete colunas explícitas e nomes distintos. Há limite de 1000 linhas e 10 segundos.
 financeiro reproduz o relatório financeiro existente: funcionário com ENVIADO_RM, fórmula tipo V e COALESCE(final local, calculado) não nulo. Pago e Desconto seguem a polaridade do cadastro. Esses registros não constituem conciliação com RM.
 Use financeiro para perguntas sobre pago, saldo e desconto financeiro. Use resultados para cálculo e ajustes, e diferencie vazio, zero e erro. VersaoCalculada pode estar ausente. Formula e VersaoCadastro são o cadastro atual.
+Para descontos calculados ainda não enviados, use resultados.Calculado, TipoCadastro='V', PolaridadeCadastro='-' e StatusFuncionario<>'ENVIADO_RM'. TipoCadastro e PolaridadeCadastro são do cadastro atual; não afirmam uma classificação histórica. Copie somente os nomes de colunas exatos do esquema.
 variaveis contém memórias por resultado e fórmula. Não conte memórias como funcionários nem some a mesma variável repetida por fórmulas sem considerar a granularidade.
 FuncionarioBaseId é o snapshot do funcionário na execução. COUNT de resultados conta registros por fórmula, não pessoas.
 Nunca declare uma causa de erro ou um total que não tenha sido consultado.

@@ -8,7 +8,7 @@ export const tabelasSql = {
   funcionarios:
     'FuncionarioBaseId, Matricula, Funcionario, Cargo, StatusFuncionario, Km, CodColigada, CodFilial, ExecucaoId, PeriodoId, Competencia, FilialId, Filial',
   resultados:
-    'ResultadoId, FuncionarioBaseId, Matricula, Funcionario, ExecucaoId, PeriodoId, Competencia, FilialId, Filial, FormulaId, Formula, VersaoCadastro, VersaoCalculada, Calculado, FinalLocal, AjusteManual, StatusResultado, StatusFuncionario, RevisaoLocal, RevisaoComEnvioRegistrado',
+    'ResultadoId, FuncionarioBaseId, Matricula, Funcionario, ExecucaoId, PeriodoId, Competencia, FilialId, Filial, FormulaId, Formula, VersaoCadastro, TipoCadastro, PolaridadeCadastro, VersaoCalculada, Calculado, FinalLocal, AjusteManual, StatusResultado, StatusFuncionario, RevisaoLocal, RevisaoComEnvioRegistrado',
   financeiro:
     'ResultadoId, FuncionarioBaseId, Matricula, Funcionario, ExecucaoId, PeriodoId, Competencia, FilialId, Filial, Formula, Polaridade, ValorLocal, Pago, Desconto',
   variaveis:

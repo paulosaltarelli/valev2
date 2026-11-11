@@ -24,7 +24,7 @@ GO
 CREATE OR ALTER VIEW vale_ia.resultados AS
 SELECT r.execucao_funcionario_id AS ResultadoId,b.execucao_funcionario_base_id AS FuncionarioBaseId,b.funcionario_id_rm AS Matricula,b.nome_funcionario AS Funcionario,
  e.ExecucaoId,e.PeriodoId,e.Competencia,e.FilialId,e.Filial,
- r.formula_id AS FormulaId,fo.nome AS Formula,fo.versao AS VersaoCadastro,
+ r.formula_id AS FormulaId,fo.nome AS Formula,fo.versao AS VersaoCadastro,fo.tipo AS TipoCadastro,fo.polaridade AS PolaridadeCadastro,
  TRY_CONVERT(int,JSON_VALUE(CASE WHEN ISJSON(r.formula_snapshot)=1 THEN r.formula_snapshot ELSE N'{}' END,'$.versao')) AS VersaoCalculada,
  r.valor_calculado AS Calculado,r.valor_final AS FinalLocal,r.ajuste_manual AS AjusteManual,
  r.status AS StatusResultado,b.status AS StatusFuncionario,r.revisao AS RevisaoLocal,r.enviado_revisao AS RevisaoComEnvioRegistrado
