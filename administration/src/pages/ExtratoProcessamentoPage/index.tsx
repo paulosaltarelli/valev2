@@ -1,5 +1,6 @@
 import { ReportFilters } from "../../shared/components/ReportFilters";
-import { VisualSummary } from "../../shared/components/VisualSummary";
+import { ReportIndicators } from "../../shared/components/ReportIndicators";
+import { Link, useSearchParams } from "react-router";
 import { useEffect, useState } from "react";
 import { PageHeading } from "../../shared/components/PageHeading";
 import { AnalysisNav } from "../../shared/components/AnalysisNav";
@@ -33,13 +34,15 @@ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL
 const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
 export function ExtratoProcessamentoPage() {
-  const [periodo, setPeriodo] = useState<number>();
-  const [filial, setFilial] = useState<number>();
-  const [execucao, setExecucao] = useState<number>();
+  const [params]=useSearchParams();
+  const [periodo, setPeriodo] = useState<number | undefined>(()=>Number(params.get("periodo")) || undefined);
+  const [filial, setFilial] = useState<number | undefined>(()=>Number(params.get("filial")) || undefined);
+  const [execucao, setExecucao] = useState<number | undefined>(()=>Number(params.get("execucao")) || undefined);
   const [options, setOptions] = useState<Options>();
   const [result, setResult] = useState<{ id: number; data: Report }>();
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(params.get("busca") ?? "");
+  const [focus,setFocus]=useState(params.get("foco") ?? "");
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [request, setRequest] = useState(0);
@@ -72,9 +75,13 @@ export function ExtratoProcessamentoPage() {
 
   const report = result?.id === executionId ? result?.data : undefined;
   const term = search.trim().toLocaleLowerCase("pt-BR");
-  const employees = report?.funcionarios.filter((employee) =>
+  const baseEmployees = report?.funcionarios.filter((employee) =>
     employee.nome?.toLocaleLowerCase("pt-BR").includes(term) || employee.matricula.toLocaleLowerCase("pt-BR").includes(term),
   ) ?? [];
+  const hasError=(e:Employee)=>!!e.erroGeral || Object.values(e.resultados).some(c=>!!c?.erro);
+  const isComplete=(e:Employee)=>!!report?.formulas.length && !hasError(e) && report.formulas.every(f=>e.resultados[f.formula_id]?.valor!=null);
+  const employees=baseEmployees.filter(e=>focus==='erros'?hasError(e):focus==='pendentes'?!isComplete(e):focus==='calculados'?isComplete(e):true);
+  const employeeLink=(e:Employee)=>`/processamento/${executionId}?${new URLSearchParams({busca:e.matricula,retorno:`/extrato-processamento?${new URLSearchParams({periodo:String(periodo ?? options?.periodo ?? ''),filial:String(branchId ?? ''),execucao:String(executionId ?? ''),busca:search,foco:focus})}`})}`;
   const pages = Math.max(1, Math.ceil(employees.length / pageSize));
   const visiblePage = Math.min(page, pages);
   const offset = (visiblePage - 1) * pageSize;
@@ -190,10 +197,12 @@ export function ExtratoProcessamentoPage() {
       {!error && !report && (!currentOptions || executionId !== undefined) && <p role="status">Carregando extrato…</p>}
       {!error && currentOptions && executionId === undefined && <p>Nenhuma execução disponível para esta competência.</p>}
       {report && <>
-        <VisualSummary items={[
-{label:"Funcionários",value:employees.length,icon:"tabler:users"},
-{label:"Fórmulas",value:columns.length,icon:"tabler:math-function"}
-]} />
+        <ReportIndicators selected={focus} onSelect={key=>{setFocus(key);setPage(1);}} items={[
+          {key:'',label:'Funcionários',value:baseEmployees.length,total:baseEmployees.length},
+          {key:'calculados',label:'Cálculo completo',value:baseEmployees.filter(isComplete).length,total:baseEmployees.length},
+          {key:'pendentes',label:'Com pendências',value:baseEmployees.filter(e=>!isComplete(e)).length,total:baseEmployees.length},
+          {key:'erros',label:'Com erro',value:baseEmployees.filter(hasError).length,total:baseEmployees.length,tone:'danger'}
+        ]}/>
         <p className="op-muted small">— sem cálculo · Clique nos erros para ver detalhes.</p>
         {employees.length ? (
           <div className="op-table-wrap">
@@ -209,14 +218,14 @@ export function ExtratoProcessamentoPage() {
                   {employees.slice(offset, offset + pageSize).map((employee) => (
                     <tr key={employee.id}>
                       <th scope="row">
-                        {employee.nome || "Nome indisponível"}
+                        <Link to={employeeLink(employee)}>{employee.nome || "Nome indisponível"}</Link>
                         <small className="op-muted">{employee.matricula}</small>
-                        {employee.erroGeral && <small className="op-danger">Erro · {employee.erroGeral}</small>}
+                        {employee.erroGeral && <details className="ve-cell-error"><summary className="op-danger">Ver erro</summary><p>{employee.erroGeral}</p><Link to={employeeLink(employee)}>Abrir processamento ↗</Link></details>}
                       </th>
                       {columns.map((column) => {
                         const cell = employee.resultados[column.formula_id];
                         return <td key={column.formula_id}>{
-                          cell?.erro ? <details className="ve-cell-error"><summary className="op-danger">Erro · {cell.erro.split(":")[0].slice(0, 32)}</summary><p className="mt-2 mb-0">{cell.erro}</p></details> :
+                          cell?.erro ? <details className="ve-cell-error"><summary className="op-danger">Erro · {cell.erro.split(":")[0].slice(0, 32)}</summary><p className="mt-2 mb-0">{cell.erro}</p><Link className="vrg-error-link" to={employeeLink(employee)}>Abrir processamento ↗</Link></details> :
                             cell?.valor == null ? <span className="op-muted">—</span> :
                               (column.tipo === "V" ? money : number).format(Number(cell.valor))
                         }</td>;

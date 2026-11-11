@@ -1,5 +1,5 @@
 import { ReportFilters } from "../../shared/components/ReportFilters";
-import { VisualSummary } from "../../shared/components/VisualSummary";
+import { ReportIndicators, ReportProgress } from "../../shared/components/ReportIndicators";
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { PageHeading } from '../../shared/components/PageHeading';
@@ -19,11 +19,14 @@ export function FechamentoPage() {
   const fetcher=useCallback(()=>OperationalReportsApi.closing(period),[period]);
   const query=useOperationQuery(fetcher,0);
   const change=(key:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(key,value);else next.delete(key);setParams(next,{replace:true});setPage(1);setExportError('');};
-  const rows=(query.data?.rows ?? []).filter(r=>r.filial.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')) && (!situation || r.situacao===situation));
+  const baseRows=(query.data?.rows ?? []).filter(r=>r.filial.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')) && (!situation || r.situacao===situation));
+  const focus=params.get('foco') ?? '';
+  const matches=(r:typeof baseRows[number],key:string)=>key==='erro'?(r.counts?.comErro ?? 0)>0:key==='envio'?(r.counts?.aguardandoEnvio ?? 0)>0:key==='enviados'?!!r.counts?.total && r.counts.enviados===r.counts.total:key==='semexecucao'?!r.execucaoId:true;
+  const rows=baseRows.filter(r=>matches(r,focus));
   const currentPage=Math.min(page,Math.max(1,Math.ceil(rows.length/25)));
   const competencia=query.data?.periodos.find(p=>p.periodo_id===query.data?.periodo)?.competencia ?? '';
   const returnTo=`/fechamento?${params}`;
-  const href=(id:number,tab:string)=>`/processamento/${id}?${new URLSearchParams({aba:tab,retorno:returnTo})}`;
+  const href=(id:number,tab:string)=>`/processamento/${id}?${new URLSearchParams({filtro:tab==='pendencias'?'pendencias':tab==='envios'?'resultados':'todos',retorno:returnTo})}`;
   async function download() {
     setExporting(true);setExportError('');
     try { await exportReport(`fechamento-${competencia.replace('/','-')}`,
@@ -53,11 +56,13 @@ export function FechamentoPage() {
     <QueryNotice {...query} />
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
     {query.data && <>
-      <VisualSummary items={[
-{label:'Filiais no recorte',value:rows.length,icon:'tabler:building'},
-{label:'Filiais com erro',value:rows.filter(r=>(r.counts?.comErro ?? 0)>0).length,icon:'tabler:alert-circle',tone:'danger'},
-{label:'Filiais aguardando envio',value:rows.filter(r=>(r.counts?.aguardandoEnvio ?? 0)>0).length,icon:'tabler:clock',tone:'info'}
-]} />
+      <ReportIndicators selected={focus} onSelect={key=>change('foco',key)} items={[
+        {key:'',label:'Todas as filiais',value:baseRows.length,total:baseRows.length},
+        {key:'erro',label:'Com erro',value:baseRows.filter(r=>matches(r,'erro')).length,total:baseRows.length,tone:'danger'},
+        {key:'envio',label:'Aguardando envio',value:baseRows.filter(r=>matches(r,'envio')).length,total:baseRows.length},
+        {key:'enviados',label:'Enviadas ao RM',value:baseRows.filter(r=>matches(r,'enviados')).length,total:baseRows.length,tone:'sent'},
+        {key:'semexecucao',label:'Sem execução',value:baseRows.filter(r=>matches(r,'semexecucao')).length,total:baseRows.length,tone:'neutral'}
+      ]}/>
       <small className="op-muted">Atualizado em {dateTime(query.data.updatedAt)}</small>
       <details className="mb-3"><summary>Como ler as contagens</summary><p className="op-muted mt-2">“—” indica ausência de execução. Completo, parcial e sem cálculo dividem os funcionários da execução. “Com erro” pode incluir pessoas com resultados parciais ou falha de envio. As colunas de envio são um recorte dos cálculos completos. Filiais sem execução não têm quantidade de funcionários conhecida.</p></details>
       <label className="ve-check-filter mb-3"><input type="checkbox" checked={showDetails} onChange={e=>setShowDetails(e.target.checked)}/> Exibir todas as contagens</label>
@@ -65,8 +70,8 @@ export function FechamentoPage() {
         <table className="op-table ve-report-table"><thead><tr>
           {['Filial','Situação','Funcionários',...(showDetails ? ['Cálculo completo','Cálculo parcial','Sem cálculo'] : []),'Com erro','Aguardando envio',...(showDetails ? ['Enviados ao RM'] : [])].map(h=><th scope="col" key={h}>{h}</th>)}
         </tr></thead><tbody>{rows.slice((currentPage-1)*25,currentPage*25).map(r=><tr key={r.filialId}>
-          <th scope="row">{r.execucaoId?<Link to={href(r.execucaoId,'acompanhamento')}>{r.filial}</Link>:<Link to={`/processamento?periodo=${query.data?.periodo}`}>{r.filial}</Link>}{!r.ativa && <small>Inativa atualmente</small>}</th>
-          <td><StatusPill label={r.situacao === 'Cálculo concluído' ? 'Pronto para envio' : r.situacao}/></td><td>{r.counts?.total ?? '—'}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
+          <th scope="row">{r.execucaoId?<Link to={href(r.execucaoId,'acompanhamento')}>{r.filial}</Link>:<Link to={`/processamento?periodo=${query.data?.periodo}&filial=${r.filialId}&acao=nova`}>{r.filial}</Link>}{!r.ativa && <small>Inativa atualmente</small>}</th>
+          <td><StatusPill label={r.situacao === 'Cálculo concluído' ? 'Pronto para envio' : r.situacao}/></td><td>{r.counts?.total ?? '—'}{r.counts && <><ReportProgress label="Cálculo" value={r.counts.completos} total={r.counts.total}/><ReportProgress label="RM" value={r.counts.enviados} total={r.counts.total} sent/></>}</td>{showDetails && <><td>{r.counts?.completos ?? '—'}</td><td>{r.counts?.parciais ?? '—'}</td><td>{r.counts?.semCalculo ?? '—'}</td></>}
           <td>{r.execucaoId && r.counts?.comErro ? <Link className="op-danger" to={href(r.execucaoId,'pendencias')}>{r.counts.comErro} · Ver</Link>:r.counts?.comErro ?? '—'}</td>
           <td>{r.execucaoId && r.counts?.aguardandoEnvio ? <Link to={href(r.execucaoId,'envios')}>{r.counts.aguardandoEnvio} · Ver</Link>:r.counts?.aguardandoEnvio ?? '—'}</td>
           {showDetails && <td>{r.counts?.enviados ?? '—'}</td>}

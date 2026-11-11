@@ -510,7 +510,7 @@ export function ProcessamentoDetalhesPage() {
   }, [query.data]);
   const exec = query.data?.execucao;
   const rawReturn = params.get("retorno");
-  const reportReturn = ["/falhas-por-causa", "/fechamento", "/variacao-competencias"].some(path => rawReturn === path || rawReturn?.startsWith(path + "?"));
+  const reportReturn = ["/falhas-por-causa", "/fechamento", "/variacao-competencias", "/extrato-processamento"].some(path => rawReturn === path || rawReturn?.startsWith(path + "?"));
   const returnTo = rawReturn && (rawReturn === "/dashboard" || rawReturn.startsWith("/processamento?") || reportReturn)
     ? rawReturn
     : `/processamento${exec ? `?periodo=${exec.periodo.periodo_id}` : ""}`;

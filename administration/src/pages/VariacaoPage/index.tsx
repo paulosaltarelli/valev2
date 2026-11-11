@@ -1,3 +1,4 @@
+import { ReportIndicators } from "../../shared/components/ReportIndicators";
 import { ReportFilters } from "../../shared/components/ReportFilters";
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -33,9 +34,12 @@ export function VariacaoPage() {
   const [page,setPage]=useState(1),[exporting,setExporting]=useState(false),[exportError,setExportError]=useState('');
   const search=params.get('busca') ?? '',formula=params.get('formula') ?? '',situation=params.get('situacao') ?? '';
   const change=(key:string,value:string)=>{const next=new URLSearchParams(params);if(value)next.set(key,value);else next.delete(key);
-    if(['periodo','anterior','filial'].includes(key)){next.delete('formula');next.delete('situacao');}if(key==='periodo')next.delete('anterior');
+    if(['periodo','anterior','filial'].includes(key)){next.delete('formula');next.delete('situacao');next.delete('foco');}if(key==='periodo')next.delete('anterior');
     setParams(next,{replace:true});setPage(1);setExportError('');};
-  const rows=(report?.rows ?? []).filter(r=>(r.nome+' '+r.matricula).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')) && (!formula || r.formula===formula) && (!situation || r.situacao===situation));
+  const baseRows=(report?.rows ?? []).filter(r=>(r.nome+' '+r.matricula).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')) && (!formula || r.formula===formula) && (!situation || r.situacao===situation));
+  const focus=params.get('foco') ?? '';
+  const category=(r:typeof baseRows[number])=>r.diferenca===null?'semcomparacao':Number(r.diferenca)===0?'iguais':'alterados';
+  const rows=baseRows.filter(r=>!focus || category(r)===focus);
   const currentPage=Math.min(page,Math.max(1,Math.ceil(rows.length/25)));
   const returnTo=`/variacao-competencias?${params}`;
   async function download() {
@@ -70,6 +74,13 @@ export function VariacaoPage() {
     {exportError && <p className="op-notice op-error" role="alert">{exportError}</p>}
     {options.data && !previous && <p className="op-notice">Selecione uma competência com período anterior disponível.</p>}
     {report && <>
+      <ReportIndicators selected={focus} onSelect={key=>change('foco',key)} items={[
+        {key:'',label:'Resultados',value:baseRows.length,total:baseRows.length},
+        {key:'alterados',label:'Com variação',value:baseRows.filter(r=>category(r)==='alterados').length,total:baseRows.length},
+        {key:'iguais',label:'Sem variação',value:baseRows.filter(r=>category(r)==='iguais').length,total:baseRows.length,tone:'neutral'},
+        {key:'semcomparacao',label:'Sem comparação',value:baseRows.filter(r=>category(r)==='semcomparacao').length,total:baseRows.length,tone:'neutral'}
+      ]}/>
+
       <details className="ve-filter-details mb-3" open={search || formula || situation ? true : undefined}><summary>Filtrar resultados{search || formula || situation ? " · filtros ativos" : ""}</summary>
       <div className="op-context mt-2" aria-label="Filtros dos resultados">
         <label>Funcionário ou matrícula<input type="search" value={search} onChange={e=>change('busca',e.target.value)} placeholder="Buscar na comparação"/></label>
@@ -80,18 +91,18 @@ export function VariacaoPage() {
       <div className="op-toolbar">
         <p className="op-muted mb-0">{rows.length} resultados · {dateTime(report.updatedAt)}</p>
         <div className="d-flex flex-wrap gap-3">
-          {report.execucaoAnterior && <Link to={`/processamento/${report.execucaoAnterior}?${new URLSearchParams({aba:'resultados',retorno:returnTo})}`}>Abrir {report.anterior}</Link>}
-          {report.execucaoAtual && <Link to={`/processamento/${report.execucaoAtual}?${new URLSearchParams({aba:'resultados',retorno:returnTo})}`}>Abrir {report.periodo}</Link>}
+          {report.execucaoAnterior && <Link to={`/processamento/${report.execucaoAnterior}?${new URLSearchParams({filtro:'resultados',retorno:returnTo})}`}>Abrir {report.anterior}</Link>}
+          {report.execucaoAtual && <Link to={`/processamento/${report.execucaoAtual}?${new URLSearchParams({filtro:'resultados',retorno:returnTo})}`}>Abrir {report.periodo}</Link>}
         </div>
       </div>
-      {(!report.execucaoAtual || !report.execucaoAnterior) && <p className="op-notice">{!report.execucaoAtual && `Não há execução em ${report.periodo}. `}{!report.execucaoAnterior && `Não há execução em ${report.anterior}. `}A ausência não será tratada como valor zero.</p>}
+      {(!report.execucaoAtual || !report.execucaoAnterior) && <p className="op-notice">{!report.execucaoAtual && `Não há execução em ${report.periodo}. `}{!report.execucaoAnterior && `Não há execução em ${report.anterior}. `}<Link to={`/processamento?periodo=${!report.execucaoAtual?currentId:previousId}`}>Ver competência ↗</Link></p>}
       <details className="mb-3"><summary>Critérios da comparação</summary><p className="op-muted mt-2">Usamos o valor calculado e a execução atual de cada competência. Fórmulas são relacionadas pelo nome, evento, tipo e polaridade. Mudanças de versão ou expressão impedem a variação automática. “Só na atual/anterior” indica presença na execução, não admissão ou desligamento. Percentuais usam o valor absoluto anterior como base e não são calculados quando ele é zero.</p></details>
       {rows.length ? <div className="op-table-wrap"><div className="op-scroll" tabIndex={0} role="region" aria-label="Comparação dos valores calculados">
         <table className="op-table ve-report-table"><thead><tr>{['Funcionário','Fórmula',report.anterior,report.periodo,'Diferença','Variação','Situação'].map((h,i)=><th scope="col" key={i}>{h}</th>)}</tr></thead>
           <tbody>{rows.slice((currentPage-1)*25,currentPage*25).map(r=><tr key={r.key}>
-            <th scope="row">{r.nome}<small>{r.matricula}</small></th><td>{r.formula}<small>{r.tipo==='V'?'R$':r.tipo==='D'?'Dias':'Número'}</small></td>
+            <th scope="row">{report.execucaoAtual ? <Link to={`/processamento/${report.execucaoAtual}?${new URLSearchParams({busca:r.matricula,retorno:returnTo})}`}>{r.nome}</Link> : r.nome}<small>{r.matricula}</small></th><td>{r.formula}<small>{r.tipo==='V'?'R$':r.tipo==='D'?'Dias':'Número'}</small></td>
             <td className="ve-report-number">{display(r.anterior,r.tipo)}</td><td className="ve-report-number">{display(r.atual,r.tipo)}</td>
-            <td className="ve-report-number">{display(r.diferenca,r.tipo)}</td><td className="ve-report-number">{r.percentual===null?'—':number.format(Number(r.percentual))+'%'}</td>
+            <td className="ve-report-number">{display(r.diferenca,r.tipo)}</td><td className="ve-report-number">{r.percentual===null?'—':<span className={`vrg-variation ${Number(r.percentual)<0?'vrg-variation-down':''}`}>{Number(r.percentual)>0?'↑ ':Number(r.percentual)<0?'↓ ':''}{number.format(Math.abs(Number(r.percentual)))}%</span>}</td>
             <td><StatusPill label={r.situacao}/>{r.observacao && <details><summary className="op-muted">Entender</summary><p className="mt-1 mb-0">{r.observacao}</p></details>}</td>
           </tr>)}</tbody>
         </table>

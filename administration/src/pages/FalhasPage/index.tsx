@@ -1,3 +1,4 @@
+import { ReportIndicators } from "../../shared/components/ReportIndicators";
 import { ReportFilters } from "../../shared/components/ReportFilters";
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -64,10 +65,14 @@ export function FalhasPage() {
       </section>
       </ReportFilters>
       <QueryNotice {...query} />
+      {current && <ReportIndicators selected={stage} onSelect={setStage} items={[
+        {key:'',label:'Todas as causas',value:current.groups.length,total:current.groups.length,tone:'danger'},
+        ...['Variáveis','Cálculo','Envio ao RM'].map(key=>({key,label:key,value:current.groups.filter(g=>g.stage===key).length,total:current.groups.length,tone:'danger' as const}))
+      ]}/>}
       {current && <details className="mb-3"><summary>{groups.length} causas · Como ler</summary><p className="op-muted">Ordenado por pessoas afetadas. As barras comparam cada causa à maior deste recorte. Uma pessoa pode aparecer em várias causas; não some as linhas.</p></details>}
       {current && (groups.length ? (
         <div className="op-table-wrap">
-          <div className="op-scroll">
+          <div className="op-scroll" tabIndex={0} role="region" aria-label="Causas de falhas">
             <table className="op-table">
               <thead><tr>
                 <th scope="col">Causa</th><th scope="col">Etapa</th><th scope="col">Funcionários afetados</th>
@@ -75,7 +80,7 @@ export function FalhasPage() {
               </tr></thead>
               <tbody>{groups.map((group) => (
                 <tr key={group.id}>
-                  <th scope="row">{group.stage === "Variáveis" ? "Variável com falha" : group.stage === "Cálculo" ? "Falha no cálculo" : "Falha no envio"}<small className="op-muted">{group.cause}</small></th>
+                  <th scope="row">{group.stage === "Variáveis" ? "Variável com falha" : group.stage === "Cálculo" ? "Falha no cálculo" : "Falha no envio"}<small className="op-muted">{group.cause}</small>{group.affected.length===1 && <Link className="vrg-error-link" to={`/processamento/${group.affected[0].execucaoId}?${new URLSearchParams({filtro:group.stage==="Cálculo"?"formulas_pendentes":"pendencias",retorno:returnTo})}`}>Ver funcionários ↗</Link>}</th>
                   <td>{group.stage}</td>
                   <td><strong className="op-danger">{group.count}</strong><span className="ve-impact-track" aria-hidden="true"><span style={{width: `${groups[0]?.count ? group.count / groups[0].count * 100 : 0}%`}} /></span></td>
                   <td>
@@ -84,7 +89,7 @@ export function FalhasPage() {
                       <ul className="mt-2 mb-0 ps-3">
                         {group.affected.map((item) => (
                           <li key={item.execucaoId}>
-                            <Link to={`/processamento/${item.execucaoId}?${new URLSearchParams({ aba: "pendencias", retorno: returnTo })}`}>
+                            <Link to={`/processamento/${item.execucaoId}?${new URLSearchParams({ filtro: group.stage === "Cálculo" ? "formulas_pendentes" : "pendencias", retorno: returnTo })}`}>
                               {item.filial} · {item.count}
                             </Link>
                           </li>
