@@ -1,3 +1,4 @@
+import { PendingPeople } from "../../components/Processamento/PendingPeople";
 import { RetryErrors } from "../../components/Processamento/RetryErrors";
 import { PageHeading } from "../../shared/components/PageHeading";
 import {
@@ -349,7 +350,7 @@ export function ProcessamentoPage() {
                     {preparing.length > 0 && <li>Preparando <strong>{preparing.length}</strong></li>}
                     {processingJobs > 0 && <li>Em andamento <strong>{processingJobs}</strong></li>}
                     {pendingJobs > 0 && <li>Na fila <strong>{pendingJobs}</strong></li>}
-                    {attention > 0 && <li>Com pendências <strong>{attention}</strong></li>}
+                    {attention > 0 && <li><PendingPeople rows={current} count={attention} returnTo={`/processamento?${params}`}/></li>}
                     {creationFailures.size > 0 && <li><button type="button" className="btn btn-link p-0" onClick={() => void openErrors()}>
                       Falha na criação ({creationFailures.size})
                     </button></li>}
