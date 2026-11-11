@@ -1,9 +1,16 @@
 import { validarSql, esquemaSql } from './assistente-sql-validacao';
-import { lerResultadoSql, AssistenteSql } from './assistente-sql';
+import { lerResultadoSql, AssistenteSql, validarFontesDaPergunta } from './assistente-sql';
 import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import type { AssistenteConsultas } from './assistente-consultas';
 import type { OperationalReportsService } from '../dash/operational-reports.service';
+
+it('impede eliminar calculados não enviados ao juntar o financeiro enviado', () => {
+  const pergunta = 'ranking dos descontos calculados ainda não enviados';
+  expect(() => validarFontesDaPergunta(pergunta, ['resultados', 'financeiro'])).toThrow('sem JOIN');
+  expect(() => validarFontesDaPergunta(pergunta, ['resultados'])).not.toThrow();
+  expect(() => validarFontesDaPergunta('descontos enviados', ['financeiro'])).not.toThrow();
+});
 
 it('compila ranking de descontos e limita a saída sem limitar os registros agregados', () => {
   const query = validarSql(

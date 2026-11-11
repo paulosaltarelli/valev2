@@ -28,6 +28,12 @@ type PlanoSql = {
   grafico?: { rotulo: string; valor: string } | null;
 };
 
+export function validarFontesDaPergunta(pergunta: string, fontes: string[]) {
+  const texto = pergunta.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  if (/calculad/.test(texto) && /nao enviad/.test(texto) && fontes.includes('financeiro'))
+    throw new BadRequestException('Valores calculados não enviados devem usar resultados, sem JOIN com financeiro, que contém somente registros enviados.');
+}
+
 function planoDoModelo(texto: string): PlanoSql {
   let valor: unknown;
   try {
@@ -211,7 +217,7 @@ Use somente as visões e colunas exatas abaixo. Nunca use dbo, sys, INFORMATION_
 As visões já estão filtradas pelo servidor à competência, filial e matrícula autorizadas. Não altere esse escopo no SQL. Projete colunas explícitas e nomes distintos. Há limite de 1000 linhas e 10 segundos.
 financeiro reproduz o relatório financeiro existente: funcionário com ENVIADO_RM, fórmula tipo V e COALESCE(final local, calculado) não nulo. Pago e Desconto seguem a polaridade do cadastro. Esses registros não constituem conciliação com RM.
 Use financeiro para perguntas sobre pago, saldo e desconto financeiro. Use resultados para cálculo e ajustes, e diferencie vazio, zero e erro. VersaoCalculada pode estar ausente. Formula e VersaoCadastro são o cadastro atual.
-Para descontos calculados ainda não enviados, use resultados.Calculado, TipoCadastro='V', PolaridadeCadastro='-' e StatusFuncionario<>'ENVIADO_RM'. TipoCadastro e PolaridadeCadastro são do cadastro atual; não afirmam uma classificação histórica. Copie somente os nomes de colunas exatos do esquema.
+Para descontos calculados ainda não enviados, use SOMENTE resultados: some Calculado com TipoCadastro='V', PolaridadeCadastro='-' e StatusFuncionario<>'ENVIADO_RM'. Não use nem faça JOIN com financeiro nesse caso, pois só contém enviados e eliminaria todos os resultados. TipoCadastro e PolaridadeCadastro são do cadastro atual; não afirmam uma classificação histórica. Copie somente os nomes de colunas exatos do esquema.
 variaveis contém memórias por resultado e fórmula. Não conte memórias como funcionários nem some a mesma variável repetida por fórmulas sem considerar a granularidade.
 FuncionarioBaseId é o snapshot do funcionário na execução. COUNT de resultados conta registros por fórmula, não pessoas.
 Nunca declare uma causa de erro ou um total que não tenha sido consultado.
@@ -240,8 +246,12 @@ Esquema permitido:\n` +
       ),
     );
     let resultado: Awaited<ReturnType<AssistenteSql['executar']>>;
+    const executarPlano = (sql: string) => {
+      validarFontesDaPergunta(pergunta, validarSql(sql, escopo.perfil).fontes);
+      return this.executar(sql, escopo);
+    };
     try {
-      resultado = await this.executar(plano.sql, escopo);
+      resultado = await executarPlano(plano.sql);
     } catch (erro) {
       if (!(erro instanceof BadRequestException)) throw erro;
       plano = planoDoModelo(
@@ -259,7 +269,7 @@ Esquema permitido:\n` +
           1800,
         ),
       );
-      resultado = await this.executar(plano.sql, escopo);
+      resultado = await executarPlano(plano.sql);
     }
     const { tabela } = resultado;
     const g = plano.grafico;
