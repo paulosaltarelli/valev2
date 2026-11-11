@@ -38,6 +38,7 @@ import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { promptSugerido } from './assistente-prompt';
 import { AssistenteSql } from './assistente-sql';
+import { AssistenteInvestigacao } from './assistente-investigacao';
 
 type Turno = { pergunta: string; resposta: string; em: string };
 const ttl = 30 * 60_000;
@@ -434,6 +435,7 @@ export class AssistenteController {
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [
+    AssistenteInvestigacao,
     AssistenteSql,
     AssistenteSessoes,
     AssistenteConsultas,

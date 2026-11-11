@@ -15,7 +15,6 @@ import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
 import { contextoDaPergunta } from "./contextoDaPergunta";
-import { criarRelatorioHtml, baixarRelatorioHtml } from "./relatorioHtml";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
@@ -231,10 +230,8 @@ export function AssistenteVale() {
       const resposta = [...mensagens]
         .reverse()
         .find((mensagem) => mensagem.resposta)?.resposta;
-      if (!resposta?.tabela || resposta.tabela.parcial) {
-        setErro(
-          "Consulte primeiro um recorte com tabela completa para baixar o Excel.",
-        );
+      if (!resposta?.tabela) {
+        setErro("Consulte primeiro um recorte com tabela para baixar o Excel.");
         return;
       }
       await baixarExcel(resposta);
@@ -346,7 +343,7 @@ export function AssistenteVale() {
   };
 
   const baixarExcel = async (resposta: Resposta) => {
-    if (!resposta.tabela || resposta.tabela.parcial || exportando) return;
+    if (!resposta.tabela || exportando) return;
     setExportando(resposta);
     setErro("");
     try {
@@ -555,12 +552,7 @@ export function AssistenteVale() {
                       <div className="vale-ia-balao vale-ia-resposta">
                         <strong className="vale-ia-autor">Vale IA</strong>
                         {resposta ? (
-                          <MensagemVale
-                            resposta={resposta}
-                            fechar={fechar}
-                            baixar={() => void baixarExcel(resposta)}
-                            exportando={exportando}
-                          />
+                          <MensagemVale resposta={resposta} fechar={fechar} />
                         ) : falha ? (
                           <p className="mb-0">{falha}</p>
                         ) : (
@@ -672,16 +664,46 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
 function MensagemVale({
   resposta,
   fechar,
-  baixar,
-  exportando,
 }: {
   resposta: Resposta;
   fechar: () => void;
-  baixar: () => void;
-  exportando?: Resposta;
 }) {
   const [mostrarTodas, setMostrarTodas] = useState(false);
   const [dashboard, setDashboard] = useState<string>();
+  const [arquivos, setArquivos] = useState<{
+    html: string;
+    urlHtml: string;
+    urlExcel: string;
+    urlPacote: string;
+  }>();
+  const [falhaArquivos, setFalhaArquivos] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
+  useEffect(() => {
+    if (!resposta.tabela) return;
+    let cancelado = false;
+    const urls: string[] = [];
+    setArquivos(undefined);
+    setFalhaArquivos(false);
+    void import("./relatorioPacote")
+      .then((m) => m.prepararPacote(resposta))
+      .then((pacote) => {
+        if (cancelado) return;
+        const urlHtml = URL.createObjectURL(
+          new Blob([pacote.html], { type: "text/html;charset=utf-8" }),
+        );
+        const urlExcel = URL.createObjectURL(pacote.excel);
+        const urlPacote = URL.createObjectURL(pacote.pacote);
+        urls.push(urlHtml, urlExcel, urlPacote);
+        setArquivos({ html: pacote.html, urlHtml, urlExcel, urlPacote });
+      })
+      .catch(() => {
+        if (!cancelado) setFalhaArquivos(true);
+      });
+    return () => {
+      cancelado = true;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [resposta, tentativa]);
   const moeda = (valor: number) =>
     valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return (
@@ -738,29 +760,54 @@ function MensagemVale({
       )}
       {resposta.tabela && (
         <>
-          <Button
-            size="sm"
-            variant="outline-secondary"
-            className="me-2"
-            onClick={() => setDashboard(criarRelatorioHtml(resposta))}
-          >
-            Abrir relatório HTML
-          </Button>
+          {arquivos ? (
+            <div
+              className="d-flex gap-2 flex-wrap mb-2"
+              aria-label="Arquivos gerados da consulta"
+            >
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setDashboard(arquivos.html)}
+              >
+                Abrir HTML interativo
+              </Button>
+              <a
+                className="btn btn-sm btn-outline-primary"
+                href={arquivos.urlExcel}
+                download="vale-ia-dados.xlsx"
+              >
+                Baixar Excel{resposta.tabela.parcial ? " parcial" : ""}
+              </a>
+              <a
+                className="btn btn-sm btn-primary"
+                href={arquivos.urlPacote}
+                download="vale-ia-html-e-excel.zip"
+              >
+                Baixar HTML + Excel
+              </a>
+            </div>
+          ) : falhaArquivos ? (
+            <div role="alert">
+              Não foi possível gerar os arquivos.{" "}
+              <Button
+                size="sm"
+                variant="link"
+                onClick={() => setTentativa((n) => n + 1)}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <p role="status">
+              Preparando HTML interativo e Excel com os mesmos dados…
+            </p>
+          )}
           {resposta.tabela.parcial && (
             <p className="text-warning-emphasis">
               A base da consulta está parcial. Confira os detalhes e refine os
               filtros para exportar o conjunto completo.
             </p>
-          )}
-          {!resposta.tabela.parcial && (
-            <Button
-              size="sm"
-              variant="outline-primary"
-              disabled={Boolean(exportando)}
-              onClick={baixar}
-            >
-              {exportando === resposta ? "Gerando…" : "Baixar Excel"}
-            </Button>
           )}
           <details className="mt-2">
             <summary>
@@ -814,15 +861,30 @@ function MensagemVale({
             <iframe
               title="Dashboard da consulta"
               srcDoc={dashboard}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-downloads"
               style={{ width: "100%", height: "70vh", border: 0 }}
             />
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button onClick={() => dashboard && baixarRelatorioHtml(dashboard)}>
-            Baixar HTML
-          </Button>
+          {arquivos && (
+            <>
+              <a
+                className="btn btn-outline-primary"
+                href={arquivos.urlHtml}
+                download="vale-ia-relatorio.html"
+              >
+                Baixar HTML
+              </a>
+              <a
+                className="btn btn-primary"
+                href={arquivos.urlPacote}
+                download="vale-ia-html-e-excel.zip"
+              >
+                Baixar HTML + Excel
+              </a>
+            </>
+          )}
         </Modal.Footer>
       </Modal>
       <div className="d-flex gap-3 mt-2">

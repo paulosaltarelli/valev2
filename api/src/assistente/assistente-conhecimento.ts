@@ -44,6 +44,44 @@ export class AssistenteConhecimento {
     };
   }
 
+  investigacao() {
+    const alvos = [
+      [
+        'api/src/execucao/execucao.service.ts',
+        'Sem memoria_calculo para fórmula',
+      ],
+      ['api/src/execucao/execucao.service.ts', 'Erro ao calcular fórmula'],
+      ['api/src/execucao/execucao.service.ts', 'ERRO_RESULTADOS },'],
+      [
+        'api/src/helpers/calculator/formula-expression.ts',
+        'export function analisarExpressao',
+      ],
+    ];
+    const trechos = alvos.flatMap(([caminho, termo]) => {
+      const arquivo = this.pacote?.files.find((f) => f.path === caminho);
+      if (!arquivo) return [];
+      const linhas = arquivo.text.split('\n');
+      const indice = linhas.findIndex((linha) => linha.includes(termo));
+      if (indice < 0) return [];
+      const inicio = Math.max(0, indice - 8);
+      return [
+        {
+          caminho,
+          linha: inicio + 1,
+          trecho: linhas
+            .slice(inicio, indice + 22)
+            .join('\n')
+            .slice(0, 2600),
+        },
+      ];
+    });
+    return {
+      trechos,
+      fontes: trechos.map((t) => t.caminho + ':' + t.linha),
+      estado: this.estado(),
+    };
+  }
+
   buscar(pergunta: string, perfil: string) {
     if (perfil !== 'admin' || !this.pacote)
       return {

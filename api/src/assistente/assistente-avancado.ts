@@ -23,10 +23,16 @@ import { promptSugerido, regrasFixas } from './assistente-prompt';
 import type { ResultadoAssistente } from './assistente-tipos';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { AssistenteSql } from './assistente-sql';
+import { AssistenteInvestigacao } from './assistente-investigacao';
 
 class PlanoDto {
-  @IsIn(['consulta', 'relatorio', 'sql', 'conhecimento'])
-  acao!: 'consulta' | 'relatorio' | 'sql' | 'conhecimento';
+  @IsIn(['consulta', 'relatorio', 'sql', 'conhecimento', 'investigar'])
+  acao!: 'consulta' | 'relatorio' | 'sql' | 'conhecimento' | 'investigar';
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  funcionario?: string;
 
   @IsIn(intents)
   consulta!: Intent;
@@ -65,6 +71,7 @@ export class AssistenteAvancado {
     private readonly relatorios: OperationalReportsService,
     private readonly conhecimento: AssistenteConhecimento,
     private readonly sql: AssistenteSql,
+    private readonly investigacao: AssistenteInvestigacao,
   ) {}
 
   estadoConhecimento() {
@@ -100,7 +107,8 @@ export class AssistenteAvancado {
       credencial,
       regras +
         `\nPlaneje uma única ação. Retorne somente JSON, sem Markdown.
-Formato {"acao":"consulta|sql|conhecimento","consulta":"${intents.join('|')}","periodoId":numero_ou_null,"filialId":numero_ou_null,"titulo":"título curto"}.
+Formato {"acao":"consulta|sql|conhecimento|investigar","consulta":"${intents.join('|')}","periodoId":numero_ou_null,"filialId":numero_ou_null,"titulo":"título curto"}. Para investigar, acrescente "funcionario":"nome ou matrícula citado na pergunta" quando disponível. Não invente identificação.
+Use investigar para explicar por que um funcionário teve problema, ficou sem valores, teve falhas ou não foi calculado. Esta ferramenta consulta banco, memórias, erros e código em conjunto. Não troque a investigação por uma resposta genérica de conhecimento.
 Use conhecimento para dúvidas sobre telas, regras, estrutura e processos. Use consulta para pendências, evidências de erro, memórias e comparações que já tenham um serviço pertinente. Use sql para perguntas sobre valores, totais, rankings, descontos, relatórios, dashboards e consultas personalizadas: a próxima ferramenta construirá e executará um SELECT validado sobre dados reais.
 Os campos periodoId e filialId devem usar IDs da lista fornecida. Null em filialId significa todas as filiais ativas. Use a competência e a filial do contexto quando a pergunta não as mudar. Se perguntar quais filiais têm pendências, use pendencias e filialId null. Se perguntar qual filial teve maior ou menor valor, ou um ranking de filiais, use sql e filialId null, mesmo que a tela atual tenha uma filial selecionada. Mês 10 significa outubro do ano do contexto, e deve selecionar a competência ativa correspondente.
 Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e fórmula), variaveis (memórias de cálculo e variáveis), erros (evidências e situações), comparacao (competência anterior, com regras históricas), financeiro (relatório financeiro existente), km (distâncias), formulas (cadastro, só admin). Não troque ausência de suporte por uma consulta de assunto diferente.`,
@@ -128,7 +136,13 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
     )
       throw new ServiceUnavailableException('O plano retornado é inválido.');
 
-    if (plano.acao === 'conhecimento') {
+    const investigar =
+      plano.acao === 'investigar' ||
+      (/funcion[aá]rio|colaborador/i.test(input.pergunta) &&
+        /por qu[eê]|\bpq\b|problema|sem valor|n[aã]o (?:vieram|teve|calcul)/i.test(
+          input.pergunta,
+        ));
+    if (plano.acao === 'conhecimento' && !investigar) {
       const texto = await consultarModelo(
         provedor,
         credencial,
@@ -180,6 +194,24 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       throw new BadRequestException(
         'Filial não disponível para esta consulta.',
       );
+    if (investigar) {
+      const matriculaDaPergunta =
+        /(?:matr[ií]cula|funcion[aá]rio)\s+(\d[\d./-]{2,49})/i.exec(
+          input.pergunta,
+        )?.[1];
+      return this.investigacao.responder(
+        input.matricula ?? matriculaDaPergunta ?? plano.funcionario,
+        {
+          periodoId,
+          competencia: periodos.find((p) => p.periodo_id === periodoId)!
+            .competencia,
+          filialId,
+        },
+        provedor,
+        credencial,
+        contexto,
+      );
+    }
     if (
       input.matricula &&
       !['valores', 'variaveis', 'erros', 'km'].includes(plano.consulta)
@@ -188,8 +220,14 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
         'Esta consulta não aceita filtro de matrícula.',
       );
     const filtros = { ...input, periodoId, filialId };
-    const rankingDeFiliais = comparaFiliais && /\b(maior|menor|mais|menos|ranking)\b/.test(perguntaNormalizada);
-    if (plano.acao === 'sql' || plano.acao === 'relatorio' || rankingDeFiliais) {
+    const rankingDeFiliais =
+      comparaFiliais &&
+      /\b(maior|menor|mais|menos|ranking)\b/.test(perguntaNormalizada);
+    if (
+      plano.acao === 'sql' ||
+      plano.acao === 'relatorio' ||
+      rankingDeFiliais
+    ) {
       return this.sql.responder(
         input.pergunta,
         {

@@ -65,3 +65,11 @@ O ChatGPT oferece login a parceiros comerciais selecionados. O compartilhamento 
 3. Execute o backup oficial em `/opt/valeexpresso/backup.py` e verifique sua saída. Preserve as imagens ativas com tags de rollback, a origem instalada, o Compose e a configuração protegida da API. Registre IDs e hashes no diretório do release. A migração de configuração do Claude é aditiva.
 4. Faça o Compose recriar apenas API e web com as imagens candidatas. Verifique a API pelo proxy e a autenticação, o dashboard e a exportação com usuário autorizado. Confira que a fila volta a operar e registre os IDs efetivamente em execução.
 5. Se o teste falhar, restaure a configuração e os arquivos de origem do backup da publicação, reponha as tags anteriores, recrie apenas API e web e verifique a saúde pelo proxy. O banco continua na mesma versão.
+# Relatórios interativos e investigação
+
+Cada resposta tabular prepara automaticamente um HTML autônomo, o Excel correspondente e um ZIP com ambos. O HTML incorpora o logotipo oficial e a biblioteca local de Excel, funciona sem CDN e bloqueia conexões externas. Busca, filtros por coluna e seleção no gráfico atualizam os indicadores e a tabela. O Excel do recorte exporta todas as linhas filtradas, independentemente da paginação, e registra os filtros locais. Bases parciais são identificadas no HTML e no Excel. As planilhas incluem Resumo, Dados e Filtros e fontes; identificadores e decimais longos permanecem textuais.
+
+A ação `investigar` identifica um funcionário por nome ou matrícula no recorte da competência ativa, impede escolhas silenciosas entre pessoas ou execuções duplicadas e consulta resultados, memórias, filas e logs históricos reconhecidos. A síntese cruza esses fatos com trechos do código de processamento. O provedor recebe dados estruturados sem nome ou matrícula e sem logs técnicos brutos. O fluxo usa apenas leituras e não dispara processamento. Quando faltar evidência, código ou resposta do provedor, declara a limitação.
+
+Validação adicional: `node scripts/test-relatorios.mjs <diretorio-de-saida>` em `administration`, além das suítes `assistente-investigacao.spec.ts`, `assistente.spec.ts`, `assistente-sql.spec.ts` e `operational-reports.spec.ts` na API. O prompt aprovado deve ser salvo em `assistente_configuracao.contexto` com backup do conteúdo anterior, sem alterar chaves ou flags.
+

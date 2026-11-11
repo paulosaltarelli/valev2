@@ -1,15 +1,24 @@
 import { validarSql, esquemaSql } from './assistente-sql-validacao';
-import { lerResultadoSql, AssistenteSql, validarFontesDaPergunta } from './assistente-sql';
+import {
+  lerResultadoSql,
+  AssistenteSql,
+  validarFontesDaPergunta,
+} from './assistente-sql';
 import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import type { AssistenteConsultas } from './assistente-consultas';
 import type { OperationalReportsService } from '../dash/operational-reports.service';
+import type { AssistenteInvestigacao } from './assistente-investigacao';
 
 it('impede eliminar calculados não enviados ao juntar o financeiro enviado', () => {
   const pergunta = 'ranking dos descontos calculados ainda não enviados';
-  expect(() => validarFontesDaPergunta(pergunta, ['resultados', 'financeiro'])).toThrow('sem JOIN');
+  expect(() =>
+    validarFontesDaPergunta(pergunta, ['resultados', 'financeiro']),
+  ).toThrow('sem JOIN');
   expect(() => validarFontesDaPergunta(pergunta, ['resultados'])).not.toThrow();
-  expect(() => validarFontesDaPergunta('descontos enviados', ['financeiro'])).not.toThrow();
+  expect(() =>
+    validarFontesDaPergunta('descontos enviados', ['financeiro']),
+  ).not.toThrow();
 });
 
 it('compila ranking de descontos e limita a saída sem limitar os registros agregados', () => {
@@ -89,7 +98,7 @@ it('consulta todas as filiais no ranking mesmo com filial herdada da tela', asyn
             {
               type: 'output_text',
               text: JSON.stringify({
-              acao: 'consulta',
+                acao: 'consulta',
                 consulta: 'financeiro',
                 periodoId: 7,
                 filialId: 9,
@@ -107,6 +116,7 @@ it('consulta todas as filiais no ranking mesmo com filial herdada da tela', asyn
       relatorios as unknown as OperationalReportsService,
       new AssistenteConhecimento(),
       sql as unknown as AssistenteSql,
+      {} as AssistenteInvestigacao,
     );
     await service.responder(
       {
