@@ -30,10 +30,10 @@ import {
   useOperationQuery,
 } from "../../components/Processamento/OperationCommon";
 
-function BranchMeter({label,value,total}:{label:string;value:number;total:number}) {
+function BranchMeter({label,value,total,finalStage=false}:{label:string;value:number;total:number;finalStage?:boolean}) {
  const percent=total>0?Math.max(0,Math.min(100,Math.floor(value*100/total))):0;
  const complete=total>0&&value>=total;
- return <div className={`ve-branch-meter ${complete?'is-complete':''}`}><div><strong>{complete?'✓ ':''}{total>0?percent+'%':'—'}</strong><small>{value.toLocaleString('pt-BR')} / {total.toLocaleString('pt-BR')}</small></div><progress aria-label={`${label}: ${value} de ${total}`} value={value} max={total||1}/></div>;
+ return <div className={`ve-branch-meter ${complete && finalStage?'is-complete':''}`}><div><strong>{complete?'✓ ':''}{total>0?percent+'%':'—'}</strong><small>{value.toLocaleString('pt-BR')} / {total.toLocaleString('pt-BR')}</small></div><progress aria-label={`${label}: ${value} de ${total}`} value={value} max={total||1}/></div>;
 }
 
 export function ProcessamentoPage() {
@@ -339,7 +339,7 @@ export function ProcessamentoPage() {
                 {showPercent && <div className="ve-percent-summary"><strong className="op-overall-percent">{percent}%</strong><small>{!queueKnown || !totalKnown ? "Parcial · execuções criadas" : "Das variáveis e fórmulas previstas"}</small></div>}
               </div>
               <div role="status">
-                <strong className={`ve-status-pill ${attention || creationFailures.size ? "ve-status-danger" : processingJobs || pendingJobs ? "ve-status-info" : percent === 100 ? "ve-status-success" : "ve-status-warning"}`}>{progressStatus}</strong>
+                <strong className={`ve-status-pill ${attention || creationFailures.size ? "ve-status-danger" : processingJobs || pendingJobs ? "ve-status-info" : percent === 100 ? "ve-status-info" : "ve-status-warning"}`}>{progressStatus}</strong>
                 <p className="mb-2">
                   {totals.valores.toLocaleString("pt-BR")} de {totals.total.toLocaleString("pt-BR")} funcionários concluídos
                   {!totalKnown && " nas execuções já criadas"}
@@ -394,7 +394,7 @@ export function ProcessamentoPage() {
               detail={`${totals.valores}/${totals.total} funcionários completos`}
             />
             <StageCount
-              label="Enviados ao RM"
+              label="Enviados ao RM" finalStage
               value={totals.rm}
               total={totals.total}
             />
@@ -545,11 +545,11 @@ export function ProcessamentoPage() {
                         <td data-label="Variáveis"><BranchMeter label="Variáveis" value={r.progresso.variaveisCalculadas} total={r.progresso.variaveisPrevistas}/></td>
                         <td data-label="Fórmulas"><BranchMeter label="Fórmulas" value={r.progresso.formulasCalculadas} total={r.progresso.formulasPrevistas}/></td>
                         <td data-label="Funcionários"><BranchMeter label="Funcionários com valores calculados" value={r.valores} total={r.total}/></td>
-                        <td data-label="Envio ao RM"><BranchMeter label="Funcionários enviados ao RM" value={r.rm} total={r.total}/></td>
+                        <td data-label="Envio ao RM"><BranchMeter finalStage label="Funcionários enviados ao RM" value={r.rm} total={r.total}/></td>
                         <td>
-                          <span className={`ve-branch-badge ${r.errors>0?'has-error':['conferencia','envio','enviado'].includes(r.situacao)?'is-complete':''}`}>
+                          <span className={`ve-branch-badge ${r.errors>0?'has-error':r.situacao==='enviado'?'is-complete':''}`}>
                             <span aria-hidden="true">{r.errors>0?'!':['conferencia','envio','enviado'].includes(r.situacao)?'✓':'◷'}</span>
-                            {r.errors>0?'Com erro':r.situacao==='enviado'?'Enviado ao RM':['conferencia','envio'].includes(r.situacao)?'Calculado':r.situacao==='inicio'?'A calcular':s.label}
+                            {r.errors>0?'Com erro':r.situacao==='enviado'?'Enviado ao RM':['conferencia','envio'].includes(r.situacao)?'Pronto para envio':r.situacao==='inicio'?'A calcular':s.label}
                           </span>
                           {r.nextRunAt && !r.controleFila && (
                             <small>

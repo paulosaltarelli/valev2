@@ -591,7 +591,7 @@ export function ProcessamentoDetalhesPage() {
             detail={`${row.variaveis} de ${row.total} funcionários completos`}
           />
           <div className="op-stage"><StageCount label="Fórmulas calculadas" value={row.progresso.formulasCalculadas} total={row.progresso.formulasPrevistas} unit="fórmulas" detail={`${row.valores} de ${row.total} funcionários completos`} /><button type="button" className="btn btn-link btn-sm p-0" onClick={() => { setSearchDraft(""); setContext({ filtro: "formulas_pendentes", busca: "", pagina: "1", resultado: "" }); }}>Ver funcionários pendentes</button></div>
-          <StageCount label="Enviados ao RM" value={row.rm} total={row.total} />
+          <StageCount label="Enviados ao RM" finalStage value={row.rm} total={row.total} />
         </div>
       )}
       {summary.error && (

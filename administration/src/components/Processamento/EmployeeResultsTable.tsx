@@ -85,7 +85,7 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
         <tbody>{bases.map(b => {
           const failed = b.status?.startsWith("ERRO") || b.status === "RESULTADOS_PARCIAL" || b.execucao_funcionario.some(r => r.status?.startsWith("ERRO"));
           const complete = ["RESULTADOS_PROCESSADOS", "ENVIADO_RM", "ERRO_RM"].includes(b.status) && b.execucao_funcionario.length > 0 && b.execucao_funcionario.every(r => ["PROCESSADO", "ENVIADO_RM"].includes(r.status) && r.valor_final !== null);
-          const label = failed ? (b.status?.startsWith("ERRO") ? statusLabel(b.status) : "Falha em valores") : !complete && b.status === "RESULTADOS_PROCESSADOS" ? "Fórmulas pendentes" : statusLabel(b.status);
+          const label = failed ? (b.status?.startsWith("ERRO") ? statusLabel(b.status) : "Falha em valores") : !complete && b.status === "RESULTADOS_PROCESSADOS" ? "Fórmulas pendentes" : complete && b.status !== "ENVIADO_RM" ? "Pronto para envio" : statusLabel(b.status);
           const rules=[...new Set(b.execucao_funcionario.map(r=>r.codigo_regra_rm??""))].filter(Boolean).sort();
           const isExpanded=expanded.includes(b.execucao_funcionario_base_id);
           return <Fragment key={b.execucao_funcionario_base_id}><tr>
@@ -102,7 +102,7 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
             {columns.map(c => <td key={c.key} className="op-event-cell" data-label={c.title}>
               <EventCell results={b.execucao_funcionario.filter(r => eventKey(r).key === c.key)} onOpen={onOpen} summary />
             </td>)}
-            <td className="op-person-state" data-label="Situação"><span className={`op-status op-${failed ? "danger" : complete ? "success" : "info"}`}>{failed ? <button type="button" className="op-error-link" aria-haspopup="dialog" aria-label={`Ver erro: ${label} · ${b.nome_funcionario}`} onClick={() => onError(b)}>{label} <span aria-hidden="true">↗</span></button> : label}</span></td>
+            <td className="op-person-state" data-label="Situação"><span className={`op-status op-${failed ? "danger" : complete && b.status === "ENVIADO_RM" ? "success" : "info"}`}>{failed ? <button type="button" className="op-error-link" aria-haspopup="dialog" aria-label={`Ver erro: ${label} · ${b.nome_funcionario}`} onClick={() => onError(b)}>{label} <span aria-hidden="true">↗</span></button> : label}</span></td>
             <td className="op-person-tools"><button type="button" className="op-variables-button" aria-haspopup="dialog" aria-label={`Variáveis de ${b.nome_funcionario}`} onClick={() => onVariables(b)}>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M4 12h16M4 17h16M9 5v4m6 1v4m-5 1v4" /></svg><span>Variáveis</span></button>
               <button type="button" className="op-row-more" aria-haspopup="dialog" aria-label={`Ações de ${b.nome_funcionario}`} onClick={() => setActions(b)}>⋯</button>
