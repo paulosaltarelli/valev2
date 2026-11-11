@@ -137,6 +137,7 @@ export type OperationRequest = {
   execucaoIds: number[];
   baseIds?: number[];
   recalcular?: boolean;
+  somenteErros?: boolean;
 };
 export type OperationPreview = {
   id: string;
@@ -165,6 +166,8 @@ export type OperationPreview = {
   }>;
 };
 export const OperacaoApi = {
+  retryScope: (id: number) => api.get(`/operacao/${id}/retentativa-erros`) as Promise<Record<"VARIAVEIS" | "VALORES", { elegiveis: number; bloqueados: number }>>,
+  employeeFailures: (id: number, base: number) => api.get(`/operacao/${id}/pessoas/${base}/falhas`) as Promise<Array<{ etapa: string; mensagens: string[]; atualizadoEm: string | null }>>,
   controlQueue: (id: number, action: QueueAction) =>
     api.post(`/operacao/${id}/fila/${action}`) as Promise<{ message: string }>,
   employeeVariables: (id: number, base: number) =>

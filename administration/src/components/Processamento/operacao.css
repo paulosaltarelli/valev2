@@ -793,3 +793,11 @@ small {
 .op-action-options > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 0; }
 .op-compact-actions .op-muted:empty { display: none; }
 @media(max-width:700px){.op-compact-actions-main { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }.op-compact-actions-main>.op-action-scope{grid-column:1/-1}.op-compact-actions-main>.btn { padding: 8px; font-size: 13px; }.op-compact-actions-main>div { grid-column:1/-1; }.op-compact-actions-main>div>.btn { width:100%; }.op-compact-actions-secondary { gap: 4px; }}
+
+.op-error-link { color: inherit; background: none; border: 0; padding: 6px 0; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.op-error-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 3px; }
+.op-retry-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.op-retry-choices button { width: 100%; min-height: 84px; white-space: normal; }
+.op-retry-choices strong, .op-retry-choices small { display: block; margin-top: 6px; }
+.op-failure-message { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+@media(max-width: 480px) { .op-retry-choices { grid-template-columns: 1fr; } }

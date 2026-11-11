@@ -14,6 +14,7 @@ import {
 } from "../../utils/api/operacaoApi";
 import api from "../../utils/api/Api";
 import { EventGroups } from "./EventGroups";
+import { RetryErrors, EmployeeFailureDetails } from "./RetryErrors";
 import { EmployeeResultsTable } from "./EmployeeResultsTable";
 import { ExecucaoApi } from "../../utils/api/execucaoApi";
 import {
@@ -456,6 +457,8 @@ function ResultPanel({
 export function ProcessamentoDetalhesPage() {
   const id = Number(useParams().execucaoId);
   const [params, setParams] = useSearchParams();
+  const [failurePerson, setFailurePerson] = useState<BaseRow | null>(null);
+  useEffect(() => setFailurePerson(null), [id]);
   const [showQueue, setShowQueue] = useState(false);
   const page = Math.max(1, Number(params.get("pagina")) || 1);
   const search = params.get("busca") ?? "";
@@ -604,6 +607,7 @@ export function ProcessamentoDetalhesPage() {
           {(!selecting || selected.length > 0) ? <SendScope key={`${id}:${selecting ? selected.join(",") : "todas"}`} executionIds={[id]} personIds={selecting ? selected : undefined} disabled={commandDisabled} onSend={() => process("ENVIAR_RM", selecting ? selected : undefined)} /> : <button className="btn btn-primary" disabled>Enviar ao RM</button>}
         </div>
         <div className="op-compact-actions-secondary">
+          <RetryErrors key={id} id={id} disabled={commandDisabled} onDone={refresh} onNotice={setNotice} />
           <button type="button" className="btn btn-link btn-sm" onClick={() => setShowQueue(true)}>Fila e falhas{query.data?.queue.length ? ` · ${query.data.queue.length}` : ""}</button>
           <details className="op-action-options"><summary>Mais opções</summary><div>
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => { setSelecting(!selecting); setSelected([]); }}>{selecting ? "Encerrar seleção" : "Selecionar para envio"}</button>
@@ -741,7 +745,7 @@ export function ProcessamentoDetalhesPage() {
 
           <div>
             <EmployeeResultsTable bases={query.data?.bases ?? []} selecting={selecting} selected={selected}
-              onSelected={setSelected} onVariables={setMemoryPerson}
+              onSelected={setSelected} onVariables={setMemoryPerson} onError={setFailurePerson}
               onOpen={result => setContext({ resultado: String(result) }, false)}
               onProcess={process} disabled={commandDisabled} />
             {query.data && !query.data.bases.length && (
@@ -779,6 +783,10 @@ export function ProcessamentoDetalhesPage() {
           </p>
         </>
       )}
+      <Modal show={Boolean(failurePerson)} onHide={() => setFailurePerson(null)} centered scrollable className="op-modal" aria-labelledby="op-failure-title">
+        <Modal.Header closeButton><Modal.Title id="op-failure-title">Detalhes da falha</Modal.Title></Modal.Header>
+        <Modal.Body>{failurePerson && <EmployeeFailureDetails key={failurePerson.execucao_funcionario_base_id} id={id} person={failurePerson} />}</Modal.Body>
+      </Modal>
       <Modal
         show={Boolean(memoryPerson || resultId)}
         onHide={() => memoryPerson ? setMemoryPerson(null) : setContext({ resultado: "" }, false)}

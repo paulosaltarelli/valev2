@@ -1,3 +1,4 @@
+import { retriesOnlyErrors } from 'src/execucao/retry-errors';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -188,7 +189,7 @@ export class CronService {
       `,
     );
       if (tipo !== 'ENVIAR_RM') {
-        const baseIds = rows.filter((row) => row.revisao_payload).map((row) => row.execucao_funcionario_base_id);
+        const baseIds = rows.filter((row) => row.revisao_payload && !retriesOnlyErrors(row.revisao_payload)).map((row) => row.execucao_funcionario_base_id);
         for (const ids of chunks(baseIds, 500)) {
           await tx.execucao_funcionario.updateMany({
             where: { execucao_funcionario_base_id: { in: ids } },
@@ -204,6 +205,7 @@ export class CronService {
       return false;
     }
 
+    const retryBaseIds = new Set(claimed.filter(row => retriesOnlyErrors(row.revisao_payload)).map(row => row.execucao_funcionario_base_id));
     const baseIds = claimed.map((c) => c.execucao_funcionario_base_id);
     const queueIds = claimed.map((item) => item.queue_id);
     const claimedIdsSql = sqlServerIds(queueIds);
@@ -261,7 +263,7 @@ export class CronService {
     try {
       if (tipo === 'VARIAVEIS') {
         const resultado = await this.execucaoService.processarVariaveisBatch(
-          execucaoId, rows, sessionId!, { owner: this.lockOwner, queueIds, batchSize: pilotSize },
+          execucaoId, rows, sessionId!, { owner: this.lockOwner, queueIds, batchSize: pilotSize, retryBaseIds },
         );
         failedCall = !resultado.status;
         retryNotBefore = resultado.retryNotBefore ?? 0;
@@ -280,7 +282,7 @@ export class CronService {
           return false;
         });
         if (aptos.length) {
-          const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos, sessionId!);
+          const resultado = await this.execucaoService.processarValoresBatch(execucaoId, aptos, sessionId!, retryBaseIds);
           failedCall = !resultado.status;
           for (const id of resultado.falhasFormulaIds ?? []) errosSemRetry.add(id);
         }

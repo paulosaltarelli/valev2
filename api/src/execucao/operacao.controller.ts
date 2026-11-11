@@ -26,6 +26,14 @@ export class OperacaoController {
   summary(@Query('periodo') periodo?: string) {
     return this.service.summary(periodo ? Number(periodo) : undefined);
   }
+  @Get(':id/retentativa-erros')
+  @Header('Cache-Control', 'no-store')
+  retryScope(@Param('id', ParseIntPipe) id: number) { return this.service.retryScope(id); }
+  @Get(':id/pessoas/:base/falhas')
+  @Header('Cache-Control', 'no-store')
+  employeeFailures(@Param('id', ParseIntPipe) id: number, @Param('base', ParseIntPipe) base: number) {
+    return this.service.employeeFailures(id, base);
+  }
   @Get(':id/pessoas')
   @Header('Cache-Control', 'no-store')
   detail(

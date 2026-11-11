@@ -9,6 +9,7 @@ import {
 import { Prisma, formula, type execucao_funcionario_base, type variavel } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { hasStageFailure } from './retry-errors';
 import { operationProgress } from './operation-progress';
 import { RmService } from 'src/rm/rm.service';
 import { employeeKey, isBatchChapa, isPve2EventQuery, readPve2EventValues } from './rm-variable-batch';
@@ -29,6 +30,7 @@ export type PedidoOperacao = {
   execucaoIds: number[];
   baseIds?: number[];
   recalcular?: boolean;
+  somenteErros?: boolean;
 };
 const ativos = ['PENDENTE', 'PROCESSANDO'];
 const calculados = ['RESULTADOS_PROCESSADOS', 'ENVIADO_RM', 'ERRO_RM'];
@@ -875,11 +877,14 @@ export class OperacaoService {
       throw new BadRequestException('Pedido inválido.');
     if (!['VARIAVEIS', 'VALORES', 'CONFERIR', 'ENVIAR_RM'].includes(p.etapa))
       throw new BadRequestException('Etapa inválida.');
+    if (p.somenteErros && !['VARIAVEIS', 'VALORES'].includes(p.etapa))
+      throw new BadRequestException('Retentativa disponível somente para variáveis ou valores.');
     return {
       etapa: p.etapa,
       execucaoIds: idsValidos(p.execucaoIds),
       ...(p.baseIds ? { baseIds: idsValidos(p.baseIds) } : {}),
-      recalcular: p.recalcular === true,
+      recalcular: p.somenteErros === true || p.recalcular === true,
+      somenteErros: p.somenteErros === true,
     };
   }
 
@@ -926,7 +931,7 @@ export class OperacaoService {
       select: { execucao_id: true },
       distinct: ['execucao_id'],
     })).map((q) => q.execucao_id));
-    return bases.map((b) => {
+    return bases.filter(b => !p.somenteErros || hasStageFailure(b, p.etapa)).map((b) => {
       const results = b.execucao_funcionario;
       let reason = b.execucao.controle_fila === 'PAUSADA'
         ? 'Retome ou cancele a fila pausada desta execução'
@@ -1032,6 +1037,38 @@ export class OperacaoService {
     });
   }
 
+  async retryScope(execucaoId: number) {
+    const counts = await Promise.all((['VARIAVEIS', 'VALORES'] as const).map(async etapa => {
+      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds: [execucaoId], somenteErros: true }));
+      return [etapa, { elegiveis: items.filter(item => !item.reason).length, bloqueados: items.filter(item => item.reason).length }] as const;
+    }));
+    return Object.fromEntries(counts);
+  }
+
+  async employeeFailures(execucaoId: number, baseId: number) {
+    const base = await this.prisma.execucao_funcionario_base.findFirst({
+      where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
+      include: { execucao_funcionario: true },
+    });
+    if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
+    const stages = ['VARIAVEIS', 'VALORES'].filter(stage => hasStageFailure(base, stage));
+    if (base.status === 'ERRO_RM') stages.push('ENVIAR_RM');
+    return Promise.all(stages.map(async etapa => {
+      const queue = await this.prisma.execucao_queue.findFirst({
+        where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId, tipo: etapa, last_error: { not: null } },
+        orderBy: { queue_id: 'desc' }, select: { last_error: true, updated_at: true },
+      });
+      const logs = await this.prisma.log_execucao.findMany({
+        where: { execucao_id: execucaoId, nivel: 'ERROR', mensagem: { contains: `funcionário ${base.funcionario_id_rm}:` } },
+        orderBy: { log_id: 'desc' }, take: 50, select: { mensagem: true },
+      });
+      const messages = [...new Set(logs.map(log => log.mensagem).filter(message => etapa === 'VARIAVEIS'
+        ? message.startsWith('Erro RM variavel ')
+        : etapa === 'VALORES' ? /calcular fórmula|processar valores|Sem memoria_calculo/.test(message) : false))].slice(0, 6);
+      return { etapa, mensagens: messages.length ? messages : [queue?.last_error || 'O processamento registrou uma falha, mas não armazenou o detalhe individual.'], atualizadoEm: queue?.updated_at ?? null };
+    }));
+  }
+
   async preview(pedido: PedidoOperacao, usuarioId: number) {
     const p = this.normalize(pedido);
     const items = await this.candidates(this.prisma, p);
@@ -1072,7 +1109,7 @@ export class OperacaoService {
           execucao_funcionario_base_id: item.baseId,
           tipo: p.etapa,
           session_id: sessionId,
-          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos }),
+          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos, somenteErros: p.somenteErros === true }),
         } });
       }
       await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO', controle_fila: null } });
@@ -1124,6 +1161,7 @@ export class OperacaoService {
               revisao_payload: JSON.stringify({
                 usuarioId,
                 previaId: id,
+                somenteErros: p.somenteErros === true,
                 eventos: item.eventos,
               }),
             },

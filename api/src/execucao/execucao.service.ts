@@ -1,3 +1,4 @@
+import { isSuccessfulResult } from './retry-errors';
 import { transportRules, ruleQueries, ruleKey, distributeRuleResult } from './transport-rules';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
@@ -655,6 +656,7 @@ export class ExecucaoService {
     execucaoId: number,
     rows: execucao_funcionario_base[],
     sessionId?: string,
+    retryBaseIds: ReadonlySet<number> = new Set(),
   ): Promise<{ status: boolean; message: string; falhasFormulaIds?: number[] }> {
     try {
       this.logger.log(
@@ -748,6 +750,10 @@ export class ExecucaoService {
               codigoRegra,
             });
 
+            if (retryBaseIds.has(funcionarioBase.execucao_funcionario_base_id) && isSuccessfulResult(execFunc)) {
+              teveProcessado = true;
+              continue;
+            }
             const codigosNecessarios = this.extractCodesFromExpressao(
               formula.expressao,
             );
@@ -883,7 +889,7 @@ export class ExecucaoService {
     execucaoId: number,
     rows: execucao_funcionario_base[],
     sessionId: string,
-    claim?: { owner: string; queueIds: number[]; batchSize: number },
+    claim?: { owner: string; queueIds: number[]; batchSize: number; retryBaseIds?: ReadonlySet<number> },
   ): Promise<{ status: boolean; message: string; falhasSemRetryIds?: number[]; retryNotBefore?: number }> {
     const startedAt = process.hrtime.bigint();
     let cacheHits = 0;
@@ -1013,9 +1019,9 @@ export class ExecucaoService {
             execucao_funcionario_base_id: { in: ids },
             formula_id: { in: formulaIds },
           },
-          select: { execucao_funcionario_id: true },
+          select: { execucao_funcionario_id: true, execucao_funcionario_base_id: true, status: true, valor_final: true },
         });
-        execFuncIdsParaLimpar.push(...execFuncsParaLimpar.map((row) => row.execucao_funcionario_id));
+        execFuncIdsParaLimpar.push(...execFuncsParaLimpar.filter(row => !claim?.retryBaseIds?.has(row.execucao_funcionario_base_id) || !isSuccessfulResult(row)).map((row) => row.execucao_funcionario_id));
       }
 
       // Reprocesso forçado (batch): volta status para PREVIA apenas dos selecionados
@@ -1057,6 +1063,7 @@ export class ExecucaoService {
             codigoRegra,
           });
 
+          if (claim?.retryBaseIds?.has(funcionarioBase.execucao_funcionario_base_id) && isSuccessfulResult(execFunc)) continue;
           const codigos = codigosPorFormula.get(formula.formula_id)!;
           if (codigos.size === 0) continue;
 
