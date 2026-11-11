@@ -44,13 +44,13 @@ function EventCell({ results, onOpen }: { results: ResultRow[]; onOpen: (id: num
 export function EmployeeResultsTable({ bases, selecting, selected, onSelected, onVariables, onOpen, onProcess, disabled }: {
   bases: BaseRow[]; selecting: boolean; selected: number[]; onSelected: (ids: number[]) => void;
   onVariables: (base: BaseRow) => void; onOpen: (id: number) => void;
-  onProcess: (stage: Etapa, ids: number[], recalculate?: boolean) => void; disabled: boolean;
+  onProcess: (stage: Etapa, ids: number[]) => void; disabled: boolean;
 }) {
   const [actions, setActions] = useState<BaseRow | null>(null);
   const columns = resultColumns(bases);
-  const run = (stage: Etapa, recalculate = false) => {
+  const run = (stage: Etapa) => {
     if (!actions || disabled) return;
-    onProcess(stage, [actions.execucao_funcionario_base_id], recalculate);
+    onProcess(stage, [actions.execucao_funcionario_base_id]);
     setActions(null);
   };
   return <>
@@ -66,8 +66,9 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
           <th scope="col">Situação</th><th scope="col">Ações</th>
         </tr></thead>
         <tbody>{bases.map(b => {
-          const failed = b.status?.startsWith("ERRO");
-          const complete = b.execucao_funcionario.length > 0 && b.execucao_funcionario.every(r => r.valor_calculado !== null);
+          const failed = b.status?.startsWith("ERRO") || b.execucao_funcionario.some(r => r.status?.startsWith("ERRO"));
+          const complete = ["RESULTADOS_PROCESSADOS", "ENVIADO_RM", "ERRO_RM"].includes(b.status) && b.execucao_funcionario.length > 0 && b.execucao_funcionario.every(r => ["PROCESSADO", "ENVIADO_RM"].includes(r.status) && r.valor_final !== null);
+          const label = failed ? (b.status?.startsWith("ERRO") ? statusLabel(b.status) : "Falha em fórmulas") : !complete && b.status === "RESULTADOS_PROCESSADOS" ? "Fórmulas pendentes" : statusLabel(b.status);
           return <tr key={b.execucao_funcionario_base_id}>
             <th scope="row" className="op-person-identity"><div className="op-branch-name">
               {selecting && <input type="checkbox" aria-label={`Selecionar ${b.nome_funcionario}, ${b.funcionario_id_rm}`}
@@ -77,7 +78,7 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
             {columns.map(c => <td key={c.key} className="op-event-cell" data-label={c.title}>
               <EventCell results={b.execucao_funcionario.filter(r => eventKey(r).key === c.key)} onOpen={onOpen} />
             </td>)}
-            <td className="op-person-state" data-label="Situação"><span className={`op-status op-${failed ? "danger" : complete ? "success" : "neutral"}`}>{statusLabel(b.status)}</span></td>
+            <td className="op-person-state" data-label="Situação"><span className={`op-status op-${failed ? "danger" : complete ? "success" : "info"}`}>{label}</span></td>
             <td className="op-person-tools"><button type="button" className="op-variables-button" aria-haspopup="dialog" aria-label={`Variáveis de ${b.nome_funcionario}`} onClick={() => onVariables(b)}>
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M4 12h16M4 17h16M9 5v4m6 1v4m-5 1v4" /></svg><span>Variáveis</span></button>
               <button type="button" className="op-row-more" aria-haspopup="dialog" aria-label={`Ações de ${b.nome_funcionario}`} onClick={() => setActions(b)}>⋯</button>
@@ -90,7 +91,6 @@ export function EmployeeResultsTable({ bases, selecting, selected, onSelected, o
       <Modal.Header closeButton><Modal.Title id="op-person-actions-title">Ações do funcionário</Modal.Title></Modal.Header>
       <Modal.Body>{actions && <><strong>{actions.nome_funcionario}</strong><p className="op-muted">{actions.funcionario_id_rm} · {actions.cargo} · KM: {actions.km ?? "não informado"}</p>
         <div className="op-person-action-buttons"><button className="btn btn-outline-primary" disabled={disabled} onClick={() => run("VARIAVEIS")}>Processar variáveis</button><button className="btn btn-outline-primary" disabled={disabled} onClick={() => run("VALORES")}>Calcular valores</button></div>
-        <details className="op-person-recalculate"><summary>Reprocessar etapas concluídas</summary><div className="op-person-action-buttons"><button className="btn btn-outline-secondary" disabled={disabled} onClick={() => run("VARIAVEIS", true)}>Reprocessar variáveis</button><button className="btn btn-outline-secondary" disabled={disabled} onClick={() => run("VALORES", true)}>Recalcular valores</button></div></details>
       </>}</Modal.Body>
     </Modal>
   </>;

@@ -287,15 +287,19 @@ export class OperacaoService {
         { nome_funcionario: { contains: search.slice(0, 150) } },
         { funcionario_id_rm: { contains: search.slice(0, 50) } },
       ];
-    if (filter === 'pendencias')
-      where.status = {
-        in: [
-          'ERRO_VARIAVEIS',
-          'ERRO_RESULTADOS',
-          'RESULTADOS_PARCIAL',
-          'ERRO_RM',
-        ],
-      };
+    // Complemento do critério de funcionários com valores concluídos do resumo.
+    // AND preserva a busca por nome/matrícula, que já ocupa where.OR.
+    if (filter === 'pendencias' || filter === 'formulas_pendentes')
+      where.AND = [{ OR: [
+        { status: null },
+        { status: { notIn: calculados } },
+        { execucao_funcionario: { none: {} } },
+        { execucao_funcionario: { some: { OR: [
+          { status: { notIn: ['PROCESSADO', 'ENVIADO_RM'] } },
+          { valor_final: null },
+        ] } } },
+        ...(filter === 'pendencias' ? [{ status: 'ERRO_RM' }] : []),
+      ] }];
     if (filter === 'conferencia' || filter === 'resultados')
       where.status = { in: ['RESULTADOS_PROCESSADOS', 'ERRO_RM'] };
     if (filter === 'enviados') where.status = 'ENVIADO_RM';

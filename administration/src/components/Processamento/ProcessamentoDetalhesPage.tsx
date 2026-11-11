@@ -481,11 +481,9 @@ export function ProcessamentoDetalhesPage() {
   const [selecting, setSelecting] = useState(false);
   const [notice, setNotice] = useState("");
   const [searchDraft, setSearchDraft] = useState(search);
-  const [recalculate, setRecalculate] = useState(false);
   useEffect(() => {
     setSelected([]);
     setSelecting(false);
-    setRecalculate(false);
   }, [id, page, search, filter]);
   const setContext = (
     entries: Record<string, string>,
@@ -516,15 +514,14 @@ export function ProcessamentoDetalhesPage() {
   const command = useOperationAction(setNotice, () => {
     setSelected([]);
     setSelecting(false);
-    setRecalculate(false);
     refresh();
   });
-  const process = (etapa: Etapa, baseIds?: number[], repeat = false) =>
+  const process = (etapa: Etapa, baseIds?: number[]) =>
     void command.run({
       etapa,
       execucaoIds: [id],
       ...(baseIds ? { baseIds } : {}),
-      recalcular: etapa !== "ENVIAR_RM" && repeat,
+      recalcular: etapa !== "ENVIAR_RM",
     });
   const refresh = () => {
     query.refresh();
@@ -580,7 +577,7 @@ export function ProcessamentoDetalhesPage() {
             unit="variáveis"
             detail={`${row.variaveis} de ${row.total} funcionários completos`}
           />
-          <StageCount label="Fórmulas calculadas" value={row.progresso.formulasCalculadas} total={row.progresso.formulasPrevistas} unit="fórmulas" detail={`${row.valores} de ${row.total} funcionários completos`} />
+          <div className="op-stage"><StageCount label="Fórmulas calculadas" value={row.progresso.formulasCalculadas} total={row.progresso.formulasPrevistas} unit="fórmulas" detail={`${row.valores} de ${row.total} funcionários completos`} /><button type="button" className="btn btn-link btn-sm p-0" onClick={() => { setSearchDraft(""); setContext({ filtro: "formulas_pendentes", busca: "", pagina: "1", resultado: "" }); }}>Ver funcionários pendentes</button></div>
           <StageCount label="Enviados ao RM" value={row.rm} total={row.total} />
         </div>
       )}
@@ -592,8 +589,8 @@ export function ProcessamentoDetalhesPage() {
       {exec && <section className="op-compact-actions" aria-label="Ações da filial">
         <div className="op-compact-actions-main">
           <span className="op-action-scope">Filial inteira</span>
-          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VARIAVEIS", undefined, recalculate)}>Processar variáveis</button>
-          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VALORES", undefined, recalculate)}>Calcular valores</button>
+          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VARIAVEIS")}>Processar variáveis</button>
+          <button className="btn btn-outline-primary" disabled={commandDisabled} onClick={() => process("VALORES")}>Calcular valores</button>
           {(!selecting || selected.length > 0) ? <SendScope key={`${id}:${selecting ? selected.join(",") : "todas"}`} executionIds={[id]} personIds={selecting ? selected : undefined} disabled={commandDisabled} onSend={() => process("ENVIAR_RM", selecting ? selected : undefined)} /> : <button className="btn btn-primary" disabled>Enviar ao RM</button>}
         </div>
         <div className="op-compact-actions-secondary">
@@ -601,9 +598,7 @@ export function ProcessamentoDetalhesPage() {
           <details className="op-action-options"><summary>Mais opções</summary><div>
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => { setSelecting(!selecting); setSelected([]); }}>{selecting ? "Encerrar seleção" : "Selecionar para envio"}</button>
             <Link className="btn btn-link btn-sm" to={`/gestao-km?filialId=${exec.filial.filial_id}&execucaoId=${id}&retorno=${encodeURIComponent(`/processamento/${id}?${params}`)}`}>Gestão de KM</Link>
-            <label className="op-check"><input type="checkbox" checked={recalculate} onChange={e => setRecalculate(e.target.checked)} /><span>Reprocessar etapas concluídas</span></label>
           </div></details>
-          {recalculate && <span className="op-action-warning">Recálculo ativado</span>}
           {selecting && <span className="op-action-scope">Envio: {selected.length} selecionados</span>}
         </div>
       </section>}
@@ -721,8 +716,9 @@ export function ProcessamentoDetalhesPage() {
                 }
               >
                 <option value="todos">Todas</option>
+                <option value="formulas_pendentes">Com fórmulas pendentes</option>
                 <option value="pendencias">
-                  Com falha ou resultado parcial
+                  Com pendências ou erros
                 </option>
                 <option value="resultados">
                   Com valores calculados / envio pendente
