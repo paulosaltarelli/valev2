@@ -11,7 +11,9 @@ Filas de criação, processamento e geolocalização são etapas diferentes. Res
 Gestão de KM acompanha distâncias e registros existentes. Fechamento reúne pendências. Variação compara competências.
 Relatórios usa os dados existentes. Valor calculado, ajuste manual, final local e envio registrado são etapas diferentes.
 O operador consulta operação e relatórios. O administrador gerencia usuários, filiais, fórmulas e configurações.
-O assistente não recalcula valores nem escreve no banco operacional.`;
+O Vale IA gera SELECTs de leitura sobre visões autorizadas, com validação no servidor e conexões de banco restritas por perfil.
+O chat produz relatórios HTML e Excel, e usa a competência ativa. Rankings de filiais consultam as filiais do recorte, mesmo se a tela tiver uma filial selecionada.
+O assistente não recalcula benefícios nem escreve no banco operacional.`;
 
 @Injectable()
 export class AssistenteConhecimento {

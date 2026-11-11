@@ -37,6 +37,7 @@ import { selecionarConsulta } from './assistente-intencao';
 import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { promptSugerido } from './assistente-prompt';
+import { AssistenteSql } from './assistente-sql';
 
 type Turno = { pergunta: string; resposta: string; em: string };
 const ttl = 30 * 60_000;
@@ -383,6 +384,7 @@ export class AssistenteController {
           { modelo: gpt ? config.gpt_modelo : config.claude_modelo, chave },
           config.contexto,
           this.sessoes.ler(usuario.chave),
+          usuario.id,
         );
         this.sessoes.gravar(usuario.chave, {
           pergunta: input.pergunta,
@@ -432,6 +434,7 @@ export class AssistenteController {
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [
+    AssistenteSql,
     AssistenteSessoes,
     AssistenteConsultas,
     AssistenteConhecimento,

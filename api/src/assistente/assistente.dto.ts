@@ -4,7 +4,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  MaxLength,
   Length,
   Matches,
   Max,
@@ -100,17 +99,4 @@ export class AssistenteDto {
   @Length(1, 50)
   @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
   matricula?: string;
-}
-
-export class FiltroRelatorioDto {
-  @IsString()
-  @Length(1, 120)
-  coluna!: string;
-
-  @IsIn(['igual', 'diferente', 'contem', 'maior', 'menor', 'vazio'])
-  operador!: 'igual' | 'diferente' | 'contem' | 'maior' | 'menor' | 'vazio';
-
-  @IsString()
-  @MaxLength(150)
-  valor!: string;
 }

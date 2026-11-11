@@ -240,6 +240,7 @@ describe('Assistente do Vale', () => {
       { modelo: 'gpt-5.4-mini', chave: 'chave-teste' },
       config.contexto,
       expect.any(Array),
+      19,
     );
     await request(app.getHttpServer())
       .post('/assistente/conversar')

@@ -19,14 +19,9 @@ import { criarRelatorioHtml, baixarRelatorioHtml } from "./relatorioHtml";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
-  ["variaveis", "Quais variáveis já foram calculadas?"],
+  ["financeiro", "Qual filial teve maior desconto nesta competência?"],
+  ["valores", "Gere um dashboard de valores por filial."],
   ["erros", "Por que o valor não foi calculado?"],
-  ["valores", "Mostrar valores por funcionário e fórmula"],
-  ["comparacao", "O que mudou em relação à competência anterior?"],
-  ["financeiro", "Gerar dashboard financeiro"],
-  ["km", "Mostrar KM registrados"],
-  ["formulas", "Ver cadastro atual de fórmulas"],
-  ["ajuda", "Como funciona o Vale Expresso?"],
 ] as const;
 
 type Turno = { pergunta: string; resposta: string; em: string };
@@ -37,9 +32,9 @@ type Mensagem = {
   erro?: string;
 };
 const nomesDosProvedores = {
-  gpt: "ChatGPT pessoal",
-  claude: "Claude institucional",
-  "gpt-institucional": "GPT institucional",
+  gpt: "Minha conta ChatGPT",
+  claude: "Claude · API do Vale",
+  "gpt-institucional": "GPT · API do Vale",
 };
 type Provedor = keyof typeof nomesDosProvedores;
 type Estado = {
@@ -71,23 +66,6 @@ type Resposta = {
   grafico?: { rotulo: string; valor: number; moeda?: boolean }[];
   links?: { texto: string; url: string }[];
 };
-
-function MarcaAssistente() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M4.5 7.5h4l6.3 14.2 4.2-9.4h4.1l-6.8 15h-3.2L4.5 7.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M24.5 3.5v8m-4-4h8M7 23.5h2.5m-5 3.5H11"
-        stroke="#FFD675"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function AvatarVale() {
   return (
@@ -188,7 +166,7 @@ export function AssistenteVale() {
   }, []);
 
   useEffect(() => {
-    if (aberto && aba === "conversa") {
+    if (aberto && aba === "conversa" && mensagens.length > 0) {
       fimDaConversa.current?.scrollIntoView({ block: "end" });
     }
   }, [aberto, aba, mensagens]);
@@ -442,16 +420,16 @@ export function AssistenteVale() {
         scrollable={false}
         size="xl"
         fullscreen="sm-down"
-        className="vale-ia-modal"
+        className="vale-ia-modal vale-ia-portal"
         aria-labelledby="assistente-vale-titulo"
       >
         <Modal.Header closeButton>
           <Modal.Title id="assistente-vale-titulo">
-            <span className="vale-ia-marca">
-              <MarcaAssistente />
+            <span className="vale-ia-marca vale-ia-avatar-cabecalho">
+              <AvatarVale />
             </span>
             <span>
-              <small>VALE IA</small>Assistente do Vale
+              <small>INTELIGÊNCIA PARA A OPERAÇÃO</small>Vale IA
             </span>
           </Modal.Title>
         </Modal.Header>
@@ -473,18 +451,6 @@ export function AssistenteVale() {
             </button>
           </nav>
           <div className="vale-ia-paineis">
-            <aside
-              className="vale-ia-lateral"
-              aria-label="Contas do Vale IA"
-              hidden={aba === "acessos"}
-            >
-              <div className="vale-ia-identidade">
-                <AvatarVale />
-                <strong>Vale IA</strong>
-                <p>Seu assistente para entender a operação.</p>
-              </div>
-              <ContasVale provedores={provedores} />
-            </aside>
             <section
               className="vale-ia-painel"
               aria-label="Conversa"
@@ -492,8 +458,8 @@ export function AssistenteVale() {
             >
               <div className="vale-ia-contexto">
                 <div>
-                  <strong>Converse sobre o Vale</strong>
-                  <small>Consultas com o contexto da sua tela</small>
+                  <strong>Converse sobre o Vale Expresso</strong>
+                  <small>Faça sua pergunta. O contexto vem com você.</small>
                 </div>
                 {contexto && (
                   <span>
@@ -501,6 +467,45 @@ export function AssistenteVale() {
                     {filialAtiva && " · " + filialAtiva}
                   </span>
                 )}
+              </div>
+              <div className="vale-ia-conexao-atual">
+                <Form.Label htmlFor="vale-ia-provedor">
+                  Conversar com
+                </Form.Label>
+                <Form.Select
+                  id="vale-ia-provedor"
+                  value={provedor ?? ""}
+                  disabled={
+                    ocupado || carregandoContexto || !provedores?.length
+                  }
+                  onChange={(event) => {
+                    const escolhido = provedores?.find(
+                      ({ id, disponivel }) =>
+                        disponivel && id === event.target.value,
+                    );
+                    if (escolhido) setPreferencia(escolhido.id);
+                  }}
+                >
+                  {!provedor && (
+                    <option value="">Conecte uma conta para conversar</option>
+                  )}
+                  {provedores?.length === 0 && (
+                    <option value="local">Consultas do Vale</option>
+                  )}
+                  {provedores?.map(({ id, disponivel }) => (
+                    <option key={id} value={id} disabled={!disponivel}>
+                      {nomesDosProvedores[id]}
+                      {!disponivel && " · aguardando liberação"}
+                    </option>
+                  ))}
+                </Form.Select>
+                <button
+                  type="button"
+                  className="vale-ia-gerenciar-conexoes"
+                  onClick={() => setAba("acessos")}
+                >
+                  Contas e conexões
+                </button>
               </div>
               <div
                 className="vale-ia-conversa"
@@ -510,8 +515,14 @@ export function AssistenteVale() {
               >
                 {!mensagens.length && (
                   <div className="vale-ia-boas-vindas">
-                    <h2>Como posso ajudar?</h2>
-                    <p>Digite sua pergunta ou experimente um dos exemplos.</p>
+                    <span className="vale-ia-saudacao">
+                      SEU COPILOTO NO VALE
+                    </span>
+                    <h2>Vamos encontrar respostas nos dados.</h2>
+                    <p>
+                      Entenda a operação, investigue diferenças e crie
+                      relatórios com uma pergunta.
+                    </p>
                     <fieldset
                       disabled={ocupado || carregandoContexto || !provedor}
                     >
@@ -525,7 +536,7 @@ export function AssistenteVale() {
                             type="button"
                             variant="outline-secondary"
                             size="sm"
-                            onClick={() => void enviar(texto, id)}
+                            onClick={() => void enviar(texto)}
                           >
                             {texto}
                           </Button>
@@ -581,7 +592,7 @@ export function AssistenteVale() {
                   onChange={(e) => setPergunta(e.target.value)}
                   onKeyDown={atalhosDeTeclado}
                   aria-label="Mensagem"
-                  placeholder="Escreva sua mensagem…"
+                  placeholder="Pergunte sobre os dados e processos do Vale…"
                 />
                 <Button
                   type="submit"
@@ -613,36 +624,6 @@ export function AssistenteVale() {
                 também pode citar uma filial na sua mensagem.
               </p>
               <ContasVale provedores={provedores} />
-              {provedores && provedores.length > 1 && (
-                <Form.Group controlId="vale-ia-provedor" className="mt-3">
-                  <Form.Label>Provedor da conversa</Form.Label>
-                  <Form.Select
-                    value={provedor ?? ""}
-                    disabled={ocupado}
-                    onChange={(event) => {
-                      const escolhido = provedores.find(
-                        ({ id, disponivel }) =>
-                          disponivel && id === event.target.value,
-                      );
-                      if (escolhido) setPreferencia(escolhido.id);
-                    }}
-                  >
-                    {!provedor && (
-                      <option value="">Nenhum provedor disponível</option>
-                    )}
-                    {provedores.map(({ id, disponivel }) => (
-                      <option key={id} value={id} disabled={!disponivel}>
-                        {nomesDosProvedores[id]}
-                        {!disponivel && " (indisponível)"}
-                      </option>
-                    ))}
-                  </Form.Select>
-                  <Form.Text>
-                    O texto da pergunta é enviado ao provedor escolhido para
-                    interpretar a consulta.
-                  </Form.Text>
-                </Form.Group>
-              )}
             </section>
           </div>
         </Modal.Body>
@@ -655,19 +636,32 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
   if (!provedores) return null;
   return (
     <div className="vale-ia-contas">
-      <h3>Provedores</h3>
-      {provedores.map(({ id, disponivel }) => (
-        <div key={id}>
-          <strong>{nomesDosProvedores[id]}</strong>
-          <span>
-            {disponivel
-              ? "Disponível"
-              : id === "gpt"
-                ? "Aguardando liberação da OpenAI"
-                : "Aguardando configuração institucional"}
-          </span>
-        </div>
-      ))}
+      <h3>Suas conexões</h3>
+      <div className="vale-ia-conta-pessoal">
+        <strong>Minha conta ChatGPT</strong>
+        <p>Converse usando sua própria conta, com autorização na OpenAI.</p>
+        <Button type="button" variant="outline-primary" disabled>
+          Entrar com ChatGPT
+        </Button>
+        <span>Aguardando liberação da OpenAI para o Vale.</span>
+      </div>
+      {provedores
+        .filter(({ id }) => id !== "gpt")
+        .map(({ id, disponivel }) => (
+          <div key={id}>
+            <strong>{nomesDosProvedores[id]}</strong>
+            <span>
+              {disponivel
+                ? "Disponível"
+                : id === "gpt"
+                  ? "Aguardando liberação da OpenAI"
+                  : "Aguardando configuração institucional"}
+            </span>
+            <small>
+              Conexão de API configurada pela administração do Vale.
+            </small>
+          </div>
+        ))}
       {provedores.length === 0 && (
         <p>Consultas do Vale disponíveis nesta sessão.</p>
       )}
@@ -692,7 +686,12 @@ function MensagemVale({
     valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return (
     <>
-      <p className="fw-semibold mb-2">{resposta.texto}</p>
+      <p
+        className="vale-ia-texto-resposta mb-2"
+        style={{ whiteSpace: "pre-wrap" }}
+      >
+        {resposta.texto}
+      </p>
       {resposta.fonte && (
         <p className="small text-body-secondary">
           {[
@@ -710,7 +709,7 @@ function MensagemVale({
       {resposta.detalhes && (
         <details className="mb-2">
           <summary>Como interpretar</summary>
-          <p>{resposta.detalhes}</p>
+          <p style={{ whiteSpace: "pre-wrap" }}>{resposta.detalhes}</p>
         </details>
       )}
       {resposta.grafico && (
