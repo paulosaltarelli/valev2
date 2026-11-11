@@ -9,7 +9,7 @@ import {
 import { Prisma, formula, type execucao_funcionario_base, type variavel } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { hasStageFailure } from './retry-errors';
+import { hasStageFailure, hasStagePending } from './retry-errors';
 import { operationProgress } from './operation-progress';
 import { RmService } from 'src/rm/rm.service';
 import { employeeKey, isBatchChapa, isPve2EventQuery, readPve2EventValues } from './rm-variable-batch';
@@ -31,6 +31,7 @@ export type PedidoOperacao = {
   baseIds?: number[];
   recalcular?: boolean;
   somenteErros?: boolean;
+  somentePendencias?: boolean;
 };
 const ativos = ['PENDENTE', 'PROCESSANDO'];
 const calculados = ['RESULTADOS_PROCESSADOS', 'ENVIADO_RM', 'ERRO_RM'];
@@ -877,13 +878,14 @@ export class OperacaoService {
       throw new BadRequestException('Pedido inválido.');
     if (!['VARIAVEIS', 'VALORES', 'CONFERIR', 'ENVIAR_RM'].includes(p.etapa))
       throw new BadRequestException('Etapa inválida.');
-    if (p.somenteErros && !['VARIAVEIS', 'VALORES'].includes(p.etapa))
+    if ((p.somenteErros || p.somentePendencias) && !['VARIAVEIS', 'VALORES'].includes(p.etapa))
       throw new BadRequestException('Retentativa disponível somente para variáveis ou valores.');
     return {
       etapa: p.etapa,
       execucaoIds: idsValidos(p.execucaoIds),
       ...(p.baseIds ? { baseIds: idsValidos(p.baseIds) } : {}),
-      recalcular: p.somenteErros === true || p.recalcular === true,
+      recalcular: p.somentePendencias === true || p.somenteErros === true || p.recalcular === true,
+      somentePendencias: p.somentePendencias === true,
       somenteErros: p.somenteErros === true,
     };
   }
@@ -899,7 +901,7 @@ export class OperacaoService {
       orderBy: { execucao_funcionario_base_id: 'asc' },
       include: {
         execucao: {
-          include: { filial: { select: { nome: true } }, periodo: true },
+          include: { filial: { select: { nome: true, formula: { where: { ativa: true }, select: { formula_id: true } } } }, periodo: true },
         },
         execucao_funcionario: {
           orderBy: { execucao_funcionario_id: 'asc' },
@@ -931,7 +933,19 @@ export class OperacaoService {
       select: { execucao_id: true },
       distinct: ['execucao_id'],
     })).map((q) => q.execucao_id));
-    return bases.filter(b => !p.somenteErros || hasStageFailure(b, p.etapa)).map((b) => {
+    return bases.filter(b => {
+      if (p.somentePendencias) {
+        const activeFormulas = b.execucao.filial.formula;
+        const rules = transportRules(b);
+        const currentResults = activeFormulas ? b.execucao_funcionario.filter(result =>
+          activeFormulas.some(formula => formula.formula_id === result.formula_id) && rules.includes(result.codigo_regra_rm ?? '')) : b.execucao_funcionario;
+        if (p.etapa === 'VALORES' && activeFormulas?.length === 0) return false;
+        const missingFormula = (activeFormulas ?? []).some(formula => rules.some(rule =>
+          !currentResults.some(result => result.formula_id === formula.formula_id && (result.codigo_regra_rm ?? '') === rule)));
+        return hasStagePending({ ...b, execucao_funcionario: currentResults }, p.etapa, missingFormula);
+      }
+      return !p.somenteErros || hasStageFailure(b, p.etapa);
+    }).map((b) => {
       const results = b.execucao_funcionario;
       let reason = b.execucao.controle_fila === 'PAUSADA'
         ? 'Retome ou cancele a fila pausada desta execução'
@@ -1037,9 +1051,9 @@ export class OperacaoService {
     });
   }
 
-  async retryScope(execucaoId: number) {
+  async retryScope(execucaoId: number, pending = false) {
     const counts = await Promise.all((['VARIAVEIS', 'VALORES'] as const).map(async etapa => {
-      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds: [execucaoId], somenteErros: true }));
+      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds: [execucaoId], ...(pending ? { somentePendencias: true } : { somenteErros: true }) }));
       return [etapa, { elegiveis: items.filter(item => !item.reason).length, bloqueados: items.filter(item => item.reason).length }] as const;
     }));
     return Object.fromEntries(counts);
@@ -1109,7 +1123,7 @@ export class OperacaoService {
           execucao_funcionario_base_id: item.baseId,
           tipo: p.etapa,
           session_id: sessionId,
-          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos, somenteErros: p.somenteErros === true }),
+          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos, somenteErros: p.somenteErros === true, somentePendencias: p.somentePendencias === true }),
         } });
       }
       await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO', controle_fila: null } });
@@ -1162,6 +1176,7 @@ export class OperacaoService {
                 usuarioId,
                 previaId: id,
                 somenteErros: p.somenteErros === true,
+                somentePendencias: p.somentePendencias === true,
                 eventos: item.eventos,
               }),
             },

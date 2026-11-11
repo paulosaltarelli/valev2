@@ -1009,6 +1009,21 @@ export class ExecucaoService {
         }
       }
 
+      // Na retomada, conserva as entradas já obtidas e completa somente as ausentes.
+      const preservedMemory = new Map<number, Map<string, number>>();
+      if (claim?.retryBaseIds?.size) {
+        for (const ids of chunks([...claim.retryBaseIds], 500)) {
+          const stored = await this.prisma.memoria_calculo.findMany({
+            where: { execucao_funcionario: { execucao_id: execucaoId, execucao_funcionario_base_id: { in: ids } } },
+            select: { execucao_funcionario_id: true, variavel_codigo: true, valor: true },
+          });
+          for (const row of stored) {
+            const values = preservedMemory.get(row.execucao_funcionario_id) ?? new Map<string, number>();
+            values.set(row.variavel_codigo, Number(row.valor));
+            preservedMemory.set(row.execucao_funcionario_id, values);
+          }
+        }
+      }
       // Limpa a memória APENAS dos funcionários selecionados (e fórmulas ativas)
       const execFuncIdsParaLimpar: number[] = [];
       const formulaIds = formulasAtivas.map((formula) => formula.formula_id);
@@ -1021,7 +1036,7 @@ export class ExecucaoService {
           },
           select: { execucao_funcionario_id: true, execucao_funcionario_base_id: true, status: true, valor_final: true },
         });
-        execFuncIdsParaLimpar.push(...execFuncsParaLimpar.filter(row => !claim?.retryBaseIds?.has(row.execucao_funcionario_base_id) || !isSuccessfulResult(row)).map((row) => row.execucao_funcionario_id));
+        execFuncIdsParaLimpar.push(...execFuncsParaLimpar.filter(row => !claim?.retryBaseIds?.has(row.execucao_funcionario_base_id)).map((row) => row.execucao_funcionario_id));
       }
 
       // Reprocesso forçado (batch): volta status para PREVIA apenas dos selecionados
@@ -1068,6 +1083,11 @@ export class ExecucaoService {
           if (codigos.size === 0) continue;
 
           for (const codigo of codigos) {
+            const stored = preservedMemory.get(execFunc.execucao_funcionario_id);
+            if (stored?.has(codigo)) {
+              scopeBase[codigo] = stored.get(codigo)!;
+              continue;
+            }
             const variavel = variavelByCodigo.get(codigo);
             if (!variavel) continue;
 

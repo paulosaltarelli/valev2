@@ -26,6 +26,9 @@ export class OperacaoController {
   summary(@Query('periodo') periodo?: string) {
     return this.service.summary(periodo ? Number(periodo) : undefined);
   }
+  @Get(':id/escopo-pendencias')
+  @Header('Cache-Control', 'no-store')
+  pendingScope(@Param('id', ParseIntPipe) id: number) { return this.service.retryScope(id, true); }
   @Get(':id/retentativa-erros')
   @Header('Cache-Control', 'no-store')
   retryScope(@Param('id', ParseIntPipe) id: number) { return this.service.retryScope(id); }

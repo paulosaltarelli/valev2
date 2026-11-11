@@ -11,23 +11,23 @@ export function RetryErrors({ id, disabled, onDone, onNotice }: {
   const query = useOperationQuery(fetcher, 20000);
   const action = useOperationAction(onNotice, () => { setOpen(false); query.refresh(); onDone(); });
   const count = query.data ? query.data.VARIAVEIS.elegiveis + query.data.VALORES.elegiveis : null;
-  const run = (etapa: Etapa) => void action.run({ etapa, execucaoIds: [id], somenteErros: true });
+  const run = (etapa: Etapa) => void action.run({ etapa, execucaoIds: [id], somentePendencias: true });
   return <>
-    <button type="button" className="btn btn-outline-danger btn-sm" disabled={disabled || action.busy}
-      onClick={() => { setOpen(true); query.refresh(); }}>Tentar novamente erros{count !== null ? ` · ${count}` : ""}</button>
+    <button type="button" className="btn btn-outline-primary btn-sm" disabled={disabled || action.busy}
+      onClick={() => { setOpen(true); query.refresh(); }}>Processar pendências{count !== null ? ` · ${count}` : ""}</button>
     <Modal show={open} onHide={() => !action.busy && setOpen(false)} centered className="op-modal" aria-labelledby="op-retry-title">
-      <Modal.Header closeButton><Modal.Title id="op-retry-title">Tentar novamente somente os erros</Modal.Title></Modal.Header>
+      <Modal.Header closeButton><Modal.Title id="op-retry-title">Processar pendências</Modal.Title></Modal.Header>
       <Modal.Body>
-        <p className="op-muted">Toda a filial · cálculos concluídos serão preservados.</p>
+        <p className="op-muted">Erros e etapas não executadas · concluídos preservados.</p>
         <QueryNotice {...query} />
         <div className="op-retry-choices">
           {(["VARIAVEIS", "VALORES"] as const).map(stage => <div key={stage}>
             <button type="button" className="btn btn-outline-primary" disabled={disabled || action.busy || query.loading || Boolean(query.error) || !query.data?.[stage].elegiveis}
-              onClick={() => run(stage)}>{stage === "VARIAVEIS" ? "Processar variáveis" : "Calcular valores"}<strong>{query.data?.[stage].elegiveis ?? "—"} funcionários</strong></button>
+              onClick={() => run(stage)}>{stage === "VARIAVEIS" ? "Processar variáveis" : "Calcular fórmulas"}<strong>{query.data?.[stage].elegiveis ?? "—"} funcionários</strong></button>
             {!!query.data?.[stage].bloqueados && <small>{query.data[stage].bloqueados} indisponíveis · confira a fila</small>}
           </div>)}
         </div>
-        {count === 0 && !query.loading && <p role="status" className="op-muted">Nenhuma falha disponível para retentativa.</p>}
+        {count === 0 && !query.loading && <p role="status" className="op-muted">Nenhuma pendência disponível para processamento.</p>}
       </Modal.Body>
     </Modal>
   </>;

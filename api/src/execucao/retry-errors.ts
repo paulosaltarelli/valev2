@@ -11,6 +11,14 @@ export function hasStageFailure(base: { status: string | null; execucao_funciona
 
 export function retriesOnlyErrors(payload: string | null | undefined): boolean {
   if (!payload) return false;
-  try { return JSON.parse(payload).somenteErros === true; }
+  try { const request = JSON.parse(payload); return request.somenteErros === true || request.somentePendencias === true; }
   catch { return false; }
+}
+
+export function hasStagePending(base: { status: string | null; execucao_funcionario: ResultState[] }, stage: string, missingFormula = false) {
+  if (stage === 'VARIAVEIS') return base.status == null || ['PREVIA', 'ERRO_VARIAVEIS'].includes(base.status);
+  if (stage !== 'VALORES' || !['VARIAVEIS_PROCESSADAS', 'ERRO_RESULTADOS', 'RESULTADOS_PARCIAL', 'RESULTADOS_PROCESSADOS', 'ENVIADO_RM', 'ERRO_RM'].includes(base.status ?? '')) return false;
+  return missingFormula || !base.execucao_funcionario.length ||
+    base.execucao_funcionario.some(result => !isSuccessfulResult(result)) ||
+    ['VARIAVEIS_PROCESSADAS', 'ERRO_RESULTADOS', 'RESULTADOS_PARCIAL'].includes(base.status ?? '');
 }

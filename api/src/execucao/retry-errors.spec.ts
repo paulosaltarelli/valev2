@@ -1,6 +1,6 @@
 import { OperacaoService } from './operacao.service';
 import { ExecucaoService } from './execucao.service';
-import { hasStageFailure, isSuccessfulResult, retriesOnlyErrors } from './retry-errors';
+import { hasStageFailure, hasStagePending, isSuccessfulResult, retriesOnlyErrors } from './retry-errors';
 
 const result = (id: number, status: string, value: number | null) => ({
   execucao_funcionario_id: id, execucao_funcionario_base_id: 1, formula_id: id,
@@ -65,7 +65,7 @@ describe('Retentativa somente de falhas', () => {
     const calculator = {calcularFormula: jest.fn(() => ({status: true, resultado: 10}))};
     const operation = {preparePve2CalculationEvents: jest.fn(async () => new Map()), saveCalculation: jest.fn()};
     const service = new ExecucaoService(db, {} as never, calculator as never, {} as never, operation as never);
-    return {service, db, calculator, operation, employee, results};
+    return {service, db, calculator, operation, employee, results, execution};
   }
 
   it('recalcula a fórmula com erro sem alterar fórmula válida, revisão ou valor enviado', async () => {
@@ -80,12 +80,49 @@ describe('Retentativa somente de falhas', () => {
   });
 
   it('retoma variáveis sem apagar ou regravar a memória de fórmulas já calculadas', async () => {
-    const {service, db, employee} = engine();
+    const {service, db, employee, execution} = engine();
+    execution.filial.formula[1].expressao = ':X + :Y';
+    execution.filial.variavel.push({variavel_id: 2, codigo: 'Y', nome: 'Y', ativa: true, valor_fixo: 20});
     const answer = await service.processarVariaveisBatch(1, [employee] as never, 'test', {owner: 'test', queueIds: [1], batchSize: 25, retryBaseIds: new Set([1])});
     expect(answer.status).toBe(true);
-    expect(db.memoria_calculo.deleteMany).toHaveBeenCalledWith({where: {execucao_funcionario_id: {in: [2]}}});
+    expect(db.memoria_calculo.deleteMany).not.toHaveBeenCalled();
     const inserted = db.memoria_calculo.createMany.mock.calls.flatMap((call: any[]) => call[0].data);
     expect(inserted.length).toBeGreaterThan(0);
-    expect(inserted.every((row: any) => row.execucao_funcionario_id === 2)).toBe(true);
+    expect(inserted.every((row: any) => row.execucao_funcionario_id === 2 && row.variavel_codigo === 'Y')).toBe(true);
+  });
+});
+
+
+describe('Pendências ainda não processadas', () => {
+  it('inclui início e variáveis com erro sem repetir quem já passou dessa etapa', () => {
+    expect(hasStagePending(base(1, 'PREVIA'), 'VARIAVEIS')).toBe(true);
+    expect(hasStagePending({status: null, execucao_funcionario: []}, 'VARIAVEIS')).toBe(true);
+    expect(hasStagePending(base(1, 'ERRO_VARIAVEIS'), 'VARIAVEIS')).toBe(true);
+    expect(hasStagePending(base(1, 'VARIAVEIS_PROCESSADAS'), 'VARIAVEIS')).toBe(false);
+    expect(hasStagePending(base(1, 'ERRO_VARIAVEIS'), 'VALORES')).toBe(false);
+    expect(hasStagePending(base(1, 'PREVIA'), 'VALORES')).toBe(false);
+  });
+  it('inclui fórmulas faltantes, nulas ou com erro e preserva concluídos e enviados', () => {
+    expect(hasStagePending(base(1, 'VARIAVEIS_PROCESSADAS'), 'VALORES')).toBe(true);
+    expect(hasStagePending(base(1, 'RESULTADOS_PROCESSADOS', [result(1, 'PREVIA', null)]), 'VALORES')).toBe(true);
+    expect(hasStagePending(base(1, 'RESULTADOS_PROCESSADOS', [result(1, 'PROCESSADO', 0)]), 'VALORES')).toBe(false);
+    expect(hasStagePending(base(1, 'ENVIADO_RM', [result(1, 'ENVIADO_RM', 0)]), 'VALORES')).toBe(false);
+    expect(hasStagePending(base(1, 'RESULTADOS_PROCESSADOS', [result(1, 'PROCESSADO', 0)]), 'VALORES', true)).toBe(true);
+    expect(retriesOnlyErrors('{"somentePendencias":true}')).toBe(true);
+  });
+  it('conta e enfileira somente as pendências prontas, incluindo fórmulas ainda ausentes', async () => {
+    const rows = [base(1, 'PREVIA'), base(2, 'VARIAVEIS_PROCESSADAS'), base(3, 'RESULTADOS_PROCESSADOS', [result(1, 'PROCESSADO', 42)]), base(4, 'ERRO_VARIAVEIS', [], true)];
+    const inactiveOnly = base(5, 'RESULTADOS_PROCESSADOS', [result(1, 'PROCESSADO', 42), result(2, 'ERRO', null)]);
+    inactiveOnly.execucao.filial = {nome: 'Teste', formula: [{formula_id: 1}]} as any;
+    rows.push(inactiveOnly);
+    rows[2].execucao.filial = {nome: 'Teste', formula: [{formula_id: 1}, {formula_id: 2}]} as any;
+    const db: any = {execucao_funcionario_base: {findMany: jest.fn(async () => rows)}, execucao_queue: {findMany: jest.fn(async () => []), create: jest.fn()}, execucao: {updateMany: jest.fn()}, $queryRaw: jest.fn(async () => [{execucao_id: 1}])};
+    db.$transaction = (fn: any) => fn(db);
+    const service = new OperacaoService(db, {} as never);
+    expect(await service.retryScope(1, true)).toEqual({VARIAVEIS: {elegiveis: 1, bloqueados: 1}, VALORES: {elegiveis: 2, bloqueados: 0}});
+    await service.execute({etapa: 'VALORES', execucaoIds: [1], somentePendencias: true}, 1, 'test');
+    expect(db.execucao_queue.create.mock.calls.map((call: any[]) => call[0].data.execucao_funcionario_base_id)).toEqual([2, 3]);
+    for (const [call] of db.execucao_queue.create.mock.calls) expect(JSON.parse(call.data.revisao_payload).somentePendencias).toBe(true);
+    await expect(service.execute({etapa: 'ENVIAR_RM', execucaoIds: [1], somentePendencias: true}, 1, 'test')).rejects.toThrow('somente');
   });
 });
