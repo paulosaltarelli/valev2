@@ -128,10 +128,20 @@ export async function consultarModelo(
         'O provedor recusou a chave. Confira o acesso à API e ao modelo.',
       );
     }
-    if (response.status === 429)
+    if (response.status === 429) {
+      const erro = (await response.json().catch(() => null)) as {
+        error?: { code?: string };
+      } | null;
+      const semCreditos = [
+        'credit_balance_exhausted',
+        'insufficient_quota',
+      ].includes(erro?.error?.code ?? '');
       throw new ServiceUnavailableException(
-        'O provedor atingiu o limite de uso ou de créditos. Confira a conta institucional.',
+        semCreditos
+          ? 'O saldo de créditos da API institucional está esgotado. O administrador precisa verificar o faturamento do provedor.'
+          : 'O provedor atingiu o limite temporário de uso. Aguarde e tente novamente.',
       );
+    }
     if (!response.ok) throw new Error('Resposta inválida do provedor');
     type TextPart = { type: string; text?: string };
     const body = (await response.json()) as {

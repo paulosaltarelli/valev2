@@ -7,6 +7,7 @@ import { AssistenteConhecimento } from './assistente-conhecimento';
 import type { AssistenteConsultas } from './assistente-consultas';
 import type { OperationalReportsService } from '../dash/operational-reports.service';
 import type { ResultadoAssistente } from './assistente-tipos';
+import { consultarModelo } from './assistente-intencao';
 
 const base: ResultadoAssistente = {
   texto: 'Resultados existentes.',
@@ -63,6 +64,30 @@ it('recusa planos com SQL, colunas ausentes e totais sobre base parcial', () => 
       validarTransformacao(plano),
     ),
   ).toThrow('parcial');
+});
+
+it('informa saldo de API esgotado sem simular uma resposta do modelo', async () => {
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValueOnce(
+      Response.json(
+        { error: { code: 'credit_balance_exhausted' } },
+        { status: 429 },
+      ),
+    );
+  try {
+    await expect(
+      consultarModelo(
+        'gpt-institucional',
+        { modelo: 'gpt-5.4-mini', chave: 'teste' },
+        'Instrução de teste',
+        'Pergunta',
+        700,
+      ),
+    ).rejects.toThrow('saldo de créditos');
+  } finally {
+    fetchMock.mockRestore();
+  }
 });
 
 it('ordena valores decimais pelo valor numérico', () => {
