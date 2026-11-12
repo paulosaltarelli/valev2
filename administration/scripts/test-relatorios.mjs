@@ -13,7 +13,7 @@ const vite = await createServer({
   appType: "custom",
 });
 try {
-  const { prepararPacote } = await vite.ssrLoadModule(
+  const { prepararPacote, ErroExportacao } = await vite.ssrLoadModule(
     "/src/components/Processamento/relatorioPacote.ts",
   );
   const tabela = {
@@ -75,6 +75,30 @@ try {
     await zip.file("vale-ia-dados.xlsx").async("nodebuffer"),
     xlsx,
   );
+  const preenchido = {
+    texto: "20 registros em três filiais — fixture",
+    competencia: "09/2026",
+    tabela: {
+      colunas: ["Matrícula", "Funcionário", "Filial", "Estado atual", "Resultados com erro", "Evidência e orientação"],
+      linhas: Array.from({ length: 20 }, (_, i) => [String(i + 1).padStart(6, "0"), `Caso ${i + 1}`, ["Alfa", "Beta", "Gama"][i % 3], "ERRO_FORMULA", i === 0 ? 0 : 1, i === 0 ? "=HYPERLINK(\"https://example.invalid\")" : "Evidência de teste\nOrientação de teste"]),
+      parcial: false,
+    },
+  };
+  const pacote20 = await prepararPacote(preenchido);
+  const zip20 = await JSZip.loadAsync(await pacote20.pacote.arrayBuffer());
+  const book20 = new ExcelJS.Workbook();
+  await book20.xlsx.load(await zip20.file("vale-ia-dados.xlsx").async("uint8array"));
+  const folha20 = book20.getWorksheet("Dados");
+  assert.equal(folha20.rowCount, 21);
+  assert.equal(folha20.getCell("A2").value, "000001");
+  assert.equal(folha20.getCell("E2").value, 0);
+  assert.equal(typeof folha20.getCell("F2").value, "string");
+  const dados20 = JSON.parse(pacote20.html.match(/<script id="dados" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+  assert.deepEqual(dados20.tabela.linhas, preenchido.tabela.linhas);
+  assert(pacote20.html.includes("visao-sintetica") && pacote20.html.includes("visao-analitica"));
+  await assert.rejects(prepararPacote({ texto: "segredo-que-nao-deve-aparecer", tabela: { colunas: ["Teste"], linhas: [[Infinity]], parcial: false } }), (e) => e instanceof ErroExportacao && e.etapa === "dados" && !e.message.includes("segredo"));
+  await fs.writeFile(path.join(output, "relatorio20.html"), pacote20.html);
+  await fs.writeFile(path.join(output, "pacote20.zip"), Buffer.from(await pacote20.pacote.arrayBuffer()));
   await fs.writeFile(path.join(output, "relatorio.html"), pacote.html);
   await fs.writeFile(path.join(output, "dados.xlsx"), xlsx);
   await fs.writeFile(path.join(output, "pacote.zip"), zipBytes);

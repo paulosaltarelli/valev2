@@ -15,6 +15,8 @@ import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
 import { contextoDaPergunta, respostaTodasFiliais } from "./contextoDaPergunta";
+import { prepararPacote, ErroExportacao } from "./relatorioPacote";
+import { gerarExcel } from "./assistenteExcel";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
@@ -350,7 +352,6 @@ export function AssistenteVale() {
     setExportando(resposta);
     setErro("");
     try {
-      const { gerarExcel } = await import("./assistenteExcel");
       const bytes = await gerarExcel(resposta.tabela, [
         ["Competência", resposta.competencia],
         ["Filial", resposta.filial],
@@ -679,16 +680,17 @@ function MensagemVale({
     urlExcel: string;
     urlPacote: string;
   }>();
-  const [falhaArquivos, setFalhaArquivos] = useState(false);
+  const [falhaArquivos, setFalhaArquivos] = useState<string>();
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     if (!resposta.tabela) return;
     let cancelado = false;
     const urls: string[] = [];
     setArquivos(undefined);
-    setFalhaArquivos(false);
-    void import("./relatorioPacote")
-      .then((m) => m.prepararPacote(resposta))
+    setFalhaArquivos(undefined);
+    // O gerador é carregado com a página: uma publicação posterior não pode
+    // quebrar esta conversa ao remover um chunk ainda não solicitado.
+    void prepararPacote(resposta)
       .then((pacote) => {
         if (cancelado) return;
         const urlHtml = URL.createObjectURL(
@@ -699,8 +701,9 @@ function MensagemVale({
         urls.push(urlHtml, urlExcel, urlPacote);
         setArquivos({ html: pacote.html, urlHtml, urlExcel, urlPacote });
       })
-      .catch(() => {
-        if (!cancelado) setFalhaArquivos(true);
+      .catch((erro: unknown) => {
+        if (!cancelado) setFalhaArquivos(erro instanceof ErroExportacao
+          ? erro.message : "Não foi possível preparar os arquivos. Tente novamente.");
       });
     return () => {
       cancelado = true;
@@ -792,7 +795,7 @@ function MensagemVale({
             </div>
           ) : falhaArquivos ? (
             <div role="alert">
-              Não foi possível gerar os arquivos.{" "}
+              {falhaArquivos}{" "}
               <Button
                 size="sm"
                 variant="link"
