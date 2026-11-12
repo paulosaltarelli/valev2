@@ -117,6 +117,7 @@ export class AssistenteAvancado {
     usuarioId?: number,
   ): Promise<ResultadoAssistente> {
     input = retomarTodasFiliais(input, historico);
+    historico=historico.map(({respostaModelo,...turno})=>({...turno,resposta:respostaModelo??turno.resposta}));
     const regras =
       regrasFixas +
       '\n\nContexto administrativo:\n' +
@@ -314,7 +315,7 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
         'Esta consulta não aceita filtro de matrícula.',
       );
     const filtros = { ...input, periodoId, filialId };
-    if (relatorioErros) {
+    if (relatorioErros || (panoramaErros && !input.matricula)) {
       // A lista e o diagnóstico compartilham as regras operacionais; o modelo
       // não inventa um SELECT paralelo nem troca pessoas por totais de filial.
       const panorama = await this.consultas.consultar('erros', filtros, perfil);

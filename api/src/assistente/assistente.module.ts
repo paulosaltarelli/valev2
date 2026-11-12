@@ -42,6 +42,7 @@ import { AssistenteInvestigacao } from './assistente-investigacao';
 import { AssistenteComparacao } from './assistente-comparacao';
 import {
   contextoConsulta,
+  respostaParaModelo,
   type ResultadoAssistente,
   type TurnoAssistente,
 } from './assistente-tipos';
@@ -398,6 +399,7 @@ export class AssistenteController {
         this.sessoes.gravar(usuario.chave, {
           pergunta: input.pergunta,
           resposta: resultado.texto.slice(0, 4000),
+          respostaModelo: resultado[respostaParaModelo],
           contexto: resultado[contextoConsulta],
           em: new Date().toISOString(),
         });
@@ -427,6 +429,7 @@ export class AssistenteController {
       this.sessoes.gravar(usuario.chave, {
         pergunta: input.pergunta,
         resposta: resultado.texto,
+        respostaModelo: resultado[respostaParaModelo],
         contexto: resultado[contextoConsulta],
         em: new Date().toISOString(),
       });

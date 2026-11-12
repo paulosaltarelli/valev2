@@ -8,6 +8,7 @@ import { consultarModelo } from './assistente-intencao';
 import { promptSugerido, regrasFixas } from './assistente-prompt';
 import {
   contextoConsulta,
+  respostaParaModelo,
   type ContextoErros,
   type ResultadoAssistente,
 } from './assistente-tipos';
@@ -16,6 +17,26 @@ const fatosInternos = Symbol('fatos-investigacao');
 type ResultadoFatos = ResultadoAssistente & {
   [fatosInternos]?: Record<string, unknown>;
 };
+
+function contextoDoDiagnostico(dados: ResultadoFatos) {
+  const fatos=dados[fatosInternos];
+  const resultados=(fatos?.resultados??[]) as {formulaId:number;formula:string;versaoHistorica:number|null;status:string;calculado:string|null;variaveisComMemoria:string[];variaveisHistoricasSemMemoria:string[]|null;variaveisIdentificadas?:{codigo:string;nome:string|null}[]}[];
+  const afetados=resultados.filter(r=>r.status==='ERRO'||r.calculado===null);
+  const foco=(afetados.length?afetados:resultados).slice(0,8);
+  const formulas=foco.map(r=>`${r.formula} (#${r.formulaId}; versão histórica ${r.versaoHistorica??'não identificada'}; estado ${r.status})`).join('; ')||'Fórmula não identificada nos registros disponíveis.';
+  const memorias=[...new Set(foco.flatMap(r=>(r.variaveisIdentificadas??r.variaveisComMemoria.map(codigo=>({codigo,nome:null}))).map(v=>v.codigo+(v.nome?' — '+v.nome:''))))];
+  const ausentes=[...new Set(foco.flatMap(r=>r.variaveisHistoricasSemMemoria??[]))];
+  const logs=(fatos?.logsHistoricos??[]) as {alvo?:string;codigo?:string}[];
+  const erros=[...new Set(logs.filter(l=>l.alvo==='Variável'&&l.codigo).map(l=>l.codigo!))];
+  const variaveis=[erros.length?'Variáveis citadas em erros históricos: '+erros.join(', ')+'.':'Nenhuma variável identificada em log de erro reconhecido.',
+    memorias.length?'Com memória nas fórmulas listadas: '+memorias.slice(0,40).join(', ')+(memorias.length>40?' (limitado às primeiras 40)':'')+'.':'Não há variável com memória identificada nas fórmulas listadas.',
+    ausentes.length?'Dependências históricas sem memória: '+ausentes.slice(0,40).join(', ')+'. Ausência de memória não comprova falha no RM.':''].filter(Boolean).join(' ');
+  return {formulas:formulas+((afetados.length||resultados.length)>8?' Detalhe textual limitado a 8 fórmulas; consulte a tabela e os registros da execução.':''),variaveis};
+}
+
+function etapaDoEstado(status:string|null){
+  return status?.includes('VARIAVEIS')?'Variáveis':status?.includes('RESULTADO')?'Valores/fórmulas':status==='ERRO_RM'?'Envio ao RM':'Etapa não identificada no estado atual';
+}
 
 function evidenciaDoCaso(dados: ResultadoFatos) {
   const logs = dados[fatosInternos]?.logsHistoricos;
@@ -54,6 +75,7 @@ export function resumirLogInvestigacao(mensagem: string, matricula: string) {
   if (conhecido?.matricula === matricula)
     return {
       tipo: 'Log histórico',
+      alvo: mensagem.startsWith('Sem memoria_calculo') ? 'Fórmula' : 'Variável',
       codigo: conhecido.codigo,
       evidencia: conhecido.causa,
     };
@@ -76,6 +98,7 @@ export function resumirLogInvestigacao(mensagem: string, matricula: string) {
           : 'A calculadora rejeitou o cálculo desta fórmula. O detalhe técnico não foi exposto automaticamente.';
     return {
       tipo: 'Log histórico',
+      alvo: 'Fórmula',
       codigo: calculo[1],
       evidencia,
     };
@@ -243,7 +266,7 @@ export class AssistenteInvestigacao {
             }) +
             '. É obrigatório explicar TODOS os ' +
             casos.length +
-            ' casos, cada referência exatamente uma vez; não invente outras nem agrupe pessoas em uma única resposta. Até 700 caracteres por caso. Não há identificação pessoal nos dados enviados. Não peça filtros ou identificação já resolvidos. Não transcreva fórmula nem código. Filas são da execução inteira. Logs são históricos: não confirmam causa atual. Com memórias existentes, não conclua ausência total de memória. Resultado zero, ausência e erro são diferentes. Explique somente os casos lidos; para leituraFalhou declare indisponibilidade. Oriente pela tela Processamentos; não execute reprocessamento.',
+            ' casos, cada referência exatamente uma vez; não invente outras nem agrupe pessoas em uma única resposta. Até 1000 caracteres por caso. Identifique a etapa, fórmulas e variáveis disponíveis; diferencie evidência, interpretação, hipótese, confirmação pendente e próximo passo. Não há identificação pessoal nos dados enviados. Não peça filtros ou identificação já resolvidos. Não transcreva fórmula nem código. Filas são da execução inteira. Logs são históricos: não confirmam causa atual. Com memórias existentes, não conclua ausência total de memória. Resultado zero, ausência e erro são diferentes. Explique somente os casos lidos; para leituraFalhou declare indisponibilidade. Oriente pela tela Processamentos; não execute reprocessamento.',
           JSON.stringify({
             casos: casos.map((c) => {
               const f = c.dados[fatosInternos];
@@ -273,6 +296,8 @@ export class AssistenteInvestigacao {
                           memoriasGravadas: r.memoriasGravadas,
                           variaveisHistoricasSemMemoria:
                             r.variaveisHistoricasSemMemoria,
+                          variaveisComMemoria:r.variaveisComMemoria,
+                          variaveisIdentificadas:r.variaveisIdentificadas,
                         })),
                       logsHistoricos: (
                         (f.logsHistoricos ?? []) as unknown[]
@@ -288,7 +313,7 @@ export class AssistenteInvestigacao {
             }),
             codigo: codigo.trechos,
           }),
-          4000,
+          6000,
           {
             nome: 'vale_ia_grupo_erros',
             schema: {
@@ -345,8 +370,13 @@ export class AssistenteInvestigacao {
     }));
     return {
       ...base,
+      [respostaParaModelo]:`Diagnóstico de ${casos.length} registros do grupo de erros em ${grupo.competencia}; detalhes individuais disponíveis somente no Vale.`,
       texto:
-        `Listei ${casos.length} ${casos.length === 1 ? 'registro de funcionário' : 'registros de funcionários'} do grupo consultado em ${grupo.competencia}. As evidências e os próximos passos estão na tabela.` +
+        `Listei ${casos.length} ${casos.length === 1 ? 'registro de funcionário' : 'registros de funcionários'} do grupo consultado em ${grupo.competencia}.` +
+        '\n\n'+casos.slice(0,5).map(c=>{
+          const d=contextoDoDiagnostico(c.dados);
+          return `${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm}) · ${c.pessoa.execucao.filial.nome} · ${grupo.competencia} · Execução #${c.pessoa.execucao.execucao_id} · ${etapaDoEstado(c.pessoa.status)}.\nFórmulas: ${d.formulas}\nVariáveis: ${d.variaveis}\n${evidenciaDoCaso(c.dados)}\nInterpretação e próximos passos: ${explicacoes.get(c.referencia)??c.dados.texto}`;
+        }).join('\n\n')+(casos.length>5?'\n\nResumo textual dos primeiros 5 registros; a tabela detalha os '+casos.length+' registros lidos.':'') +
         (parcial
           ? ' O detalhamento é parcial: limite de 20 registros, alteração do recorte, duplicidade ou falha de leitura; não escolhi outra execução para substituir registros.'
           : '') +
@@ -386,6 +416,10 @@ export class AssistenteInvestigacao {
           'Resultados com erro',
           'Resultados com valor calculado',
           'Evidência e orientação',
+          'Competência',
+          'Etapa indicada pelo estado',
+          'Fórmulas e versões históricas',
+          'Variáveis e memórias relacionadas',
         ],
         linhas: casos.map((c) => [
           c.pessoa.funcionario_id_rm,
@@ -407,6 +441,10 @@ export class AssistenteInvestigacao {
               (explicacoes.get(c.referencia) ??
                 c.dados.texto +
                   ' Causa atual não confirmada. Confira as evidências históricas nos detalhes.'),
+          grupo.competencia,
+          etapaDoEstado(c.pessoa.status),
+          contextoDoDiagnostico(c.dados).formulas,
+          contextoDoDiagnostico(c.dados).variaveis,
         ]),
         parcial,
       },
@@ -538,7 +576,7 @@ export class AssistenteInvestigacao {
           formula: { select: { nome: true, versao: true } },
           _count: { select: { memoria_calculo: true } },
           memoria_calculo: {
-            select: { variavel_codigo: true },
+            select: { variavel_codigo: true, variavel_nome: true },
             take: 200,
             distinct: ['variavel_codigo'],
           },
@@ -584,6 +622,7 @@ export class AssistenteInvestigacao {
         ajusteManual: r.ajuste_manual,
         memoriasGravadas: r._count.memoria_calculo,
         variaveisComMemoria: gravados,
+        variaveisIdentificadas: r.memoria_calculo.map(m=>({codigo:m.variavel_codigo,nome:m.variavel_nome??null})),
         variaveisHistoricasSemMemoria:
           r.memoria_calculo.length >= 200
             ? null
@@ -624,7 +663,7 @@ export class AssistenteInvestigacao {
           regrasFixas +
             '\n' +
             (contexto || promptSugerido) +
-            '\nExplique este caso em texto simples, sem Markdown, em no máximo 7 frases curtas, separando Evidências, Limitação ou hipótese e Próximo passo. A tabela já detalha as fórmulas: não repita todos os IDs e valores no texto. Use exclusivamente os fatos e o código fornecidos. Cite somente o caminho e a linha relevantes. Não transcreva código nem sintaxe de fórmulas. Filas são históricas e da execução inteira: não atribua suas falhas ao funcionário. O status ERRO do resultado por fórmula não equivale ao status da execução. Logs históricos não confirmam causa atual. Memórias são por fórmula e podem repetir variáveis. Variáveis sem memória não provam falha no RM. Cadastro atual não comprova vigência histórica. Oriente pela tela Processamentos, sem sugerir executar métodos internos ou pedir novamente filtros já resolvidos. Não prometa reprocessamento nem gere arquivos ou links. Não afirme ausência de valores se houver calculados. Identificação pessoal foi removida por minimização de dados.',
+            '\nExplique este caso em texto simples, sem Markdown, com detalhes suficientes, separando Evidências, Interpretação, Hipóteses e como confirmar e Próximo passo. Identifique etapa, fórmula com versão histórica e variáveis quando houver evidência. Diga quando não foram identificadas. A tabela preserva o detalhe dos resultados. Use exclusivamente os fatos e o código fornecidos. Cite somente o caminho e a linha relevantes. Não transcreva código nem sintaxe de fórmulas. Filas são históricas e da execução inteira: não atribua suas falhas ao funcionário. O status ERRO do resultado por fórmula não equivale ao status da execução. Logs históricos não confirmam causa atual. Memórias são por fórmula e podem repetir variáveis. Variáveis sem memória não provam falha no RM. Cadastro atual não comprova vigência histórica. Oriente pela tela Processamentos, sem sugerir executar métodos internos ou pedir novamente filtros já resolvidos. Não prometa reprocessamento nem gere arquivos ou links. Não afirme ausência de valores se houver calculados. Identificação pessoal foi removida por minimização de dados.',
           JSON.stringify({ fatos, codigo: codigo.trechos }),
           1800,
         );
@@ -632,10 +671,12 @@ export class AssistenteInvestigacao {
         explicacao =
           'A explicação pelo provedor está indisponível. Os registros consultados permanecem abaixo. Confira a evidência e o histórico na execução antes de confirmar a causa.';
       }
+    const detalhe=contextoDoDiagnostico({[fatosInternos]:fatos,texto:resumo});
     return {
+      [respostaParaModelo]:`Investigação individual de ${escopo.competencia}. ${resumo} Detalhes pessoais disponíveis somente no Vale.`,
       [fatosInternos]: fatos,
       ...meta,
-      texto: resumo + (explicacao ? '\n\n' + explicacao.slice(0, 6000) : ''),
+      texto: `Competência ${escopo.competencia} · Filial ${meta.filial ?? execucao.filial.nome} · Funcionário ${pessoa.nome_funcionario ?? 'nome não informado'} (matrícula ${pessoa.funcionario_id_rm}) · Execução #${execucao.execucao_id}.\n\n` + resumo + '\nFórmulas: '+detalhe.formulas+'\nVariáveis: '+detalhe.variaveis + (explicacao ? '\n\n' + explicacao.slice(0, 6000) : ''),
       fonte:
         meta.fonte +
         (codigo.fontes.length
@@ -665,6 +706,13 @@ export class AssistenteInvestigacao {
           'Ajuste manual',
           'Memórias gravadas',
           'Variáveis históricas sem memória',
+          'Competência',
+          'Filial',
+          'Funcionário',
+          'Matrícula',
+          'Execução',
+          'Fórmula ID',
+          'Variáveis com memória',
         ],
         linhas: evidencias.map((r) => [
           r.formula,
@@ -676,6 +724,13 @@ export class AssistenteInvestigacao {
           r.ajusteManual ? 'Sim' : 'Não',
           r.memoriasGravadas,
           r.variaveisHistoricasSemMemoria?.join(', ') ?? null,
+          escopo.competencia,
+          meta.filial??execucao.filial.nome,
+          pessoa.nome_funcionario,
+          pessoa.funcionario_id_rm,
+          execucao.execucao_id,
+          r.formulaId,
+          r.variaveisIdentificadas.map(v=>v.codigo+(v.nome?' — '+v.nome:'')).join(', '),
         ]),
         parcial: resultados.length > 100,
       },

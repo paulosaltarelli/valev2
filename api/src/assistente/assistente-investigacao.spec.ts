@@ -5,6 +5,7 @@ import {
 import type { PrismaService } from '../prisma/prisma.service';
 import type { AssistenteConhecimento } from './assistente-conhecimento';
 import type { ContextoErros } from './assistente-tipos';
+import { respostaParaModelo } from './assistente-tipos';
 
 const contexto = { periodoId: 7, competencia: '10/2026', filialId: 9 };
 const credencial = { modelo: 'gpt-5.4-mini', chave: 'teste' };
@@ -139,6 +140,14 @@ it('distingue erro, ausência e zero e cruza fatos do banco com código sem envi
     expect(resposta.tabela?.linhas[1][3]).toBe('Calculado com zero');
     expect(resposta.tabela?.linhas[1][4]).toBe('0.00');
     expect(resposta.texto).toContain('1 de 2');
+    expect(resposta.texto).toContain('Filial de teste');
+    expect(resposta.texto).toContain('PESSOA DE TESTE');
+    expect(resposta.texto).toContain('000123');
+    expect(resposta.texto).toContain('Vale (#1');
+    expect(resposta.texto).toContain('DIAS');
+    expect(resposta.tabela?.colunas).toContain('Competência');
+    expect(resposta[respostaParaModelo]).not.toContain('000123');
+    expect(resposta[respostaParaModelo]).not.toContain('PESSOA DE TESTE');
     expect(resposta.fonte).toContain('execucao.service.ts:10');
     const enviado = String(fetchMock.mock.calls[0][1]?.body);
     expect(enviado).toContain('memoriasGravadas');
@@ -245,6 +254,12 @@ it('lista o grupo capturado com banco e código e não envia nomes ou matrícula
       }),
     );
     expect(resposta.competencia).toBe('10/2026');
+    expect(resposta.texto).toContain('PESSOA DE TESTE');
+    expect(resposta.texto).toContain('Fórmulas: Vale (#1');
+    expect(resposta.tabela?.colunas).toContain('Variáveis e memórias relacionadas');
+    expect(resposta.tabela?.linhas[0][8]).toBe('10/2026');
+    expect(resposta[respostaParaModelo]).not.toContain('PESSOA DE TESTE');
+    expect(JSON.stringify(resposta)).not.toContain('resposta-para-modelo');
     expect(resposta.filial).toBe('Todas as filiais ativas');
     expect(resposta.tabela?.linhas[0].slice(0, 7)).toEqual([
       '000123',
