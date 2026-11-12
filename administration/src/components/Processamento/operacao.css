@@ -810,3 +810,8 @@ small {
 .op-error-card:focus-visible { outline:3px solid #246bc1; outline-offset:3px; }
 @media(max-width:1100px) { .op-summary-errors {grid-template-columns:repeat(2,minmax(0,1fr));} }
 @media(max-width:540px) { .op-summary-errors {grid-template-columns:1fr;} }
+
+.op-retry-three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.op-bulk-tools { display:flex; flex-wrap:wrap; gap:8px; }
+#op-branches { scroll-margin-top:90px; }
+@media(max-width:640px) { .op-retry-three { grid-template-columns:1fr; } .op-bulk-tools { width:100%; } .op-bulk-tools > button { flex:1; } }

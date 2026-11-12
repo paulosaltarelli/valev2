@@ -1,3 +1,4 @@
+import { currentExecutionIds } from "../../components/Processamento/pending-actions";
 import { OperationReportTools } from "../../components/Processamento/OperationReportTools";
 import { PendingPeople } from "../../components/Processamento/PendingPeople";
 import { RetryErrors } from "../../components/Processamento/RetryErrors";
@@ -98,7 +99,7 @@ export function ProcessamentoPage() {
   useEffect(() => {
     setSelected([]);
     setSelecting(false);
-  }, [periodo, filial, filter, history]);
+  }, [periodo, filial, filter, history, focus, branchTerm]);
   const change = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
@@ -135,6 +136,8 @@ export function ProcessamentoPage() {
         ),
     [query.data, history, filial, filter, focus, branchTerm],
   );
+  const selectableIds = currentExecutionIds(rows);
+  const selectedInScope = selected.filter(id => rows.some(row => row.id === id));
   const current = (query.data?.rows ?? []).filter(
     (r) => r.latest && (!filial || r.filialId === Number(filial)),
   );
@@ -272,7 +275,7 @@ export function ProcessamentoPage() {
         description="Acompanhe cada etapa e avance com o contexto da competência."
         actions={(
           <>
-          {query.data?.periodo && <RetryErrors key={query.data.periodo.periodo_id} periodoId={query.data.periodo.periodo_id} competencia={query.data.periodo.competencia}
+          {query.data?.periodo && <RetryErrors executionIds={currentExecutionIds(query.data.rows)} key={query.data.periodo.periodo_id} periodoId={query.data.periodo.periodo_id} competencia={query.data.periodo.competencia}
             disabled={query.loading || Boolean(query.error) || command.busy || saving || queueSaving} onDone={query.refresh} onNotice={setNotice} />}
           <button
             className="btn btn-primary"
@@ -396,7 +399,7 @@ export function ProcessamentoPage() {
             </div>
           )}
           <div
-            className="op-summary"
+            className="op-summary op-summary-errors"
             aria-label="Progresso das execuções atuais"
           >
             <StageCount
@@ -418,8 +421,13 @@ export function ProcessamentoPage() {
               value={totals.rm}
               total={totals.total}
             />
+            <button type="button" className={`op-panel op-stage op-error-card ${focus === "erro" ? "is-selected" : ""}`} aria-pressed={focus === "erro"}
+              onClick={() => { const next = new URLSearchParams(params); next.delete("situacao"); next.delete("visao"); focus === "erro" ? next.delete("foco") : next.set("foco", "erro"); setParams(next); requestAnimationFrame(() => document.getElementById("op-branches")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>
+              <span>Erros</span><strong>{current.reduce((sum, row) => sum + (row.errorPeople ?? row.errors), 0).toLocaleString("pt-BR")} <small>funcionários</small></strong>
+              <small>Variáveis · Fórmulas · RM</small><span className="op-muted">{focus === "erro" ? "Limpar filtro" : "Ver erros"} ↗</span>
+            </button>
           </div>
-          <div className="op-toolbar">
+          <div className="op-toolbar" id="op-branches">
             {(history || query.data.rows.some(r=>!r.latest)) && <details><summary>Execuções anteriores</summary><label className="ve-check-filter mt-2"><input type="checkbox" checked={history} onChange={e=>change("visao",e.target.checked?"historico":"")}/> Incluir execuções anteriores da competência</label></details>}
             <label>
               Situação
@@ -435,30 +443,34 @@ export function ProcessamentoPage() {
                 <option value="enviado">Enviado ao RM</option>
               </select>
             </label>
+            <div className="op-bulk-tools">
+            <button type="button" className="btn btn-outline-primary" disabled={command.busy || Boolean(query.error) || !selectableIds.length}
+              onClick={() => { setSelecting(true); setSelected(selectableIds); }}>Selecionar todas{filter !== "todas" || focus || filial || branchTerm || history ? " exibidas" : " as filiais"}</button>
             <button
               className="btn btn-outline-secondary"
-              disabled={Boolean(query.error) || !rows.length}
+              disabled={command.busy || Boolean(query.error) || !rows.length}
               onClick={() => {
                 setSelecting(!selecting);
                 setSelected([]);
               }}
             >
-              {selecting ? "Encerrar seleção" : "Selecionar filiais"}
-            </button>
+              {selecting ? "Encerrar seleção" : "Escolher filiais"}
+            </button></div>
           </div>
           {selecting && (
             <div className="op-selection" role="status">
               <strong>
-                {selected.length} execuções selecionadas neste recorte
+                {selectedInScope.length} {history ? "execuções" : "filiais"} selecionadas
               </strong>
-              {selected.length > 0 && (
-                <SendScope key={selected.join(",")} executionIds={selected}
+              {selectedInScope.length > 0 && (
+                <SendScope key={selectedInScope.join(",")} executionIds={selectedInScope}
                   disabled={command.busy || Boolean(query.error)}
-                  onSend={() => void command.run({ etapa: "ENVIAR_RM", execucaoIds: selected })}
+                  onSend={() => void command.run({ etapa: "ENVIAR_RM", execucaoIds: selectedInScope })}
                 />
               )}
               <button
                 className="btn btn-outline-secondary"
+                disabled={command.busy}
                 onClick={() => setSelected([])}
               >
                 Limpar seleção
@@ -489,7 +501,7 @@ export function ProcessamentoPage() {
                 <tbody>
                   {rows.map((r) => {
                     const s = situacoes[r.situacao] ?? situacoes.inicio;
-                    const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, retorno: returnTo })}`;
+                    const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, ...(focus === "erro" ? { filtro: "erros" } : {}), retorno: returnTo })}`;
                     // A fila pode incluir a próxima etapa; só nomeie a etapa se o tipo for único.
                     const singleStage = r.etapas.length === 1 ? r.etapas[0] : null;
                     const stageDone = singleStage === "VARIAVEIS" ? r.progresso.variaveisCalculadas
@@ -512,6 +524,7 @@ export function ProcessamentoPage() {
                               <input
                                 type="checkbox"
                                 aria-label={`Selecionar ${r.filial}, execução ${r.id}`}
+                                disabled={command.busy}
                                 checked={selected.includes(r.id)}
                                 onChange={(e) =>
                                   setSelected((prev) =>
@@ -573,7 +586,7 @@ export function ProcessamentoPage() {
                             className={`btn ${r.situacao === "envio" ? "btn-primary" : "btn-outline-primary"}`}
                             to={href}
                           >
-                            {s.action}
+                            {focus === "erro" ? "Ver erros" : s.action}
                           </Link>
                           {r.controleFila !== "CANCELADA" &&
                             (r.processing + r.pending > 0 || r.controleFila === "PAUSADA") && (
