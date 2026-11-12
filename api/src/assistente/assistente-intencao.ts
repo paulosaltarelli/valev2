@@ -87,6 +87,7 @@ export async function consultarModelo(
   instructions: string,
   pergunta: string,
   limite: number,
+  formato?: { nome: string; schema: Record<string, unknown> },
 ): Promise<string> {
   const { chave, modelo } = credencial;
   const gpt = provedor === 'gpt-institucional';
@@ -98,7 +99,9 @@ export async function consultarModelo(
       {
         method: 'POST',
         redirect: 'error',
-        signal: AbortSignal.timeout(limite > 32 ? 25000 : 8000),
+        signal: AbortSignal.timeout(
+          gpt && formato ? 45000 : limite > 32 ? 25000 : 8000,
+        ),
         headers: gpt
           ? {
               'Content-Type': 'application/json',
@@ -117,6 +120,18 @@ export async function consultarModelo(
                 input: pergunta,
                 store: false,
                 max_output_tokens: limite,
+                ...(formato
+                  ? {
+                      text: {
+                        format: {
+                          type: 'json_schema',
+                          name: formato.nome,
+                          schema: formato.schema,
+                          strict: true,
+                        },
+                      },
+                    }
+                  : {}),
               }
             : {
                 model: modelo,

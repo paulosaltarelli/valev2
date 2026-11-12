@@ -11,7 +11,9 @@ Filas de criação, processamento e geolocalização são etapas diferentes. Res
 Gestão de KM acompanha distâncias e registros existentes. Fechamento reúne pendências. Variação compara competências.
 Relatórios usa os dados existentes. Valor calculado, ajuste manual, final local e envio registrado são etapas diferentes.
 O operador consulta operação e relatórios. O administrador gerencia usuários, filiais, fórmulas e configurações.
-O assistente não recalcula valores nem escreve no banco operacional.`;
+O Vale IA gera SELECTs de leitura sobre visões autorizadas, com validação no servidor e conexões de banco restritas por perfil.
+O chat produz relatórios HTML e Excel, e usa a competência ativa. Rankings de filiais consultam as filiais do recorte, mesmo se a tela tiver uma filial selecionada.
+O assistente não recalcula benefícios nem escreve no banco operacional.`;
 
 @Injectable()
 export class AssistenteConhecimento {
@@ -39,6 +41,48 @@ export class AssistenteConhecimento {
         ) ?? false,
       revisao: this.pacote?.revision.slice(0, 12) ?? null,
       atualizadoEm: this.pacote?.generatedAt ?? null,
+    };
+  }
+
+  investigacao() {
+    const alvos = [
+      [
+        'api/src/helpers/calculator/calculator.service.ts',
+        'A fórmula deve retornar um número finito',
+      ],
+      [
+        'api/src/execucao/execucao.service.ts',
+        'Sem memoria_calculo para fórmula',
+      ],
+      ['api/src/execucao/execucao.service.ts', 'Erro ao calcular fórmula'],
+      ['api/src/execucao/execucao.service.ts', 'ERRO_RESULTADOS },'],
+      [
+        'api/src/helpers/calculator/formula-expression.ts',
+        'export function analisarExpressao',
+      ],
+    ];
+    const trechos = alvos.flatMap(([caminho, termo]) => {
+      const arquivo = this.pacote?.files.find((f) => f.path === caminho);
+      if (!arquivo) return [];
+      const linhas = arquivo.text.split('\n');
+      const indice = linhas.findIndex((linha) => linha.includes(termo));
+      if (indice < 0) return [];
+      const inicio = Math.max(0, indice - 8);
+      return [
+        {
+          caminho,
+          linha: inicio + 1,
+          trecho: linhas
+            .slice(inicio, indice + 22)
+            .join('\n')
+            .slice(0, 2600),
+        },
+      ];
+    });
+    return {
+      trechos,
+      fontes: trechos.map((t) => t.caminho + ':' + t.linha),
+      estado: this.estado(),
     };
   }
 

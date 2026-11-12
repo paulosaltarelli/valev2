@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { RmService, extractAxiosResponseMessage, rmClassNotFound } from './rm.service';
+import { RmService, extractAxiosResponseMessage, rmClassNotFound, extractRmApplicationError, rmRecordPayload } from './rm.service';
 
 const rejected={messages:[{code:'0007',type:'error',detail:'Classe não encontrada: RMSPRJ4791552Server'}],length:0,data:null};
 describe('Falhas de gravação no RM',()=>{
@@ -57,5 +57,34 @@ describe('Erros de atualização e erros de aplicação com HTTP 200',()=>{
   const service=create();
   jest.spyOn((service as unknown as {http:{put:()=>Promise<unknown>}}).http,'put').mockResolvedValue({data:rejected});
   await expect(service.putRecordMetaData('Server','TABLE',1,{},'session')).rejects.toThrow('Classe não encontrada');
+ });
+});
+
+describe('Contrato confirmado pelo GetSchema do DataServer',()=>{
+ const warning={messages:[{code:'0006',type:'warning',detail:'Ocorreu uma falha ao tentar criar o registro.'}],length:0,data:null};
+ it('mostra a falha que veio como warning sem registro',()=>{
+  expect(extractRmApplicationError(warning)).toBe('Ocorreu uma falha ao tentar criar o registro.');
+  expect(extractRmApplicationError({...warning,length:1,data:{id:12}})).toBeUndefined();
+ });
+ it('monta ZMDMOVVC e ID=-1 para inserção sem alterar o registro aprovado',()=>{
+  const record={CODCOLIGADA:1,CODFILIAL:1,CHAPA:'0014893',CODEVENTO:'R066',VALOR:550,TIPO:'V'};
+  expect(rmRecordPayload('RMSPRJ4870400Server','ZMDMOVVC',record)).toEqual({ZMDMOVVC:[{ID:-1,CODCOLIGADA:1,CHAPA:'0014893',CODEVENTO:'R066',VALOR:550,TIPO:'V'}]});
+  expect(record.CODFILIAL).toBe(1);
+ });
+ it('usa a chave ID real em atualizações e recusa a tabela antiga',()=>{
+  expect(rmRecordPayload('RMSPRJ4870400Server','ZMDMOVVC',{CODCOLIGADA:1,CODFILIAL:1,VALOR:550},12000)).toEqual({ZMDMOVVC:[{ID:12000,CODCOLIGADA:1,VALOR:550}]});
+  expect(()=>rmRecordPayload('RMSPRJ4870400Server','ZMDVALORES_VALE',{})).toThrow('exige ZMDMOVVC');
+  expect(rmRecordPayload('OutroServer','OTHER',{VALOR:5},10)).toEqual({OTHER:[{VALOR:5,id:10}]});
+ });
+ it('posta o DataSet confirmado e preserva o recibo retornado',async()=>{
+  const service=new RmService({} as never,{} as never);
+  jest.spyOn(service,'getBasicAuthHeaderFromSession').mockResolvedValue('test');
+  const post=jest.spyOn((service as unknown as {http:{post:(url:string,body:unknown,options:unknown)=>Promise<unknown>}}).http,'post').mockResolvedValue({data:{messages:[],length:1,data:{id:'12000',ID:12000}}});
+  const old=process.env.RM_API_URL;process.env.RM_API_URL='http://rm.test/rest/';
+  try {
+   const response=await service.saveRecordMetaData('RMSPRJ4870400Server','ZMDMOVVC',{CODCOLIGADA:1,CODFILIAL:1,CHAPA:'0014893',VALOR:550},'session');
+   expect(response.status).toBe(true);
+   expect(post.mock.calls[0][1]).toEqual({ZMDMOVVC:[{ID:-1,CODCOLIGADA:1,CHAPA:'0014893',VALOR:550}]});
+  } finally {if(old===undefined)delete process.env.RM_API_URL;else process.env.RM_API_URL=old;}
  });
 });

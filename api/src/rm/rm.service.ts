@@ -87,10 +87,28 @@ export function rmClassNotFound(dataServer: string, status: number | undefined, 
 
 export function extractRmApplicationError(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
-  const messages=(data as {messages?:Array<{type?:unknown}>}).messages;
-  return Array.isArray(messages) && messages.some(m=>m?.type==='error')
+  const body=data as {messages?:Array<{type?:unknown}>;data?:unknown;length?:unknown};
+  const messages=body.messages;
+  const withoutRecord=body.data == null || body.length === 0;
+  return Array.isArray(messages) && messages.some(m=>m?.type==='error' || (m?.type==='warning' && withoutRecord))
     ? extractAxiosResponseMessage(data) ?? 'RM retornou erro sem detalhe.'
     : undefined;
+}
+
+export function rmRecordPayload(
+  dataServer: string, tableName: string, dataRecord: unknown, recordId?: number,
+): Record<string, unknown> {
+  if (!dataRecord || typeof dataRecord !== 'object' || Array.isArray(dataRecord))
+    throw new Error('Registro RM inválido.');
+  const record={...(dataRecord as Record<string,unknown>)};
+  if(dataServer === 'RMSPRJ4870400Server') {
+    if(tableName !== 'ZMDMOVVC') throw new Error('Tabela RM incompatível: este DataServer exige ZMDMOVVC.');
+    delete record.CODFILIAL;
+    delete record.id;
+    delete record.RESTDS_TEMP_ID;
+    record.ID=recordId ?? -1;
+  } else if(recordId !== undefined) record.id=recordId;
+  return {[tableName]:[record]};
 }
 
 @Injectable()
@@ -371,28 +389,9 @@ export class RmService {
       // Então aqui apenas anexamos o DataServer.
       const url = joinUrl(rmBase, `${dataServer}`);
       const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-      //Nessa estrutura
-      // {
-      //   "ZMDVALORES_VALE": [
-      //       {
-      //           "CODCOLIGADA": 1,
-      //           "CODFILIAL": 1,
-      //           "CHAPA": "0017722",
-      //           "DATAINI": "2025-12-01T00:00:00-03:00",
-      //           "DATAFIM": "2025-12-31T00:00:00-03:00",
-      //           "CODEVENTO": "R066",
-      //           "VALOR": 22.0,
-      //           "TIPO": "D"
-      //       },
-      //     ]
-      // }
-      const body = {
-        [tableName]: [
-          {
-            ...(dataRecord as Record<string, unknown>),
-          },
-        ],
-      } as Record<string, unknown>;
+      // O DataServer customizado recebe o DataSet e a chave definidos por GetSchema.
+      const body = rmRecordPayload(dataServer, tableName, dataRecord);
+
       dispatched = true;
       const response = await this.http.post<unknown>(url, body, {
         headers: {
@@ -477,14 +476,8 @@ export class RmService {
     if (!rmBase) throw new Error('RM_API_URL not configured');
     const url = joinUrl(rmBase, `${dataServer}/${recordId}`);
     const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
-    const body = {
-      [tableName]: [
-        {
-          ...(dataRecord as Record<string, unknown>),
-          id: recordId,
-        },
-      ],
-    } as Record<string, unknown>;
+    const body = rmRecordPayload(dataServer, tableName, dataRecord, recordId);
+
     const response = await this.http.put<unknown>(url, body, {
       headers: {
         Authorization: authorization,
