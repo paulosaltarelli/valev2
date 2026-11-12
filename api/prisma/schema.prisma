@@ -36,7 +36,7 @@ model execucao {
   historica_de_execucao_id Int?
   historica_em DateTime?
   historica_motivo String? @db.NVarChar(1000)
-  principal execucao? @relation("ExecucoesHistoricas", fields: [historica_de_execucao_id], references: [execucao_id], onDelete: NoAction, onUpdate: NoAction)
+  principal execucao? @relation("ExecucoesHistoricas", fields: [historica_de_execucao_id], references: [execucao_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_execucao_principal")
   historicas execucao[] @relation("ExecucoesHistoricas")
   execucao_id               Int                         @id(map: "PK__execucao__82E1C3EA2FB7A151") @default(autoincrement())
   filial_id                 Int

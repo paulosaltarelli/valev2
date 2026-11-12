@@ -1,5 +1,7 @@
 ALTER TABLE dbo.execucao ADD historica_de_execucao_id int NULL, historica_em datetime2 NULL, historica_motivo nvarchar(1000) NULL;
+GO
 ALTER TABLE dbo.execucao ADD CONSTRAINT fk_execucao_principal FOREIGN KEY(historica_de_execucao_id) REFERENCES dbo.execucao(execucao_id);
+GO
 ALTER TABLE dbo.execucao ADD CONSTRAINT ck_execucao_historica CHECK(historica_de_execucao_id IS NULL OR (historica_de_execucao_id<>execucao_id AND historica_em IS NOT NULL AND historica_motivo IS NOT NULL));
 GO
 CREATE OR ALTER VIEW vale_ia.execucoes AS
