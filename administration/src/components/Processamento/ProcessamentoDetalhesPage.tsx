@@ -582,7 +582,7 @@ export function ProcessamentoDetalhesPage() {
         </div>
       )}
       {row && (
-        <div className="op-summary">
+        <div className="op-summary op-summary-errors">
           <StageCount
             label="Variáveis calculadas"
             value={row.progresso.variaveisCalculadas}
@@ -592,6 +592,12 @@ export function ProcessamentoDetalhesPage() {
           />
           <div className="op-stage"><StageCount label="Fórmulas calculadas" value={row.progresso.formulasCalculadas} total={row.progresso.formulasPrevistas} unit="fórmulas" detail={`${row.valores} de ${row.total} funcionários completos`} /><button type="button" className="btn btn-link btn-sm p-0" onClick={() => { setSearchDraft(""); setContext({ filtro: "formulas_pendentes", busca: "", pagina: "1", resultado: "" }); }}>Ver funcionários pendentes</button></div>
           <StageCount label="Enviados ao RM" finalStage value={row.rm} total={row.total} />
+          <button type="button" className={`op-stage op-error-card${filter === "erros" ? " is-selected" : ""}`} aria-pressed={filter === "erros"}
+            onClick={() => { setSearchDraft(""); setContext({filtro: filter === "erros" ? "todos" : "erros", busca:"", pagina:"1", resultado:""}); }}>
+            <span>Erros</span><strong>{row.errorPeople ?? row.errors}<small> / {row.total} funcionários</small></strong>
+            <span className="op-muted">Variáveis · Fórmulas · RM</span>
+            <span>{filter === "erros" ? "Limpar filtro" : "Ver funcionários com erro"} ↗</span>
+          </button>
         </div>
       )}
       {summary.error && (
@@ -730,6 +736,7 @@ export function ProcessamentoDetalhesPage() {
                 }
               >
                 <option value="todos">Todas</option>
+                <option value="erros">Com erro em qualquer etapa</option>
                 <option value="formulas_pendentes">Com fórmulas pendentes</option>
                 <option value="pendencias">
                   Com pendências ou erros

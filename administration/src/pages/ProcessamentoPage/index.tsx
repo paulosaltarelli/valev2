@@ -1,3 +1,4 @@
+import { OperationReportTools } from "../../components/Processamento/OperationReportTools";
 import { PendingPeople } from "../../components/Processamento/PendingPeople";
 import { RetryErrors } from "../../components/Processamento/RetryErrors";
 import { PageHeading } from "../../shared/components/PageHeading";
@@ -42,6 +43,8 @@ export function ProcessamentoPage() {
   const periodo = params.get("periodo") ?? "";
   const filial = params.get("filial") ?? "";
   const situation = params.get("situacao");
+  const focus = params.get("foco") ?? "";
+  const branchTerm = (params.get("busca") ?? "").trim().toLocaleLowerCase("pt-BR");
   const filter = situation === "conferencia" ? "envio" : situation ?? "todas";
   const history = params.get("visao") === "historico";
   const fetcher = useCallback(() => OperacaoApi.summary(periodo), [periodo]);
@@ -118,6 +121,8 @@ export function ProcessamentoPage() {
       (query.data?.rows ?? [])
         .filter((r) => history || r.latest)
         .filter((r) => !filial || r.filialId === Number(filial))
+        .filter(r => r.filial.toLocaleLowerCase("pt-BR").includes(branchTerm))
+        .filter(r => focus === "erro" ? (r.errorPeople ?? r.errors)>0 : focus === "envio" ? r.valores>r.rm : focus === "enviados" ? r.total>0 && r.rm===r.total : true)
         .filter(
           (r) =>
             filter === "todas" ||
@@ -128,7 +133,7 @@ export function ProcessamentoPage() {
         .sort(
           (a, b) => a.filial.localeCompare(b.filial, "pt-BR") || b.id - a.id,
         ),
-    [query.data, history, filial, filter],
+    [query.data, history, filial, filter, focus, branchTerm],
   );
   const current = (query.data?.rows ?? []).filter(
     (r) => r.latest && (!filial || r.filialId === Number(filial)),
@@ -326,6 +331,9 @@ export function ProcessamentoPage() {
           </button>
         </div>
       </section>
+      {!history && query.data?.periodo && <OperationReportTools periodo={String(query.data.periodo.periodo_id)} refreshKey={query.data.updatedAt} />}
+      {(focus || branchTerm) && <div className="op-toolbar mb-3"><span className="op-muted">Recorte ativo{branchTerm ? ` · ${branchTerm}` : ""}</span><button className="btn btn-link btn-sm" onClick={()=>{const next=new URLSearchParams(params);next.delete('foco');next.delete('busca');setParams(next);}}>Limpar recorte</button></div>}
+
       <QueryNotice {...query} />
       {notice && (
         <div className="op-notice" role="status">

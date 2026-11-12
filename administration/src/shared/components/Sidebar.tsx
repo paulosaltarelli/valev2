@@ -21,11 +21,8 @@ const navigation = [
     id: "analysis",
     icon: "mdi:chart-box-outline",
     links: [
-        ["/fechamento", "Fechamento por filial", "mdi:clipboard-check-outline"],
-        ["/variacao-competencias", "Variação entre competências", "mdi:compare-horizontal"],
       ["/relatorios", "Evolução financeira", "mdi:chart-box-outline"],
       ["/extrato-processamento", "Valores por funcionário", "mdi:table-large"],
-      ["/falhas-por-causa", "Falhas por causa", "mdi:alert-circle-outline"],
     ],
   },
   {
@@ -51,7 +48,8 @@ const navigation = [
 export function Sidebar() {
   const { state, dispatch } = useThemeContext();
   const { state: appState } = useAppContext();
-  const pathname = useLocation().pathname;
+  const locationPath = useLocation().pathname;
+  const pathname = locationPath === "/variacao-competencias" ? "/relatorios" : locationPath;
   const activeGroup = navigation.find((group) => group.id && group.links.some(([path]) => pathname === path || pathname.startsWith(path + "/")))?.id;
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => activeGroup ? { [activeGroup]: true } : {});
   useEffect(() => {

@@ -801,3 +801,12 @@ small {
 .op-retry-choices strong, .op-retry-choices small { display: block; margin-top: 6px; }
 .op-failure-message { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
 @media(max-width: 480px) { .op-retry-choices { grid-template-columns: 1fr; } }
+
+.op-summary-errors { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.op-error-card { text-align:left; cursor:pointer; color:var(--op-danger,#b42318); font:inherit; }
+.op-error-card strong { font-size:24px; }
+.op-error-card strong small { font-size:13px; font-weight:400; color:var(--op-muted); }
+.op-error-card:hover,.op-error-card.is-selected { border-color:#b42318; background:rgba(180,35,24,.06); }
+.op-error-card:focus-visible { outline:3px solid #246bc1; outline-offset:3px; }
+@media(max-width:1100px) { .op-summary-errors {grid-template-columns:repeat(2,minmax(0,1fr));} }
+@media(max-width:540px) { .op-summary-errors {grid-template-columns:1fr;} }

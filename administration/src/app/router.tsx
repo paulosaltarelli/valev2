@@ -17,7 +17,7 @@ import { GestaoKmPage } from "../pages/GestaoKmPage";
 import { RelatoriosPage } from "../pages/RelatoriosPage";
 import { ExtratoProcessamentoPage } from "../pages/ExtratoProcessamentoPage";
 import { FalhasPage } from "../pages/FalhasPage";
-import { FechamentoPage } from "../pages/FechamentoPage";
+
 import { VariacaoPage } from "../pages/VariacaoPage";
 
 async function requireAuth({ request }: LoaderFunctionArgs) {
@@ -140,7 +140,11 @@ export const router = createBrowserRouter([
         path: "falhas-por-causa",
         element: <FalhasPage />,
       },
-      { path: 'fechamento', element: <FechamentoPage /> },
+      { path: 'fechamento', loader: ({request}) => {
+        const params = new URL(request.url).searchParams;
+        params.set('detalhes', '1');
+        throw redirect(`/processamento?${params}`);
+      } },
       { path: 'variacao-competencias', element: <VariacaoPage /> },
     ],
   },

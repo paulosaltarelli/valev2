@@ -1,3 +1,4 @@
+import { reportCompletion } from './report-completion';
 import { savedCalculationEventSql } from './saved-event.sql';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -188,7 +189,7 @@ export class DashService {
   }
 
   async getProcessamentoReport(id: number) {
-    const formulaFields = { formula_id: true, nome: true, versao: true, tipo: true, expressao: true } as const;
+    const formulaFields = { formula_id: true, nome: true, versao: true, tipo: true, expressao: true, ativa: true } as const;
     const execucao = await this.prisma.execucao.findUnique({
       where: { execucao_id: id },
       select: {
@@ -200,7 +201,7 @@ export class DashService {
             execucao_funcionario_base_id: true,
             funcionario_id_rm: true,
             nome_funcionario: true,
-            status: true,
+            status: true, regras_rm: true,
             execucao_queue: {
               where: { tipo: 'VARIAVEIS' },
               orderBy: { queue_id: 'desc' },
@@ -208,7 +209,7 @@ export class DashService {
               select: { status: true, last_error: true },
             },
             execucao_funcionario: {
-              select: { formula: { select: formulaFields }, valor_calculado: true, status: true },
+              select: { formula: { select: formulaFields }, formula_id: true, codigo_regra_rm: true, valor_final: true, revisao: true, enviado_revisao: true, valor_calculado: true, status: true },
             },
           },
         },
@@ -248,12 +249,16 @@ export class DashService {
     }
 
     const funcionarios = bases.map((base) => {
-      const resultados = Object.fromEntries(base.execucao_funcionario.map((resultado) => {
-        const formula = resultado.formula;
-        return [formula.formula_id, resultado.status === 'ERRO'
-          ? { valor: null, erro: failures.get(`${formula.formula_id}:${base.funcionario_id_rm}`) || 'Falha ao calcular a fórmula' }
-          : { valor: resultado.valor_calculado?.toString() ?? null, erro: null }];
-      }));
+      const resultados: Record<number,{valor:string|null;erro:string|null}> = {};
+      for (const formula of formulas.values()) {
+        const items = base.execucao_funcionario.filter(result=>result.formula_id===formula.formula_id);
+        if (!items.length) continue;
+        const failed = items.some(result=>result.status==='ERRO');
+        const valid = items.every(result=>['PROCESSADO','ENVIADO_RM'].includes(result.status) && result.valor_calculado !== null);
+        resultados[formula.formula_id] = failed
+          ? {valor:null,erro:failures.get(`${formula.formula_id}:${base.funcionario_id_rm}`) || 'Falha ao calcular a fórmula'}
+          : {valor:valid ? items.reduce((sum,result)=>sum.plus(result.valor_calculado!),new Prisma.Decimal(0)).toString() : null,erro:null};
+      }
 
       const job = base.execucao_queue[0];
       let erroGeral: string | null = null;
@@ -282,6 +287,7 @@ export class DashService {
         nome: base.nome_funcionario,
         matricula: base.funcionario_id_rm,
         erroGeral,
+        calculoCompleto: reportCompletion(base, execucao.filial.formula.map(f=>f.formula_id), base.execucao_funcionario).complete,
         resultados,
       };
     });
@@ -291,7 +297,7 @@ export class DashService {
       competencia: execucao.periodo.competencia,
       formulas: [...formulas.values()].sort((a, b) =>
         a.nome.localeCompare(b.nome, 'pt-BR') || b.versao - a.versao || a.formula_id - b.formula_id)
-        .map(({ formula_id, nome, versao, tipo }) => ({ formula_id, nome, versao, tipo })),
+        .map(({ formula_id, nome, versao, tipo, ativa }) => ({ formula_id, nome, versao, tipo, ativa })),
       funcionarios,
     };
   }
