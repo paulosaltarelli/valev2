@@ -68,7 +68,7 @@ export class OperationalReportsService {
     return {...options,periodo:periodo.periodo_id,rows,updatedAt:new Date()};
   }
 
-  async variation(periodoId: number, anteriorId: number, filialId: number) {
+  async variation(periodoId: number, anteriorId: number, filialId: number, maxRows?: number) {
     const options = await this.options();
     const periodo = options.periodos.find(p=>p.periodo_id===periodoId);
     const anterior = options.periodos.find(p=>p.periodo_id===anteriorId);
@@ -84,7 +84,7 @@ export class OperationalReportsService {
     return {
       periodo:periodo.competencia,anterior:anterior.competencia,filial:filial.nome,
       execucaoAtual:a?.execucao_id ?? null,execucaoAnterior:b?.execucao_id ?? null,
-      rows:variationRows(a?.execucao_funcionario_base ?? [],b?.execucao_funcionario_base ?? [],!!a,!!b,configured),
+      rows:variationRows(a?.execucao_funcionario_base ?? [],b?.execucao_funcionario_base ?? [],!!a,!!b,configured,maxRows),
       updatedAt:new Date(),
     };
   }

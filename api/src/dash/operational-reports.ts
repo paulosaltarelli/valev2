@@ -56,11 +56,19 @@ export type VariationRow = {
   key: string; nome: string; matricula: string; formula: string; tipo: string | null;
   anterior: string | null; atual: string | null; diferenca: string | null;
   percentual: string | null; situacao: string; observacao: string;
+  versaoAtual: number | null; versaoAnterior: number | null;
+  classificacaoMonetariaAtual: boolean; classificacaoMonetariaAnterior: boolean;
+  polaridadeAtual: string | null; polaridadeAnterior: string | null;
+  tipoAtualHistorico: string | null; tipoAnteriorHistorico: string | null;
 };
+
+export class VariationLimitError extends Error {
+  constructor() { super('O limite de registros da comparação histórica foi atingido.'); }
+}
 
 /** Compare persisted calculated values, never final overrides or absent values as zero. */
 export function variationRows(current: ReportPerson[], previous: ReportPerson[],
-  currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = []): VariationRow[] {
+  currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = [], maxRows = Number.POSITIVE_INFINITY): VariationRow[] {
   const now = new Map(current.map(p => [personKey(p), p]));
   const before = new Map(previous.map(p => [personKey(p), p]));
   const duplicates = new Set<string>();
@@ -103,6 +111,8 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
       const currentResults = a.get(fkey) ?? [], previousResults = b.get(fkey) ?? [];
       const r = currentResults[0], old = previousResults[0];
       const formula = r ? savedFormula(r).formula : old ? savedFormula(old).formula : null;
+      const snapshotAtual=r?lerSnapshotFormula(r.formula_snapshot):null;
+      const snapshotAnterior=old?lerSnapshotFormula(old.formula_snapshot):null;
       const row: VariationRow = {
         key: JSON.stringify([key,fkey]), nome: person?.nome_funcionario ?? oldPerson?.nome_funcionario ?? 'Nome indisponível',
         matricula: person?.funcionario_id_rm ?? oldPerson!.funcionario_id_rm,
@@ -110,6 +120,12 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
         atual: r && hasCalculatedValue(r) ? r.valor_calculado!.toString() : null,
         anterior: old && hasCalculatedValue(old) ? old.valor_calculado!.toString() : null,
         diferenca: null, percentual: null, situacao: '', observacao: '',
+        versaoAtual:snapshotAtual?.versao??null,versaoAnterior:snapshotAnterior?.versao??null,
+        classificacaoMonetariaAtual:snapshotAtual?.tipo==='V'&&['+','-'].includes(snapshotAtual.polaridade??''),
+        classificacaoMonetariaAnterior:snapshotAnterior?.tipo==='V'&&['+','-'].includes(snapshotAnterior.polaridade??''),
+        polaridadeAtual:snapshotAtual?.polaridade??null,polaridadeAnterior:snapshotAnterior?.polaridade??null,
+        tipoAtualHistorico:typeof snapshotAtual?.tipo==='string'?snapshotAtual.tipo:null,
+        tipoAnteriorHistorico:typeof snapshotAnterior?.tipo==='string'?snapshotAnterior.tipo:null,
       };
       if (duplicates.has(key)) {
         row.atual = row.anterior = null;
@@ -148,6 +164,7 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
           if (previousValue.isZero()) row.observacao = 'Valor anterior igual a zero; a diferença absoluta continua disponível.';
         }
       }
+      if(rows.length>=maxRows)throw new VariationLimitError();
       rows.push(row);
     }
   }

@@ -39,6 +39,7 @@ import { AssistenteConhecimento } from './assistente-conhecimento';
 import { promptSugerido } from './assistente-prompt';
 import { AssistenteSql } from './assistente-sql';
 import { AssistenteInvestigacao } from './assistente-investigacao';
+import { AssistenteComparacao } from './assistente-comparacao';
 import {
   contextoConsulta,
   type ResultadoAssistente,
@@ -444,6 +445,7 @@ export class AssistenteController {
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [
+    AssistenteComparacao,
     AssistenteInvestigacao,
     AssistenteSql,
     AssistenteSessoes,

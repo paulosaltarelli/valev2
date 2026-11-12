@@ -25,6 +25,7 @@ import { contextoConsulta } from './assistente-tipos';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { AssistenteSql } from './assistente-sql';
 import { AssistenteInvestigacao } from './assistente-investigacao';
+import { AssistenteComparacao, pedidoComparacaoHistorica } from './assistente-comparacao';
 
 class PlanoDto {
   @IsIn(['consulta', 'relatorio', 'sql', 'conhecimento', 'investigar'])
@@ -99,6 +100,7 @@ export class AssistenteAvancado {
     private readonly conhecimento: AssistenteConhecimento,
     private readonly sql: AssistenteSql,
     private readonly investigacao: AssistenteInvestigacao,
+    private readonly comparacao?: AssistenteComparacao,
   ) {}
 
   estadoConhecimento() {
@@ -127,6 +129,11 @@ export class AssistenteAvancado {
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase();
+    if(!input.matricula && pedidoComparacaoHistorica(input.pergunta)) {
+      if(!this.comparacao)throw new ServiceUnavailableException('O comparador histórico está indisponível.');
+      const todas=/\bpor filial\b|\bentre filiais\b|\btodas (?:as )?filiais\b/.test(continuacao);
+      return this.comparacao.responder({...input,filialId:todas?undefined:input.filialId},perfil);
+    }
     if (
       grupoAnterior?.tipo === 'funcionarios_com_erro' &&
       /\b(?:eles|elas|esses|essas|estes|estas)\b/.test(continuacao) &&
