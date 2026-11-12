@@ -234,8 +234,12 @@ export function iniciarRelatorio(
   function barras(gs: Grupo[], d: number, m: number) {
     const container = $("grafico");
     container.replaceChildren();
-    const max = Math.max(1, ...gs.map((g) => Math.abs(Number(g.value) || 0)));
-    gs.slice(0, 15).forEach((g) => {
+    const informados = gs.filter((g) => g.value !== null);
+    const max = Math.max(
+      1,
+      ...informados.map((g) => Math.abs(Number(g.value) || 0)),
+    );
+    informados.slice(0, 15).forEach((g) => {
       const b = document.createElement("button");
       b.className = "bar";
       b.type = "button";
@@ -261,11 +265,16 @@ export function iniciarRelatorio(
       container.appendChild(b);
     });
     $("grafico-nota").textContent =
-      gs.length > 15
+      informados.length > 15
         ? "15 maiores grupos. Os indicadores e o Excel incluem todo o recorte."
-        : gs.length
+        : informados.length
           ? "Selecione uma barra para abrir o detalhe."
           : "Não há dados para os filtros selecionados.";
+    if (informados.length < gs.length)
+      $("grafico-nota").textContent +=
+        " " +
+        (gs.length - informados.length) +
+        " grupo(s) sem valor permanecem no detalhe; não foram tratados como zero.";
   }
   const svgEl = <K extends keyof SVGElementTagNameMap>(
     tag: K,
