@@ -1,13 +1,28 @@
+import { transportRules, ruleKey, ruleEventValues } from './transport-rules';
+import { chunks } from 'src/utils/sql-server-ids';
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, formula } from '@prisma/client';
+import { Prisma, formula, type execucao_funcionario_base, type variavel } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { hasStageFailure, hasStagePending } from './retry-errors';
 import { operationProgress } from './operation-progress';
+import { fixedPaymentZeroDaysError } from '../helpers/calculator/fixed-payment-error';
+import { RmService } from 'src/rm/rm.service';
+import { employeeKey, isBatchChapa, isPve2EventQuery, readPve2EventValues } from './rm-variable-batch';
+
+
+export type CalculationEvent = { referencia: string; variavel: string | null; valor: string | null; origem: string; coletadoEm: string; consulta?: string };
+type FormulaWithEvent = formula & { evento_calculo?: CalculationEvent; snapshot_origem?: string };
+export const calculationEventCode = (f: Partial<FormulaWithEvent>) => {
+  if (f.evento_calculo) return f.evento_calculo.valor;
+  const reference = f.codEvento?.trim() ?? '';
+  return reference && !reference.includes('(:') ? reference : null;
+};
 
 type Tx = Prisma.TransactionClient;
 export type Etapa = 'VARIAVEIS' | 'VALORES' | 'CONFERIR' | 'ENVIAR_RM';
@@ -16,6 +31,8 @@ export type PedidoOperacao = {
   execucaoIds: number[];
   baseIds?: number[];
   recalcular?: boolean;
+  somenteErros?: boolean;
+  somentePendencias?: boolean;
 };
 const ativos = ['PENDENTE', 'PROCESSANDO'];
 const calculados = ['RESULTADOS_PROCESSADOS', 'ENVIADO_RM', 'ERRO_RM'];
@@ -36,9 +53,26 @@ export const idsValidos = (value: unknown): number[] => {
 const dateRm = (value: Date) =>
   `${value.toISOString().slice(0, 10)}T00:00:00-03:00`;
 
+type SendComponent = {id:number;revisao:number;[key:string]:unknown};
+type SendEvent = {id:number;revisao:number;record:Record<string,string|number|null>;componentes?:SendComponent[]};
+export function groupSendEvents<T extends SendEvent>(events:T[]):T[] {
+  const groups=new Map<string,T[]>();
+  for(const event of events) {
+    const key=JSON.stringify([event.record.CODCOLIGADA,event.record.CODFILIAL,event.record.CHAPA,event.record.DATAINI,event.record.DATAFIM,event.record.CODEVENTO,event.record.TIPO]);
+    const group=groups.get(key)??[];group.push(event);groups.set(key,group);
+  }
+  return [...groups.values()].map(group=>{
+    const first=group[0];
+    const total=group.reduce((sum,e)=>sum.plus(String(e.record.VALOR)),new Prisma.Decimal(0));
+    if(!total.isFinite())throw new BadRequestException('Valor inválido na soma do evento.');
+    return {...first,valor:total.toFixed(2),nome:group.length>1 ? "Soma de "+group.length+" parcelas" : (first as T & {nome?:string}).nome,record:{...first.record,VALOR:total.toDecimalPlaces(2).toNumber()},
+      componentes:group.map(({componentes:_,...event})=>event as SendComponent)};
+  });
+}
+
 @Injectable()
 export class OperacaoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly rm: RmService) {}
 
   private async lock(tx: Tx, ids: number[]) {
     // Todos os comandos de usuário adquirem o mesmo lock, em ordem estável.
@@ -95,7 +129,8 @@ export class OperacaoService {
       throw new NotFoundException('Competência não encontrada.');
     if (!periodo)
       return { periodos, periodo: null, rows: [], updatedAt: new Date() };
-    const rows = await this.prisma.execucao.findMany({
+    const [rows, memory] = await Promise.all([
+      this.prisma.execucao.findMany({
       where: { periodo_id: periodo.periodo_id },
       orderBy: { execucao_id: 'desc' },
       include: {
@@ -107,6 +142,7 @@ export class OperacaoService {
         execucao_funcionario_base: {
           select: {
             execucao_funcionario_base_id: true,
+            regras_rm: true,
             status: true,
             execucao_funcionario: {
               select: {
@@ -117,6 +153,7 @@ export class OperacaoService {
                 valor_final: true,
                 valor_calculado: true,
                 formula_id: true,
+                codigo_regra_rm: true,
                 formula_snapshot: true,
               },
             },
@@ -134,14 +171,17 @@ export class OperacaoService {
           },
         },
       },
-    });
-    // Aggregate in SQL instead of loading every duplicated memory row or its value.
-    const memory = await this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
-      SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, m.variavel_codigo AS codigo
+    }),
+      this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
+      SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, CASE WHEN r.codigo_regra_rm = '' THEN m.variavel_codigo ELSE CONCAT(r.codigo_regra_rm, '|', m.variavel_codigo) END AS codigo
       FROM dbo.memoria_calculo m
       INNER JOIN dbo.execucao_funcionario r ON r.execucao_funcionario_id = m.execucao_funcionario_id
       INNER JOIN dbo.execucao e ON e.execucao_id = r.execucao_id
-      WHERE e.periodo_id = ${periodo.periodo_id}`);
+      INNER JOIN dbo.formula f ON f.formula_id = r.formula_id AND f.ativa = 1
+      WHERE e.periodo_id = ${periodo.periodo_id}`),
+    ]);
+    // Aggregate in SQL instead of loading every duplicated memory row or its value.
+    
     const savedByBase = new Map<number, string[]>();
     for (const item of memory) {
       const saved = savedByBase.get(item.baseId) ?? [];
@@ -149,6 +189,7 @@ export class OperacaoService {
       savedByBase.set(item.baseId, saved);
     }
     const seen = new Set<number>();
+    const expressionCodes = new Map<string, Set<string>>();
     return {
       periodos,
       periodo,
@@ -156,11 +197,16 @@ export class OperacaoService {
       rows: rows.map((e) => {
         const latest = !seen.has(e.filial_id);
         seen.add(e.filial_id);
-        const bases = e.execucao_funcionario_base;
+        const activeIds = new Set(e.filial.formula.map(formula=>formula.formula_id));
+        const bases = e.execucao_funcionario_base.map(base=>({
+          ...base,execucao_funcionario:base.execucao_funcionario.filter(result=>activeIds.has(result.formula_id)),
+        }));
+        const hasAllResults=(base:(typeof bases)[number])=>activeIds.size>0 &&
+          base.execucao_funcionario.length === activeIds.size * transportRules(base).length;
         const total = bases.length;
         const progresso = bases.reduce((sum, base) => {
           const partial = operationProgress(e.filial.formula, e.filial.variavel.map((v) => v.codigo),
-            base.execucao_funcionario, savedByBase.get(base.execucao_funcionario_base_id) ?? []);
+            base.execucao_funcionario, savedByBase.get(base.execucao_funcionario_base_id) ?? [], expressionCodes);
           return {
             variaveisCalculadas: sum.variaveisCalculadas + partial.variaveisCalculadas,
             variaveisPrevistas: sum.variaveisPrevistas + partial.variaveisPrevistas,
@@ -174,12 +220,12 @@ export class OperacaoService {
         const valores = bases.filter(
           (b) =>
             calculados.includes(b.status ?? '') &&
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(resultadoValido),
         ).length;
         const rm = bases.filter(
           (b) =>
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(
               (r) =>
                 r.status === 'ENVIADO_RM' && r.enviado_revisao === r.revisao,
@@ -187,7 +233,7 @@ export class OperacaoService {
         ).length;
         const conferidos = bases.filter(
           (b) =>
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(
               (r) => resultadoValido(r) && r.conferido_revisao === r.revisao,
             ),
@@ -202,6 +248,7 @@ export class OperacaoService {
             .filter((q) => q.next_run_at && q.tentativas > 0)
             .map((q) => q.next_run_at!)
             .sort((a, b) => +a - +b)[0] ?? null;
+        const errorPeople = bases.filter(b => ['ERRO_VARIAVEIS','ERRO_RESULTADOS','RESULTADOS_PARCIAL','ERRO_RM'].includes(b.status ?? '') || b.execucao_funcionario.some(r=>r.status === 'ERRO')).length;
         const errors = bases.filter(
           (b) =>
             [
@@ -247,6 +294,7 @@ export class OperacaoService {
           rm,
           conferidos,
           errors,
+          errorPeople,
           processing,
           pending,
           controleFila: e.controle_fila,
@@ -277,20 +325,28 @@ export class OperacaoService {
         { nome_funcionario: { contains: search.slice(0, 150) } },
         { funcionario_id_rm: { contains: search.slice(0, 50) } },
       ];
-    if (filter === 'pendencias')
-      where.status = {
-        in: [
-          'ERRO_VARIAVEIS',
-          'ERRO_RESULTADOS',
-          'RESULTADOS_PARCIAL',
-          'ERRO_RM',
-        ],
-      };
+    // Complemento do critério de funcionários com valores concluídos do resumo.
+    // AND preserva a busca por nome/matrícula, que já ocupa where.OR.
+    if (filter === 'pendencias' || filter === 'formulas_pendentes')
+      where.AND = [{ OR: [
+        { status: null },
+        { status: { notIn: calculados } },
+        { execucao_funcionario: { none: {formula:{ativa:true}} } },
+        { execucao_funcionario: { some: { formula:{ativa:true}, OR: [
+          { status: { notIn: ['PROCESSADO', 'ENVIADO_RM'] } },
+          { valor_final: null },
+        ] } } },
+        ...(filter === 'pendencias' ? [{ status: 'ERRO_RM' }] : []),
+      ] }];
+    if (filter === 'erros') where.AND = [{ OR: [
+      {status:{in:['ERRO_VARIAVEIS','ERRO_RESULTADOS','RESULTADOS_PARCIAL','ERRO_RM']}},
+      {execucao_funcionario:{some:{formula:{ativa:true},status:'ERRO'}}},
+    ] }];
     if (filter === 'conferencia' || filter === 'resultados')
       where.status = { in: ['RESULTADOS_PROCESSADOS', 'ERRO_RM'] };
     if (filter === 'enviados') where.status = 'ENVIADO_RM';
     const safePage = Math.max(1, Math.floor(page) || 1);
-    const [total, bases, queue] = await Promise.all([
+    const [total, bases, queue, sendFailures] = await Promise.all([
       this.prisma.execucao_funcionario_base.count({ where }),
       this.prisma.execucao_funcionario_base.findMany({
         where,
@@ -302,6 +358,7 @@ export class OperacaoService {
         take: 25,
         include: {
           execucao_funcionario: {
+            where:{formula:{ativa:true}},
             select: {
               execucao_funcionario_id: true,
               revisao: true,
@@ -311,6 +368,8 @@ export class OperacaoService {
               valor_calculado: true,
               valor_final: true,
               ajuste_manual: true,
+              formula_snapshot: true,
+              codigo_regra_rm: true,
               metadados_rm_id: true,
               formula: { select: { nome: true, codEvento: true, tipo: true } },
             },
@@ -333,16 +392,179 @@ export class OperacaoService {
         },
         orderBy: { queue_id: 'asc' },
       }),
+      this.prisma.execucao_queue.findMany({
+        where: {execucao_id:id,tipo:'ENVIAR_RM',status:'ERRO',
+          execucao_funcionario_base:{status:'ERRO_RM'}},
+        orderBy:{queue_id:'desc'},take:100,
+        select:{queue_id:true,execucao_funcionario_base_id:true,last_error:true,
+          execucao_funcionario_base:{select:{nome_funcionario:true,funcionario_id_rm:true}}},
+      }),
     ]);
     return {
       execucao,
       total,
       page: safePage,
       pageSize: 25,
-      bases,
+      bases: bases.map((base) => ({
+        ...base,
+        execucao_funcionario: base.execucao_funcionario.map(({ formula_snapshot, ...result }) => {
+          let formulaUtilizada: { nome?: string; codEvento?: string | null; tipo?: string; versao?: number; snapshot_origem?: string; evento_calculo?: CalculationEvent } | null = null;
+          if (formula_snapshot) {
+            try {
+              const snapshot = JSON.parse(formula_snapshot);
+              if (snapshot && typeof snapshot === 'object') {
+                formulaUtilizada = { nome: snapshot.nome, codEvento: snapshot.codEvento, tipo: snapshot.tipo, versao: snapshot.versao, snapshot_origem: snapshot.snapshot_origem, evento_calculo: snapshot.evento_calculo };
+              }
+            } catch { /* Legacy invalid snapshots must not break the results list. */ }
+          }
+          return { ...result, formulaUtilizada };
+        }),
+      })),
       queue,
+      sendFailures: sendFailures.filter((q,i,all)=>all.findIndex(item=>item.execucao_funcionario_base_id===q.execucao_funcionario_base_id)===i).map(q=>{
+        const lines=q.last_error?.split(/\r?\n|\\n/).filter(Boolean)??[];
+        const specific=lines.filter(line=>line.includes('[ERRO_ENVIAR_RM]')).pop();
+        return {baseId:q.execucao_funcionario_base_id,
+          chapa:q.execucao_funcionario_base.funcionario_id_rm,
+          nome:q.execucao_funcionario_base.nome_funcionario,
+          message:specific?.split('[ERRO_ENVIAR_RM] ')[1]??'O envio falhou. Consulte o histórico para mais detalhes.'};
+      }),
       updatedAt: new Date(),
     };
+  }
+
+
+
+  // Display is strictly historical: never calls RM or reads today's variable definition.
+  async employeeEvents(execucaoId: number, baseId: number) {
+    const base = await this.prisma.execucao_funcionario_base.findFirst({
+      where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
+      select: { execucao_funcionario: { where:{formula:{ativa:true}}, select: { execucao_funcionario_id: true, formula_snapshot: true } } },
+    });
+    if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
+    return { events: base.execucao_funcionario.map(result => {
+      let snapshot: FormulaWithEvent | null = null;
+      try { snapshot = result.formula_snapshot ? JSON.parse(result.formula_snapshot) : null; } catch { /* legacy */ }
+      const reference = snapshot?.codEvento?.trim() ?? '';
+      const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
+      const historical = snapshot && snapshot.snapshot_origem !== 'CONFERENCIA_LEGADO';
+      const stored = historical && snapshot ? snapshot.evento_calculo : null;
+      const value = historical && snapshot ? calculationEventCode(snapshot) : null;
+      return { resultadoId: result.execucao_funcionario_id, variavel: stored?.variavel ?? variable,
+        nome: stored?.variavel ?? variable ?? 'Evento RM', valor: value, origem: 'CALCULO',
+        coletadoEm: stored?.coletadoEm ?? null,
+        ...(!historical || (variable && !stored) ? { erro: 'Evento não registrado neste cálculo.' } : {}),
+      };
+    }) };
+  }
+
+  async preparePve2CalculationEvents(
+    formulas: formula[],
+    variables: variavel[],
+    bases: execucao_funcionario_base[],
+    sessionId?: string,
+  ) {
+    const cache = new Map<string, CalculationEvent>();
+    if (!sessionId) return cache;
+    const byBranch = new Map<string, execucao_funcionario_base[]>();
+    for (const base of bases) {
+      if (!isBatchChapa(base.funcionario_id_rm, 20)) continue;
+      const key = JSON.stringify([base.codcoligada, base.codfilial]);
+      const group = byBranch.get(key) ?? [];
+      group.push(base);
+      byBranch.set(key, group);
+    }
+    const requested = new Map<string, { variable: string; reference: string; query: string; limit: number | null }>();
+    for (const formula of formulas) {
+      const reference = formula.codEvento?.trim() ?? '';
+      const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1];
+      if (!variable) continue;
+      const definition = variables.find(v => v.ativa && v.codigo.toUpperCase() === variable.toUpperCase());
+      const query = definition?.sql_codigo_rm ?? null;
+      if (definition?.valor_fixo != null || !isPve2EventQuery(query)) continue;
+      requested.set(variable, { variable, reference, query, limit: definition?.chapas_por_chamada ?? null });
+    }
+    for (const { variable, reference, query, limit } of requested.values()) {
+      for (const group of byBranch.values()) {
+        const byChapa = new Map<string, execucao_funcionario_base[]>();
+        for (const base of group) {
+          const matches = byChapa.get(base.funcionario_id_rm) ?? [];
+          matches.push(base);
+          byChapa.set(base.funcionario_id_rm, matches);
+        }
+        const chapas = [...byChapa.keys()];
+        const { codcoligada, codfilial } = group[0];
+        for (const pack of chunks(chapas, limit ?? chapas.length)) {
+          const employees = pack.map(chapa => ({ codcoligada, codfilial, chapa }));
+          const response = await this.rm.realizaConsultaSql(query, {
+            CHAPAS: pack.join(','),
+            CODCOLIGADA: codcoligada,
+            CODFILIAL: codfilial,
+          }, sessionId);
+          const requestedRules = group.filter(b=>pack.includes(b.funcionario_id_rm)).flatMap(b=>transportRules(b).map(regra=>({codcoligada,codfilial,chapa:b.funcionario_id_rm,regra})));
+          const values = ruleEventValues(requestedRules, response.status ? response.data : null);
+          const collected = new Date().toISOString();
+          for (const employee of employees) {
+            for (const base of byChapa.get(employee.chapa)!) for (const regra of transportRules(base)) {
+              const valor=values.get(ruleKey(employee,regra)) ?? null;
+              const key = JSON.stringify([base.execucao_funcionario_base_id, variable, query, null, regra]);
+              cache.set(key, {
+                referencia: reference, variavel: variable, valor,
+                origem: 'RM', coletadoEm: collected, consulta: query,
+              });
+            }
+          }
+        }
+      }
+    }
+    return cache;
+  }
+
+
+  private async captureCalculationEvent(id: number, formula: formula, sessionId?: string,
+    cache = new Map<string, CalculationEvent>()): Promise<CalculationEvent> {
+    const reference = formula.codEvento?.trim() ?? '';
+    const variable = reference.match(/^\(\s*:([A-Za-z_][A-Za-z0-9_]*)\s*\)$/)?.[1] ?? null;
+    const collected = () => new Date().toISOString();
+    if (!variable) {
+      if (reference.includes('(:')) throw new BadRequestException('Referência de evento RM inválida.');
+      return { referencia: reference, variavel: null, valor: reference || null, origem: 'FORMULA', coletadoEm: collected() };
+    }
+    const result = await this.prisma.execucao_funcionario.findUniqueOrThrow({ where: { execucao_funcionario_id: id },
+      include: { execucao_funcionario_base: { include: { execucao: { include: { periodo: true, filial: { include: { variavel: true } } } } } } },
+    });
+    const base = result.execucao_funcionario_base;
+    const definition = base.execucao.filial.variavel.find(v => v.ativa && v.codigo.toUpperCase() === variable.toUpperCase());
+    if (!definition) throw new BadRequestException('Variável de evento não configurada: ' + variable);
+    const key = JSON.stringify([base.execucao_funcionario_base_id, variable, definition.sql_codigo_rm, definition.valor_fixo, result.codigo_regra_rm]);
+    const cached = cache.get(key);
+    if (cached) {
+      if (cached.valor === null) throw new BadRequestException('RM não retornou um código válido para ' + variable + '. O cálculo não foi concluído.');
+      return cached;
+    }
+    let value: string;
+    if (definition.valor_fixo != null) value = String(definition.valor_fixo);
+    else {
+      if (!definition.sql_codigo_rm || !sessionId) throw new BadRequestException('Não foi possível registrar o evento ' + variable + ': consulta ou sessão RM indisponível.');
+      const employee = { codcoligada: base.codcoligada, codfilial: base.codfilial, chapa: base.funcionario_id_rm };
+      const pve2 = isPve2EventQuery(definition.sql_codigo_rm);
+      if (pve2 && !isBatchChapa(employee.chapa, 20)) throw new BadRequestException('Chapa inválida para consulta de evento em lote.');
+      const response = await this.rm.realizaConsultaSql(definition.sql_codigo_rm, pve2
+        ? { CHAPAS: employee.chapa, CODCOLIGADA: employee.codcoligada, CODFILIAL: employee.codfilial }
+        : {
+          DTINICIO: base.execucao.periodo.data_inicio.toISOString().slice(0,10), DTFINAL: base.execucao.periodo.data_fim.toISOString().slice(0,10),
+          CODCOLIGADA: base.codcoligada, CODFILIAL: base.codfilial, CHAPA: base.funcionario_id_rm, KM_MAX: Number(base.execucao.filial.km_max),
+        }, sessionId);
+      const raw = !response.status ? null : pve2
+        ? ruleEventValues([{...employee,regra:result.codigo_regra_rm}], response.data).get(ruleKey(employee,result.codigo_regra_rm))
+        : Array.isArray(response.data) ? response.data[0]?.RESULTADO : null;
+      if (!((typeof raw === 'string' && raw.trim()) || (typeof raw === 'number' && Number.isFinite(raw))))
+        throw new BadRequestException('RM não retornou um código válido para ' + variable + '. O cálculo não foi concluído.');
+      value = String(raw).trim();
+    }
+    const event = { referencia: reference, variavel: variable, valor: value, origem: definition.valor_fixo != null ? 'FIXO' : 'RM', coletadoEm: collected(), consulta: definition.sql_codigo_rm ?? undefined };
+    cache.set(key,event);
+    return event;
   }
 
   async employeeVariables(execucaoId: number, baseId: number) {
@@ -359,6 +581,7 @@ export class OperacaoService {
         },
         execucao_funcionario: {
           select: {
+            codigo_regra_rm: true,
             formula: { select: { nome: true } },
             memoria_calculo: true,
           },
@@ -458,7 +681,9 @@ export class OperacaoService {
     });
   }
 
-  async saveCalculation(id: number, valor: number, formula: formula) {
+  async saveCalculation(id: number, valor: number, formula: formula, sessionId?: string, eventCache?: Map<string, CalculationEvent>) {
+    const evento_calculo = await this.captureCalculationEvent(id, formula, sessionId, eventCache);
+    const capturedFormula = { ...formula, evento_calculo };
     return this.prisma.$transaction(async (tx) => {
       const r = await tx.execucao_funcionario.findUniqueOrThrow({
         where: { execucao_funcionario_id: id },
@@ -474,7 +699,7 @@ export class OperacaoService {
           conferido_revisao: null,
           conferido_por: null,
           conferido_em: null,
-          formula_snapshot: JSON.stringify(formula),
+          formula_snapshot: JSON.stringify(capturedFormula),
         },
       });
       await tx.resultado_historico.create({
@@ -484,7 +709,8 @@ export class OperacaoService {
           revisao: updated.revisao,
           tipo: 'CALCULO',
           detalhe: JSON.stringify({
-            formula,
+            formula: capturedFormula,
+            evento_calculo,
             memoria: r.memoria_calculo,
             calculado: updated.valor_calculado,
             final: updated.valor_final,
@@ -671,11 +897,15 @@ export class OperacaoService {
       throw new BadRequestException('Pedido inválido.');
     if (!['VARIAVEIS', 'VALORES', 'CONFERIR', 'ENVIAR_RM'].includes(p.etapa))
       throw new BadRequestException('Etapa inválida.');
+    if ((p.somenteErros || p.somentePendencias) && !['VARIAVEIS', 'VALORES'].includes(p.etapa))
+      throw new BadRequestException('Retentativa disponível somente para variáveis ou valores.');
     return {
       etapa: p.etapa,
       execucaoIds: idsValidos(p.execucaoIds),
       ...(p.baseIds ? { baseIds: idsValidos(p.baseIds) } : {}),
-      recalcular: p.recalcular === true,
+      recalcular: p.somentePendencias === true || p.somenteErros === true || p.recalcular === true,
+      somentePendencias: p.somentePendencias === true,
+      somenteErros: p.somenteErros === true,
     };
   }
 
@@ -690,7 +920,7 @@ export class OperacaoService {
       orderBy: { execucao_funcionario_base_id: 'asc' },
       include: {
         execucao: {
-          include: { filial: { select: { nome: true } }, periodo: true },
+          include: { filial: { select: { nome: true, formula: { where: { ativa: true }, select: { formula_id: true } } } }, periodo: true },
         },
         execucao_funcionario: {
           orderBy: { execucao_funcionario_id: 'asc' },
@@ -722,8 +952,24 @@ export class OperacaoService {
       select: { execucao_id: true },
       distinct: ['execucao_id'],
     })).map((q) => q.execucao_id));
-    return bases.map((b) => {
-      const results = b.execucao_funcionario;
+    return bases.filter(b => {
+      if (p.somentePendencias) {
+        const activeFormulas = b.execucao.filial.formula;
+        const rules = transportRules(b);
+        const currentResults = activeFormulas ? b.execucao_funcionario.filter(result =>
+          activeFormulas.some(formula => formula.formula_id === result.formula_id) && rules.includes(result.codigo_regra_rm ?? '')) : b.execucao_funcionario;
+        if (p.etapa === 'VALORES' && activeFormulas?.length === 0) return false;
+        const missingFormula = (activeFormulas ?? []).some(formula => rules.some(rule =>
+          !currentResults.some(result => result.formula_id === formula.formula_id && (result.codigo_regra_rm ?? '') === rule)));
+        return hasStagePending({ ...b, execucao_funcionario: currentResults }, p.etapa, missingFormula);
+      }
+      return !p.somenteErros || hasStageFailure(b, p.etapa);
+    }).map((b) => {
+      const activeIds=new Set(b.execucao.filial.formula.map(formula=>formula.formula_id));
+      const rules=transportRules(b);
+      const results=b.execucao_funcionario.filter(result=>activeIds.has(result.formula_id) && rules.includes(result.codigo_regra_rm ?? ''));
+      const missingResults=activeIds.size===0 || [...activeIds].some(id=>rules.some(rule=>
+        !results.some(result=>result.formula_id===id && (result.codigo_regra_rm ?? '')===rule)));
       let reason = b.execucao.controle_fila === 'PAUSADA'
         ? 'Retome ou cancele a fila pausada desta execução'
         : draining.has(b.execucao_id)
@@ -751,7 +997,7 @@ export class OperacaoService {
         reason =
           'Conclua as variáveis; valores já concluídos ficam fora da retomada';
       if (!reason && p.etapa === 'CONFERIR') {
-        if (!calculados.includes(b.status ?? '') || !results.length || !results.every(resultadoValido))
+        if (missingResults || !calculados.includes(b.status ?? '') || !results.length || !results.every(resultadoValido))
           reason = 'Cálculo incompleto';
         else if (results.every((r) => r.conferido_revisao === r.revisao))
           reason = 'Versão atual já conferida';
@@ -760,6 +1006,7 @@ export class OperacaoService {
         if (results.some((r) => !r.metadados_rm_id && started.has(r.execucao_funcionario_id)))
           reason = 'Aguardando confirmação do RM';
         else if (
+          missingResults ||
           !calculados.includes(b.status ?? '') ||
           !results.length ||
           !results.every(resultadoValido)
@@ -774,24 +1021,26 @@ export class OperacaoService {
         else if (
           results.some((r) => {
             const f = r.formula_snapshot
-              ? (JSON.parse(r.formula_snapshot) as formula)
+              ? (JSON.parse(r.formula_snapshot) as FormulaWithEvent)
               : r.formula;
-            return !f.codEvento || !f.tipo;
+            return !calculationEventCode(f) || !f.tipo;
           })
         )
-          reason = 'Evento ou tipo RM não configurado';
+          reason = 'Evento histórico ou tipo RM indisponível. Recalcule para registrar o evento.';
       }
       const eventos = results.map((r) => {
         const f = r.formula_snapshot
-          ? (JSON.parse(r.formula_snapshot) as formula)
+          ? (JSON.parse(r.formula_snapshot) as FormulaWithEvent)
           : r.formula;
         return {
+          componentes: undefined as SendComponent[] | undefined,
           id: r.execucao_funcionario_id,
           revisao: r.revisao,
           conferencia: r.conferido_revisao,
           regra: fingerprint(f),
+          codigoRegra: r.codigo_regra_rm,
           nome: f.nome,
-          evento: f.codEvento,
+          evento: calculationEventCode(f),
           tipo: f.tipo,
           valor: r.valor_final,
           operacao:
@@ -806,7 +1055,7 @@ export class OperacaoService {
             CHAPA: b.funcionario_id_rm,
             DATAINI: dateRm(b.execucao.periodo.data_inicio),
             DATAFIM: dateRm(b.execucao.periodo.data_fim),
-            CODEVENTO: f.codEvento,
+            CODEVENTO: calculationEventCode(f),
             VALOR: Number(r.valor_final),
             TIPO: f.tipo,
           },
@@ -821,9 +1070,80 @@ export class OperacaoService {
         competencia: b.execucao.periodo.competencia,
         status: b.status,
         reason,
-        eventos,
+        eventos: p.etapa === 'ENVIAR_RM' ? groupSendEvents(eventos) : eventos,
       };
     });
+  }
+
+  private async periodExecutionIds(periodoId: number) {
+    idsValidos([periodoId]);
+    const rows = await this.prisma.execucao.findMany({
+      where: { periodo_id: periodoId }, orderBy: { execucao_id: 'desc' },
+      distinct: ['filial_id'], select: { execucao_id: true, filial_id: true },
+    });
+    return rows.map(row => row.execucao_id);
+  }
+
+  async periodPendingScope(periodoId: number) {
+    return this.pendingScopeIds(await this.periodExecutionIds(periodoId), true);
+  }
+
+  async executePeriodPending(periodoId: number, etapa: Etapa, usuarioId: number, sessionId: string) {
+    if (!['VARIAVEIS', 'VALORES'].includes(etapa)) throw new BadRequestException('Escolha variáveis ou fórmulas.');
+    const execucaoIds = await this.periodExecutionIds(periodoId);
+    if (!execucaoIds.length) throw new BadRequestException('Nenhuma execução nesta competência.');
+    return this.execute({ etapa, execucaoIds, somentePendencias: true }, usuarioId, sessionId);
+  }
+
+  async retryScope(execucaoId: number, pending = false) {
+    return this.pendingScopeIds([execucaoId], pending);
+  }
+
+  private async pendingScopeIds(execucaoIds: number[], pending: boolean) {
+    if (!execucaoIds.length) return { VARIAVEIS: { elegiveis: 0, bloqueados: 0, filiais: 0 }, VALORES: { elegiveis: 0, bloqueados: 0, filiais: 0 } };
+    const counts = await Promise.all((['VARIAVEIS', 'VALORES'] as const).map(async etapa => {
+      const items = await this.candidates(this.prisma, this.normalize({ etapa, execucaoIds, ...(pending ? { somentePendencias: true } : { somenteErros: true }) }));
+      return [etapa, { elegiveis: items.filter(item => !item.reason).length, bloqueados: items.filter(item => item.reason).length, filiais: new Set(items.filter(item => !item.reason).map(item => item.execucaoId)).size }] as const;
+    }));
+    return Object.fromEntries(counts);
+  }
+
+  async employeeFailures(execucaoId: number, baseId: number) {
+    const base = await this.prisma.execucao_funcionario_base.findFirst({
+      where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
+      include: { execucao_funcionario: { include: {
+        formula: { select: { expressao: true } },
+        memoria_calculo: { select: { variavel_codigo: true, valor: true } },
+      } } },
+    });
+    if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
+    const stages = ['VARIAVEIS', 'VALORES'].filter(stage => hasStageFailure(base, stage));
+    if (base.status === 'ERRO_RM') stages.push('ENVIAR_RM');
+    return Promise.all(stages.map(async etapa => {
+      const queue = await this.prisma.execucao_queue.findFirst({
+        where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId, tipo: etapa, last_error: { not: null } },
+        orderBy: { queue_id: 'desc' }, select: { last_error: true, updated_at: true },
+      });
+      const logs = await this.prisma.log_execucao.findMany({
+        where: { execucao_id: execucaoId, nivel: 'ERROR', mensagem: { contains: `funcionário ${base.funcionario_id_rm}:` } },
+        orderBy: { log_id: 'desc' }, take: 50, select: { mensagem: true },
+      });
+      const messages = [...new Set(logs.map(log => log.mensagem).filter(message => etapa === 'VARIAVEIS'
+        ? message.startsWith('Erro RM variavel ')
+        : etapa === 'VALORES' ? /calcular fórmula|processar valores|Sem memoria_calculo/.test(message) : false))].slice(0, 6);
+      const presented = (messages.length ? messages : [queue?.last_error || 'O processamento registrou uma falha, mas não armazenou o detalhe individual.']).map(message => {
+        if (etapa !== 'VALORES' || !message.includes('A fórmula deve retornar um número finito')) return message;
+        const formulaId = /Erro ao calcular fórmula (\d+) para funcionário/.exec(message)?.[1];
+        const failed = base.execucao_funcionario.find(result =>
+          result.status === 'ERRO' && String(result.formula_id) === formulaId);
+        if (!failed) return message;
+        const variables = Object.fromEntries(failed.memoria_calculo.map(item =>
+          [item.variavel_codigo, Number(item.valor)]));
+        const reason = fixedPaymentZeroDaysError(failed.formula.expressao, variables);
+        return reason ? message.replace(/(?:Erro ao calcular fórmula: )?A fórmula deve retornar um número finito/, reason) : message;
+      });
+      return { etapa, mensagens: presented, atualizadoEm: queue?.updated_at ?? null };
+    }));
   }
 
   async preview(pedido: PedidoOperacao, usuarioId: number) {
@@ -866,7 +1186,7 @@ export class OperacaoService {
           execucao_funcionario_base_id: item.baseId,
           tipo: p.etapa,
           session_id: sessionId,
-          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos }),
+          revisao_payload: JSON.stringify({ usuarioId, eventos: item.eventos, somenteErros: p.somenteErros === true, somentePendencias: p.somentePendencias === true }),
         } });
       }
       await tx.execucao.updateMany({ where: { execucao_id: { in: [...new Set(eligible.map(i => i.execucaoId))] } }, data: { status: 'EM_PROCESSAMENTO', controle_fila: null } });
@@ -918,6 +1238,8 @@ export class OperacaoService {
               revisao_payload: JSON.stringify({
                 usuarioId,
                 previaId: id,
+                somenteErros: p.somenteErros === true,
+                somentePendencias: p.somentePendencias === true,
                 eventos: item.eventos,
               }),
             },
@@ -997,32 +1319,46 @@ export class OperacaoService {
     );
   }
 
-  async approvedEvent(baseId: number, resultId: number, revision: number) {
+  async approvedSendGroups(baseId: number) {
     const q = await this.prisma.execucao_queue.findFirst({
-      where: {
-        execucao_funcionario_base_id: baseId,
-        tipo: 'ENVIAR_RM',
-        status: 'PROCESSANDO',
-      },
-      orderBy: { queue_id: 'desc' },
+      where: {execucao_funcionario_base_id:baseId,tipo:'ENVIAR_RM',status:'PROCESSANDO'},
+      orderBy:{queue_id:'desc'},
     });
-    if (!q?.revisao_payload)
-      throw new ConflictException('Envio sem revisão. Gere uma nova prévia.');
-    const payload = JSON.parse(q.revisao_payload) as {
-      usuarioId: number;
-      eventos: Array<{
-        id: number;
-        revisao: number;
-        conferencia: number;
-        record: Record<string, string | number>;
-      }>;
-    };
-    const event = payload.eventos.find((e) => e.id === resultId);
-    if (!event || event.revisao !== revision)
-      throw new ConflictException(
-        'A versão do resultado difere da versão agendada.',
-      );
-    return { record: event.record, usuarioId: payload.usuarioId };
+    if (!q?.revisao_payload) throw new ConflictException('Envio sem revisão. Gere uma nova prévia.');
+    const payload=JSON.parse(q.revisao_payload) as {usuarioId:number;eventos:SendEvent[]};
+    const [current]=await this.candidates(this.prisma,{etapa:'ENVIAR_RM',execucaoIds:[q.execucao_id],baseIds:[baseId]});
+    const rows=await this.prisma.execucao_funcionario.findMany({where:{execucao_funcionario_base_id:baseId}});
+    if (!current || !payload.eventos.length || payload.eventos.length !== current.eventos.length)
+      throw new ConflictException('O conjunto de eventos mudou. Gere uma nova prévia.');
+    return payload.eventos.map(event=>{
+      const now=current.eventos.find(e=>e.id===event.id);
+      // Compare every contribution, its revision, formula, value, event and employee scope.
+      const comparable=(e:SendEvent)=>({id:e.id,revisao:e.revisao,record:e.record,componentes:e.componentes?.map(c=>({id:c.id,revisao:c.revisao,regra:c.regra,codigoRegra:c.codigoRegra,record:c.record}))});
+      if (!now || fingerprint(comparable(now)) !== fingerprint(comparable(event)))
+        throw new ConflictException('As regras ou valores mudaram depois da revisão. Gere uma nova prévia.');
+      const components=event.componentes ?? [{id:event.id,revisao:event.revisao}];
+      const members=components.map(c=>rows.find(r=>r.execucao_funcionario_id===c.id && r.revisao===c.revisao));
+      if (members.some(r=>!r || !resultadoValido(r))) throw new ConflictException('Cálculo incompleto no envio.');
+      const rmIds=[...new Set(members.flatMap(r=>r?.metadados_rm_id?[r.metadados_rm_id]:[]))];
+      if(rmIds.length>1) throw new ConflictException('Evento com mais de um registro histórico no RM. Concilie os registros antes de reenviar.');
+      const enviado=members.every(r=>r!.status==='ENVIADO_RM' && r!.enviado_revisao===r!.revisao);
+      return {...event,componentes:components,usuarioId:payload.usuarioId,rmId:rmIds[0]??null,enviado};
+    });
+  }
+
+  async receiptGroup(components: SendComponent[], rmId: number, usuarioId: number, record: unknown) {
+    return this.prisma.$transaction(async tx=>{
+      let rows=await tx.execucao_funcionario.findMany({where:{execucao_funcionario_id:{in:components.map(c=>c.id)}}});
+      if(rows.length!==components.length)throw new ConflictException('Resultados ausentes durante o envio.');
+      await this.lock(tx,[...new Set(rows.map(r=>r.execucao_id))]);
+      rows=await tx.execucao_funcionario.findMany({where:{execucao_funcionario_id:{in:components.map(c=>c.id)}}});
+      for(const component of components) {
+        const row=rows.find(r=>r.execucao_funcionario_id===component.id)!;
+        if(row.revisao!==component.revisao)throw new ConflictException('Resultado alterado durante o envio.');
+        await tx.execucao_funcionario.update({where:{execucao_funcionario_id:row.execucao_funcionario_id},data:{metadados_rm_id:rmId,enviado_revisao:component.revisao,status:'ENVIADO_RM'}});
+        await tx.resultado_historico.create({data:{resultado_id:row.execucao_funcionario_id,execucao_id:row.execucao_id,revisao:component.revisao,usuario_id:usuarioId,tipo:'ENVIO_RM',detalhe:JSON.stringify({metadadosRmId:rmId,record,componentes:components,confirmado:true})}});
+      }
+    });
   }
 
   async beginRmInsert(execucaoId: number, id: number, revisao: number, usuarioId: number, record: unknown) {

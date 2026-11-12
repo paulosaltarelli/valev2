@@ -4,15 +4,16 @@ import { Prisma } from '@prisma/client';
 import { closingCounts, variationRows } from './operational-reports';
 
 const personSelect = {
-  funcionario_id_rm: true, codcoligada: true, nome_funcionario: true, status: true,
+  funcionario_id_rm: true, codcoligada: true, nome_funcionario: true, status: true, regras_rm: true,
   execucao_funcionario: { select: {
-    status: true, valor_calculado: true, revisao: true, enviado_revisao: true, formula_snapshot: true,
+    status: true, valor_calculado: true, valor_final: true, codigo_regra_rm: true, revisao: true, enviado_revisao: true, formula_snapshot: true,
     formula: { select: { formula_id: true, nome: true, versao: true, tipo: true, expressao: true, codEvento: true, polaridade: true } },
     _count: { select: { memoria_calculo: true } },
   } },
 } as const;
 const executionSelect = {
   execucao_id:true,filial_id:true,controle_fila:true,
+  filial:{select:{formula:{where:{ativa:true},select:{formula_id:true}}}},
   execucao_funcionario_base:{select:personSelect},
   execucao_queue:{where:{status:{in:['PENDENTE','PROCESSANDO']}},select:{status:true,tipo:true}},
 } satisfies Prisma.execucaoSelect;
@@ -55,7 +56,7 @@ export class OperationalReportsService {
     for (const item of creation) if (!creationByBranch.has(item.filial_id)) creationByBranch.set(item.filial_id,item.status);
     const rows = options.filiais.filter(f=>f.ativa || byBranch.has(f.filial_id)).map(f=>{
       const e = byBranch.get(f.filial_id);
-      const counts = e ? closingCounts(e.execucao_funcionario_base) : null;
+      const counts = e ? closingCounts(e.execucao_funcionario_base, e.filial.formula.map(f=>f.formula_id)) : null;
       const creationStatus = creationByBranch.get(f.filial_id);
       const running = e?.execucao_queue.some(q=>q.status==='PROCESSANDO');
       const pending = e?.execucao_queue.some(q=>q.status==='PENDENTE');
