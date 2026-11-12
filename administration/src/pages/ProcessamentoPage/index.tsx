@@ -420,20 +420,7 @@ export function ProcessamentoPage() {
             />
           </div>
           <div className="op-toolbar">
-            <div className="op-segments" aria-label="Visão">
-              <button
-                aria-pressed={!history}
-                onClick={() => change("visao", "")}
-              >
-                Operação atual
-              </button>
-              <button
-                aria-pressed={history}
-                onClick={() => change("visao", "historico")}
-              >
-                Histórico de execuções
-              </button>
-            </div>
+            {(history || query.data.rows.some(r=>!r.latest)) && <details><summary>Execuções anteriores</summary><label className="ve-check-filter mt-2"><input type="checkbox" checked={history} onChange={e=>change("visao",e.target.checked?"historico":"")}/> Incluir execuções anteriores da competência</label></details>}
             <label>
               Situação
               <select
@@ -479,12 +466,7 @@ export function ProcessamentoPage() {
             </div>
           )}
           <p className="op-muted">
-            {rows.length} execuções exibidas · {current.length} filiais no
-            recorte atual
-            {history
-              ? " · cada linha preserva sua execução e seus resultados"
-              : " · execução mais recente de cada filial"}
-            . Variáveis sem duplicação por funcionário; valores por fórmula; RM por funcionário.
+            {rows.length} {history ? "execuções" : "filiais"}{history ? " · incluindo anteriores" : ""}
           </p>
           {rows.length ? (
             <div className="op-table-wrap">
