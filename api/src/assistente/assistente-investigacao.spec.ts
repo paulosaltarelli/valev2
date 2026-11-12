@@ -79,6 +79,7 @@ function preparar(candidatos = [pessoa]) {
     },
     execucao_queue: {
       groupBy: jest.fn().mockResolvedValue([{ status: 'ERRO', _count: 1 }]),
+      findMany:jest.fn().mockResolvedValue([]),
     },
     formula: { count: jest.fn().mockResolvedValue(2) },
   };
@@ -150,7 +151,7 @@ it('distingue erro, ausência e zero e cruza fatos do banco com código sem envi
     expect(resposta[respostaParaModelo]).not.toContain('PESSOA DE TESTE');
     expect(resposta.fonte).toContain('execucao.service.ts:10');
     const enviado = String(fetchMock.mock.calls[0][1]?.body);
-    expect(enviado).toContain('memoriasGravadas');
+    expect(enviado).toContain('memorias_existentes');
     expect(enviado).toContain('execucao.service.ts');
     expect(enviado).not.toContain('SEGREDO_NAO_EXPORTAR');
     expect(enviado).not.toContain('000123');
@@ -229,8 +230,7 @@ it('lista o grupo capturado com banco e código e não envia nomes ou matrícula
               type: 'output_text',
               text: JSON.stringify({
                 casos: {
-                  'Caso 1':
-                    'Evidência histórica: rejeição da calculadora. Limitação: causa atual não confirmada. Próximo passo: conferir o log na execução.',
+                  'Caso 1': ['log_historico_0'],
                 },
               }),
             },
@@ -270,7 +270,7 @@ it('lista o grupo capturado com banco e código e não envia nomes ou matrícula
       1,
       1,
     ]);
-    expect(resposta.tabela?.linhas[0][7]).toContain('rejeição da calculadora');
+    expect(resposta.tabela?.linhas[0][7]).toContain('A calculadora rejeitou');
     expect(resposta.tabela?.parcial).toBe(false);
     expect(resposta.fonte).toContain('execucao.service.ts');
     const enviado = String(fetchMock.mock.calls[0][1]?.body);
@@ -366,8 +366,8 @@ it('exige a cobertura de todos os casos no schema enviado ao GPT e mantém cada 
                 type: 'output_text',
                 text: JSON.stringify({
                   casos: {
-                    'Caso 1': 'Orientação do primeiro caso.',
-                    'Caso 2': 'Orientação do segundo caso.',
+                    'Caso 1': ['log_historico_0'],
+                    'Caso 2': ['causa_nao_confirmada'],
                   },
                 }),
               },
@@ -383,8 +383,9 @@ it('exige a cobertura de todos os casos no schema enviado ao GPT e mantém cada 
       credencial,
     );
     expect(r.texto).not.toContain('síntese do provedor está indisponível');
-    expect(r.tabela?.linhas[0][7]).toContain('Orientação do primeiro caso.');
-    expect(r.tabela?.linhas[1][7]).toContain('Orientação do segundo caso.');
+    expect(r.tabela?.linhas[0][7]).toContain('A calculadora rejeitou');
+    expect(r.tabela?.linhas[1][7]).not.toContain('A calculadora rejeitou');
+    expect(r.tabela?.linhas[1][7]).toContain('Não foi identificado motivo individual');
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(body.text.format.type).toBe('json_schema');
     expect(body.text.format.strict).toBe(true);

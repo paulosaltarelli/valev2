@@ -5,6 +5,7 @@ import { lerSnapshotFormula } from '../dash/operational-reports';
 import { classificarLog, situacaoValor } from './assistente-consultas';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { consultarModelo } from './assistente-intencao';
+import { classificarFalhaIndividual, criarAuditoria, formatarAuditoria, validarSelecao, type AchadoAuditavel, type FatosAuditaveis } from './assistente-auditoria';
 import { promptSugerido, regrasFixas } from './assistente-prompt';
 import {
   contextoConsulta,
@@ -248,120 +249,20 @@ export class AssistenteInvestigacao {
     const codigo = this.conhecimento.investigacao();
     const explicacoes = new Map<string, string>();
     let sinteseFalhou = false;
-    if (casos.length)
-      try {
-        const texto = await consultarModelo(
-          provedor,
-          credencial,
-          regrasFixas +
-            '\n' +
-            (contexto || promptSugerido) +
-            '\nExplique os funcionários do grupo anterior usando exclusivamente fatos e código anexados. Retorne somente um objeto JSON no formato ' +
-            JSON.stringify({
-              casos: Object.fromEntries(
-                casos.map((c) => [
-                  c.referencia,
-                  'Evidência: ... Limitação: ... Próximo passo: ...',
-                ]),
-              ),
-            }) +
-            '. É obrigatório explicar TODOS os ' +
-            casos.length +
-            ' casos, cada referência exatamente uma vez; não invente outras nem agrupe pessoas em uma única resposta. Até 1000 caracteres por caso. Identifique a etapa, fórmulas e variáveis disponíveis; diferencie evidência, interpretação, hipótese, confirmação pendente e próximo passo. Não há identificação pessoal nos dados enviados. Não peça filtros ou identificação já resolvidos. Não transcreva fórmula nem código. Filas são da execução inteira. Logs são históricos: não confirmam causa atual. Com memórias existentes, não conclua ausência total de memória. Resultado zero, ausência e erro são diferentes. Explique somente os casos lidos; para leituraFalhou declare indisponibilidade. Oriente pela tela Processamentos; não execute reprocessamento.',
-          JSON.stringify({
-            casos: casos.map((c) => {
-              const f = c.dados[fatosInternos];
-              const resultados = (f?.resultados ?? []) as Record<
-                string,
-                unknown
-              >[];
-              return {
-                referencia: c.referencia,
-                leituraFalhou: c.leituraFalhou,
-                fatos: f
-                  ? {
-                      statusFuncionario: f.statusFuncionario,
-                      filasDaExecucaoInteiraIncluindoHistorico:f.filasDaExecucaoInteiraIncluindoHistorico,
-                      resultados: [...resultados]
-                        .sort(
-                          (a, b) =>
-                            Number(b.status === 'ERRO') -
-                            Number(a.status === 'ERRO'),
-                        )
-                        .slice(0, 12)
-                        .map((r) => ({
-                          formulaId: r.formulaId,
-                          formula: r.formula,
-                          status: r.status,
-                          calculado: r.calculado,
-                          possuiFinalLocal:r.finalLocal!==null,
-                          ajusteManual:r.ajusteManual,
-                          versaoHistorica: r.versaoHistorica,
-                          memoriasGravadas: r.memoriasGravadas,
-                          variaveisHistoricasSemMemoria:
-                            r.variaveisHistoricasSemMemoria,
-                          variaveisComMemoria:r.variaveisComMemoria,
-                          variaveisIdentificadas:r.variaveisIdentificadas,
-                        })),
-                      logsHistoricos: (
-                        (f.logsHistoricos ?? []) as unknown[]
-                      ).slice(0, 10),
-                      limites: {
-                        resultadosNaSintese: 12,
-                        logsNaSintese: 10,
-                        totalResultadosLidos: resultados.length,
-                      },
-                    }
-                  : null,
-              };
-            }),
-            codigo: codigo.trechos,
-          }),
-          6000,
-          {
-            nome: 'vale_ia_grupo_erros',
-            schema: {
-              type: 'object',
-              properties: {
-                casos: {
-                  type: 'object',
-                  properties: Object.fromEntries(
-                    casos.map((c) => [c.referencia, { type: 'string' }]),
-                  ),
-                  required: casos.map((c) => c.referencia),
-                  additionalProperties: false,
-                },
-              },
-              required: ['casos'],
-              additionalProperties: false,
-            },
-          },
-        );
-        const plano = JSON.parse(texto) as {
-          casos?: Record<string, unknown>;
-        };
-        if (
-          !plano ||
-          !plano.casos ||
-          typeof plano.casos !== 'object' ||
-          Array.isArray(plano.casos) ||
-          Object.keys(plano.casos).length !== casos.length
-        )
-          throw new Error('Invalid group response');
-        for (const [referencia, explicacao] of Object.entries(plano.casos)) {
-          if (
-            typeof explicacao !== 'string' ||
-            !explicacao.trim() ||
-            !casos.some((c) => c.referencia === referencia) ||
-            explicacoes.has(referencia)
-          )
-            throw new Error('Invalid case reference');
-          explicacoes.set(referencia, explicacao.slice(0, 1600));
-        }
-      } catch {
-        explicacoes.clear();
-        sinteseFalhou = true;
+    const catalogos=new Map<string,AchadoAuditavel[]>(casos.map(c=>[c.referencia,criarAuditoria(c.dados[fatosInternos] as FatosAuditaveis|undefined,codigo.trechos)]));
+    const selecoesValidadas=new Set<string>();
+    if(casos.length)try{
+      const texto=await consultarModelo(provedor,credencial,regrasFixas+'\n'+(contexto||promptSugerido)+'\nPriorize os achados fornecidos por referência. Retorne apenas IDs existentes, no máximo 12 por caso. Não escreva explicações, causas, hipóteses ou instruções novas. O Vale renderiza os textos e todas as limitações a partir das evidências.',
+        JSON.stringify({casos:Object.fromEntries(catalogos),codigo:codigo.trechos}),1800,
+        {nome:'vale_ia_grupo_erros',schema:{type:'object',properties:{casos:{type:'object',properties:Object.fromEntries([...catalogos].map(([id,achados])=>[id,{type:'array',items:{type:'string',enum:achados.map(a=>a.id)},maxItems:12}])),required:casos.map(c=>c.referencia),additionalProperties:false}},required:['casos'],additionalProperties:false}});
+      const plano=JSON.parse(texto) as {casos?:Record<string,unknown>};
+      if(!plano||Object.keys(plano).length!==1||!plano.casos||Array.isArray(plano.casos)||Object.keys(plano.casos).length!==casos.length)throw new Error('Invalid group references');
+      for(const [referencia,ids]of Object.entries(plano.casos)){
+        const catalogo=catalogos.get(referencia);if(!catalogo)throw new Error('Unknown case');
+        const validos=validarSelecao(catalogo,ids);explicacoes.set(referencia,formatarAuditoria(catalogo,validos));selecoesValidadas.add(referencia);
       }
+    }catch{explicacoes.clear();selecoesValidadas.clear();sinteseFalhou=true;}
+    for(const [referencia,catalogo]of catalogos)if(!explicacoes.has(referencia))explicacoes.set(referencia,formatarAuditoria(catalogo));
     const parcial =
       grupo.parcial ||
       casos.length !== grupo.total ||
@@ -374,6 +275,7 @@ export class AssistenteInvestigacao {
     }));
     return {
       ...base,
+      auditoria:{versao:'evidencias-v1',casos:[...catalogos].map(([referencia,achados])=>({referencia,selecaoModeloValidada:selecoesValidadas.has(referencia),achados:achados.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}))},
       [respostaParaModelo]:`Diagnóstico de ${casos.length} registros do grupo de erros em ${grupo.competencia}; detalhes individuais disponíveis somente no Vale.`,
       texto:
         `Listei ${casos.length} ${casos.length === 1 ? 'registro de funcionário' : 'registros de funcionários'} do grupo consultado em ${grupo.competencia}.` +
@@ -441,7 +343,7 @@ export class AssistenteInvestigacao {
           c.leituraFalhou
             ? c.dados.texto
             : evidenciaDoCaso(c.dados) +
-              ' Interpretação e orientação da IA: ' +
+              ' Interpretação validada por evidências: ' +
               (explicacoes.get(c.referencia) ??
                 c.dados.texto +
                   ' Causa atual não confirmada. Confira as evidências históricas nos detalhes.'),
@@ -562,7 +464,7 @@ export class AssistenteInvestigacao {
     sintetizar = true,
   ): Promise<ResultadoFatos> {
     const execucao = pessoa.execucao;
-    const [resultados, logs, filas, formulasAtivas] = await Promise.all([
+    const [resultados, logs, filas, formulasAtivas, filasIndividuais] = await Promise.all([
       this.prisma.execucao_funcionario.findMany({
         where: {
           execucao_id: execucao.execucao_id,
@@ -604,6 +506,7 @@ export class AssistenteInvestigacao {
       this.prisma.formula.count({
         where: { filial_id: execucao.filial_id, ativa: true },
       }),
+      this.prisma.execucao_queue.findMany({where:{execucao_id:execucao.execucao_id,execucao_funcionario_base_id:pessoa.execucao_funcionario_base_id},orderBy:{queue_id:'desc'},take:101,select:{tipo:true,status:true,last_error:true,updated_at:true}}),
     ]);
     const evidencias = resultados.slice(0, 100).map((r) => {
       const snapshot = lerSnapshotFormula(r.formula_snapshot);
@@ -651,34 +554,28 @@ export class AssistenteInvestigacao {
       formulasAtivasNoCadastroAtual: formulasAtivas,
       resultados: evidencias,
       logsHistoricos: historico,
+      filasIndividuais:filasIndividuais.slice(0,100).filter((f,i,all)=>all.findIndex(x=>x.tipo===f.tipo)===i).map(f=>({tipo:f.tipo,status:f.status,categoria:classificarFalhaIndividual(f.last_error,f.tipo),data:f.updated_at?.toISOString()??null})),
       limites: {
         resultadosParciais: resultados.length > 100,
         logsParciais: logs.length > 100,
+        filasIndividuaisParciais:filasIndividuais.length>100,
         logsNaoInterpretados: logs.slice(0, 100).length - historico.length,
       },
     };
     const resumo = `Estado do funcionário: ${pessoa.status ?? 'não informado'}. ${evidencias.filter((r) => r.calculado !== null).length} de ${evidencias.length} resultado(s) consultado(s) têm valor calculado; ${evidencias.filter((r) => r.status === 'ERRO').length} estão em erro. ${evidencias.reduce((n, r) => n + r.memoriasGravadas, 0)} memória(s) gravada(s) por resultado/fórmula.`;
-    let explicacao = '';
-    if (sintetizar)
-      try {
-        explicacao = await consultarModelo(
-          provedor,
-          credencial,
-          regrasFixas +
-            '\n' +
-            (contexto || promptSugerido) +
-            '\nExplique este caso em texto simples, sem Markdown, com detalhes suficientes, separando Evidências, Interpretação, Hipóteses e como confirmar e Próximo passo. Identifique etapa, fórmula com versão histórica e variáveis quando houver evidência. Diga quando não foram identificadas. A tabela preserva o detalhe dos resultados. Use exclusivamente os fatos e o código fornecidos. Cite somente o caminho e a linha relevantes. Não transcreva código nem sintaxe de fórmulas. Filas são históricas e da execução inteira: não atribua suas falhas ao funcionário. O status ERRO do resultado por fórmula não equivale ao status da execução. Logs históricos não confirmam causa atual. Memórias são por fórmula e podem repetir variáveis. Variáveis sem memória não provam falha no RM. Cadastro atual não comprova vigência histórica. Oriente pela tela Processamentos, sem sugerir executar métodos internos ou pedir novamente filtros já resolvidos. Não prometa reprocessamento nem gere arquivos ou links. Não afirme ausência de valores se houver calculados. Identificação pessoal foi removida por minimização de dados.',
-          JSON.stringify({ fatos, codigo: codigo.trechos }),
-          1800,
-        );
-      } catch {
-        explicacao =
-          'A explicação pelo provedor está indisponível. Os registros consultados permanecem abaixo. Confira a evidência e o histórico na execução antes de confirmar a causa.';
-      }
+    const catalogo=criarAuditoria(fatos,codigo.trechos);
+    let explicacao=formatarAuditoria(catalogo),selecaoModeloValidada=false;
+    if(sintetizar)try{
+      const texto=await consultarModelo(provedor,credencial,regrasFixas+'\n'+(contexto||promptSugerido)+'\nPriorize somente os IDs dos achados fornecidos. Não escreva texto livre nem novas causas. Retorne {"achados":["id"]}, no máximo 12 IDs.',JSON.stringify({achados:catalogo,codigo:codigo.trechos}),600,
+        {nome:'vale_ia_achados',schema:{type:'object',properties:{achados:{type:'array',items:{type:'string',enum:catalogo.map(a=>a.id)},maxItems:12}},required:['achados'],additionalProperties:false}});
+      const plano=JSON.parse(texto) as {achados?:unknown};if(!plano||Object.keys(plano).length!==1)throw new Error('Invalid selection');
+      explicacao=formatarAuditoria(catalogo,validarSelecao(catalogo,plano.achados));selecaoModeloValidada=true;
+    }catch{explicacao=formatarAuditoria(catalogo)+'\nA priorização pelo provedor está indisponível; a auditoria por evidências foi preservada.';}
     const detalhe=contextoDoDiagnostico({[fatosInternos]:fatos,texto:resumo});
     return {
       [respostaParaModelo]:`Investigação individual de ${escopo.competencia}. ${resumo} Detalhes pessoais disponíveis somente no Vale.`,
       [fatosInternos]: fatos,
+      auditoria:{versao:'evidencias-v1',casos:[{referencia:'Caso 1',selecaoModeloValidada,achados:catalogo.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}]},
       ...meta,
       texto: `Competência ${escopo.competencia} · Filial ${meta.filial ?? execucao.filial.nome} · Funcionário ${pessoa.nome_funcionario ?? 'nome não informado'} (matrícula ${pessoa.funcionario_id_rm}) · Execução #${execucao.execucao_id}.\n\n` + resumo + '\nFórmulas: '+detalhe.formulas+'\nVariáveis: '+detalhe.variaveis + (explicacao ? '\n\n' + explicacao.slice(0, 6000) : ''),
       fonte:
@@ -736,7 +633,7 @@ export class AssistenteInvestigacao {
           r.formulaId,
           r.variaveisIdentificadas.map(v=>v.codigo+(v.nome?' — '+v.nome:'')).join(', '),
         ]),
-        parcial: resultados.length > 100,
+        parcial: resultados.length > 100 || logs.length>100 || filasIndividuais.length>100,
       },
     };
   }

@@ -46,6 +46,9 @@ export class AssistenteConhecimento {
 
   investigacao() {
     const alvos = [
+      ['api/src/cron/cron.service.ts','SESSION_ID_AUSENTE'],
+      ['api/src/execucao/execucao.service.ts','ERRO_ENVIAR_RM'],
+      ['api/src/execucao/execucao.service.ts','ERRO_VARIAVEIS'],
       [
         'api/src/helpers/calculator/calculator.service.ts',
         'A fórmula deve retornar um número finito',
