@@ -41,7 +41,7 @@ async function fingerprints(tx,ids){
    for(const x of manifest)await tx.execucao.update({where:{execucao_id:x.historica},data:{historica_de_execucao_id:x.principal,historica_em:new Date(),historica_motivo:'Autorizado por Paulo Saltarelli. Primeira execução com envio completo registrado para as revisões locais; resultados, fórmulas, filas e históricos preservados. Release execucoes-principais-20261112.'}});
    const duplicates=await tx.$queryRaw`SELECT filial_id,periodo_id FROM dbo.execucao WHERE historica_de_execucao_id IS NULL GROUP BY filial_id,periodo_id HAVING COUNT(*)>1`;
    assert.equal(duplicates.length,0,'Other unresolved duplicate scopes');
-   await tx.$executeRawUnsafe("IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.execucao') AND name='ux_execucao_principal_filial_periodo') CREATE UNIQUE INDEX ux_execucao_principal_filial_periodo ON dbo.execucao(filial_id,periodo_id) WHERE historica_de_execucao_id IS NULL");
+   // Apply execution-principal-index.sql through the maintenance SQL account before reopening the API.
   }
   const after=await fingerprints(tx,ids);assert.deepEqual(after,before,'Child data changed; activation rolled back');
   return {applied:apply,archived:apply?manifest.length:0,principals:manifest.map(x=>x.principal),historical:manifest.map(x=>x.historica),childDataUnchanged:true};
