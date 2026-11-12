@@ -26,12 +26,79 @@ type PlanoSql = {
   sql: string;
   titulo: string;
   grafico?: { rotulo: string; valor: string } | null;
+  apresentacao?: unknown;
 };
 
+export function validarApresentacao(
+  tabela: NonNullable<ResultadoAssistente['tabela']>,
+  proposta: unknown,
+  titulo: string,
+): ResultadoAssistente['apresentacao'] {
+  const base = { titulo: titulo.slice(0, 100) };
+  if (!proposta || typeof proposta !== 'object' || Array.isArray(proposta))
+    return base;
+  const p = proposta as Record<string, unknown>;
+  if (
+    Object.keys(p).some(
+      (k) => !['grafico', 'dimensao', 'metrica'].includes(k),
+    ) ||
+    !['barras', 'linha'].includes(String(p.grafico)) ||
+    typeof p.dimensao !== 'string' ||
+    !(p.metrica === null || typeof p.metrica === 'string')
+  )
+    return base;
+  const d = tabela.colunas.indexOf(p.dimensao),
+    m = p.metrica === null ? -1 : tabela.colunas.indexOf(p.metrica as string);
+  const normal = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  const id = (s: string) =>
+    /^(?:id|cod)|id$|matricula|chapa|cpf|cnpj|^execucao$/.test(normal(s));
+  if (
+    d < 0 ||
+    id(p.dimensao) ||
+    (p.metrica !== null && (m < 0 || id(p.metrica as string)))
+  )
+    return base;
+  if (
+    m >= 0 &&
+    (!tabela.linhas.some((r) => r[m] !== null) ||
+      tabela.linhas.some(
+        (r) =>
+          r[m] !== null && !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(String(r[m])),
+      ))
+  )
+    return base;
+  const datas = tabela.linhas.map((r) => r[d]).filter((v) => v !== null);
+  const temporal =
+    datas.length >= 2 &&
+    datas.every((v) =>
+      /^\d{4}-\d{2}-\d{2}(?:T|$)|^\d{2}\/\d{4}$/.test(String(v)),
+    );
+  return {
+    ...base,
+    dimensao: p.dimensao,
+    metrica: p.metrica as string | null,
+    grafico: p.grafico === 'linha' && temporal ? 'linha' : 'barras',
+  };
+}
+
 export function validarFontesDaPergunta(pergunta: string, fontes: string[]) {
-  const texto = pergunta.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-  if (/calculad/.test(texto) && /nao enviad/.test(texto) && fontes.includes('financeiro'))
-    throw new BadRequestException('Valores calculados não enviados devem usar resultados, sem JOIN com financeiro, que contém somente registros enviados.');
+  const texto = pergunta
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+  if (
+    /calculad/.test(texto) &&
+    /nao enviad/.test(texto) &&
+    fontes.includes('financeiro')
+  )
+    throw new BadRequestException(
+      'Valores calculados não enviados devem usar resultados, sem JOIN com financeiro, que contém somente registros enviados.',
+    );
 }
 
 function planoDoModelo(texto: string): PlanoSql {
@@ -46,7 +113,7 @@ function planoDoModelo(texto: string): PlanoSql {
   const obj = valor as Record<string, unknown>;
   if (
     Object.keys(obj).some(
-      (key) => !['sql', 'titulo', 'grafico'].includes(key),
+      (key) => !['sql', 'titulo', 'grafico', 'apresentacao'].includes(key),
     ) ||
     typeof obj.sql !== 'string' ||
     typeof obj.titulo !== 'string' ||
@@ -212,9 +279,11 @@ ${compilado.sql} FOR JSON PATH, INCLUDE_NULL_VALUES OPTION (MAXDOP 1);`);
       `
 \nVocê é o planejador SQL de leitura do Vale Expresso, em SQL Server 2022.
 Gere uma única consulta SELECT. Pode usar CTEs com nomes q_, JOINs, agregações, COUNT DISTINCT, CASE, filtros, rankings e funções de janela.
-Retorne só JSON {"sql":"SELECT...","titulo":"título curto","grafico":{"rotulo":"coluna do resultado","valor":"coluna numérica do resultado"}}. grafico pode ser null.
+Retorne só JSON {"sql":"SELECT...","titulo":"título curto e executivo","grafico":{"rotulo":"coluna do resultado","valor":"coluna numérica do resultado"},"apresentacao":{"grafico":"barras|linha","dimensao":"coluna do resultado","metrica":"coluna numérica ou null para contagem"}}. grafico e apresentacao podem ser null.
+Escolha a apresentação conforme a pergunta: barras para comparação e ranking; linha somente para evolução em eixo temporal. Use aliases curtos e claros. Nunca use identificadores, matrículas ou códigos como métricas. O servidor validará os nomes contra as colunas efetivamente retornadas e o produto decidirá composição, indicadores e formatação com base nos dados. Não gere HTML, CSS ou JavaScript.
 Use somente as visões e colunas exatas abaixo. Nunca use dbo, sys, INFORMATION_SCHEMA, OPENROWSET, variáveis, SELECT INTO, comandos de escrita, comentários ou FOR JSON/XML.
 As visões já estão filtradas pelo servidor à competência, filial e matrícula autorizadas. Não altere esse escopo no SQL. Projete colunas explícitas e nomes distintos. Há limite de 1000 linhas e 10 segundos.
+Para dashboards, retorne uma granularidade por tabela, com uma linha por grupo. Não misture subtotais ou total geral com detalhes e não repita totais globais em cada linha. Dê nomes explícitos a médias, percentuais, taxas e contagens distintas: essas medidas não devem ser somadas pelo frontend.
 financeiro reproduz o relatório financeiro existente: funcionário com ENVIADO_RM, fórmula tipo V e COALESCE(final local, calculado) não nulo. Pago e Desconto seguem a polaridade do cadastro. Esses registros não constituem conciliação com RM.
 Use financeiro para perguntas sobre pago, saldo e desconto financeiro. Use resultados para cálculo e ajustes, e diferencie vazio, zero e erro. VersaoCalculada pode estar ausente. Formula e VersaoCadastro são o cadastro atual.
 Ao agregar Calculado ou FinalLocal, preserve NULL: não use COALESCE/ISNULL com zero nem CASE ELSE 0 para substituir ausência de cálculo. Inclua COUNT(Calculado) ou COUNT(FinalLocal) quando necessário para explicitar a população com valor existente. Filtre o tipo e a polaridade no WHERE quando forem critérios do recorte.
@@ -298,6 +367,18 @@ Esquema permitido:\n` +
             .join(' · ')
         : tabela.linhas.length + ' linha(s) retornada(s).';
     return {
+      apresentacao: validarApresentacao(
+        tabela,
+        plano.apresentacao ??
+          (plano.grafico
+            ? {
+                grafico: 'barras',
+                dimensao: plano.grafico.rotulo,
+                metrica: plano.grafico.valor,
+              }
+            : null),
+        plano.titulo,
+      ),
       texto: tabela.linhas.length
         ? plano.titulo + '. ' + resumo
         : 'Nenhum resultado encontrado no recorte consultado.',

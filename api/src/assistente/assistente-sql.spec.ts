@@ -3,7 +3,72 @@ import {
   lerResultadoSql,
   AssistenteSql,
   validarFontesDaPergunta,
+  validarApresentacao,
 } from './assistente-sql';
+
+it('valida as escolhas visuais contra os dados e não usa códigos como métricas', () => {
+  const tabela = {
+    colunas: ['FilialId', 'Filial', 'TotalPago'],
+    linhas: [
+      ['1', 'Alfa', '25.50'],
+      ['2', 'Beta', '-1.00'],
+    ],
+    parcial: false,
+  };
+  expect(
+    validarApresentacao(
+      tabela,
+      { grafico: 'linha', dimensao: 'Filial', metrica: 'TotalPago' },
+      'Financeiro',
+    ),
+  ).toEqual({
+    titulo: 'Financeiro',
+    grafico: 'barras',
+    dimensao: 'Filial',
+    metrica: 'TotalPago',
+  });
+  expect(
+    validarApresentacao(
+      tabela,
+      { grafico: 'barras', dimensao: 'Filial', metrica: 'FilialId' },
+      'Financeiro',
+    ),
+  ).toEqual({ titulo: 'Financeiro' });
+  expect(
+    validarApresentacao(
+      tabela,
+      { grafico: 'barras', dimensao: 'Filial', metrica: 'NaoExiste' },
+      'Financeiro',
+    ),
+  ).toEqual({ titulo: 'Financeiro' });
+  expect(
+    validarApresentacao(
+      tabela,
+      {
+        grafico: 'barras',
+        dimensao: 'Filial',
+        metrica: 'TotalPago',
+        html: '<script/>',
+      },
+      'Financeiro',
+    ),
+  ).toEqual({ titulo: 'Financeiro' });
+  const tempo = {
+    colunas: ['Competencia', 'Total'],
+    linhas: [
+      ['08/2026', '25'],
+      ['09/2026', '30'],
+    ],
+    parcial: false,
+  };
+  expect(
+    validarApresentacao(
+      tempo,
+      { grafico: 'linha', dimensao: 'Competencia', metrica: 'Total' },
+      'Evolução',
+    )?.grafico,
+  ).toBe('linha');
+});
 import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import type { AssistenteConsultas } from './assistente-consultas';

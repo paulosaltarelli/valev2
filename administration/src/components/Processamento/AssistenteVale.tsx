@@ -17,6 +17,7 @@ import "./assistenteVale.css";
 import { contextoDaPergunta, respostaTodasFiliais } from "./contextoDaPergunta";
 import { prepararPacote, ErroExportacao } from "./relatorioPacote";
 import { gerarExcel } from "./assistenteExcel";
+import { criarModeloVisual } from "./relatorioVisual";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
@@ -52,6 +53,7 @@ type Contexto = {
   filtro: { periodo_id: number; filial_id: number } | null;
 };
 type Resposta = {
+  apresentacao?: import("./relatorioVisual").SugestaoVisual;
   texto: string;
   detalhes?: string;
   fonte?: string;
@@ -682,6 +684,13 @@ function MensagemVale({
   }>();
   const [falhaArquivos, setFalhaArquivos] = useState<string>();
   const [tentativa, setTentativa] = useState(0);
+  const visual = criarModeloVisual();
+  const colunasVisuais = resposta.tabela?.colunas.map((nome, i) =>
+    visual.coluna(
+      nome,
+      resposta.tabela!.linhas.map((r) => r[i]),
+    ),
+  );
   useEffect(() => {
     if (!resposta.tabela) return;
     let cancelado = false;
@@ -702,8 +711,12 @@ function MensagemVale({
         setArquivos({ html: pacote.html, urlHtml, urlExcel, urlPacote });
       })
       .catch((erro: unknown) => {
-        if (!cancelado) setFalhaArquivos(erro instanceof ErroExportacao
-          ? erro.message : "Não foi possível preparar os arquivos. Tente novamente.");
+        if (!cancelado)
+          setFalhaArquivos(
+            erro instanceof ErroExportacao
+              ? erro.message
+              : "Não foi possível preparar os arquivos. Tente novamente.",
+          );
       });
     return () => {
       cancelado = true;
@@ -819,12 +832,22 @@ function MensagemVale({
             <summary>
               Ver tabela ({resposta.tabela.linhas.length} linhas)
             </summary>
-            <Table responsive size="sm" striped>
+            <Table
+              responsive
+              size="sm"
+              striped
+              className="vale-ia-tabela-formatada"
+            >
               <thead>
                 <tr>
                   {resposta.tabela.colunas.map((c) => (
-                    <th key={c} scope="col">
-                      {c}
+                    <th
+                      key={c}
+                      scope="col"
+                      title={c}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {colunasVisuais?.find((v) => v.nome === c)?.titulo ?? c}
                     </th>
                   ))}
                 </tr>
@@ -835,7 +858,26 @@ function MensagemVale({
                   .map((linha, i) => (
                     <tr key={i}>
                       {linha.map((valor, j) => (
-                        <td key={j}>{valor ?? "—"}</td>
+                        <td
+                          key={j}
+                          title={
+                            valor === null ? "Sem informação" : String(valor)
+                          }
+                          style={{
+                            whiteSpace:
+                              colunasVisuais?.[j].tipo === "texto"
+                                ? "normal"
+                                : "nowrap",
+                            textAlign: ["moeda", "decimal", "inteiro"].includes(
+                              colunasVisuais?.[j].tipo ?? "",
+                            )
+                              ? "right"
+                              : "left",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {visual.formatar(valor, colunasVisuais?.[j].tipo)}
+                        </td>
                       ))}
                     </tr>
                   ))}

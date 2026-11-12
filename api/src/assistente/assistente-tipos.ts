@@ -20,6 +20,12 @@ export type TurnoAssistente = {
   contexto?: ContextoErros;
 };
 export type ResultadoAssistente = {
+  apresentacao?: {
+    titulo?: string;
+    grafico?: 'barras' | 'linha';
+    dimensao?: string;
+    metrica?: string | null;
+  };
   [contextoConsulta]?: ContextoErros;
   texto: string;
   detalhes?: string;
