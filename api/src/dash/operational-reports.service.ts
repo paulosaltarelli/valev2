@@ -69,15 +69,24 @@ export class OperationalReportsService {
     return {...options,periodo:periodo.periodo_id,rows,updatedAt:new Date()};
   }
 
-  async variation(periodoId: number, anteriorId: number, filialId: number, maxRows?: number) {
-    const options = await this.options();
+  private async variationExecutions(periodoId:number,filialId:number){
+    // Variation does not use memory counts. Keep the closing reader unchanged.
+    const { _count: unused, ...resultSelect }=personSelect.execucao_funcionario.select;
+    void unused;
+    const rows=await this.prisma.execucao.findMany({where:{periodo_id:periodoId,filial_id:filialId,historica_de_execucao_id:null},select:{execucao_id:true,execucao_funcionario_base:{select:{...personSelect,execucao_funcionario:{select:resultSelect}}}},take:2});
+    if(rows.length>1)throw new BadRequestException('Execuções duplicadas sem referência principal.');
+    return rows;
+  }
+
+  async variation(periodoId: number, anteriorId: number, filialId: number, maxRows?: number, preparedOptions?: Awaited<ReturnType<OperationalReportsService['options']>>) {
+    const options = preparedOptions ?? await this.options();
     const periodo = options.periodos.find(p=>p.periodo_id===periodoId);
     const anterior = options.periodos.find(p=>p.periodo_id===anteriorId);
     const filial = options.filiais.find(f=>f.filial_id===filialId);
     if (!periodo || !anterior || !filial) throw new NotFoundException('Competência ou filial não encontrada.');
     if (anterior.data_inicio >= periodo.data_inicio) throw new BadRequestException('Selecione uma competência anterior à atual.');
     const [current, previous, configured] = await Promise.all([
-      this.latest(periodoId,filialId),this.latest(anteriorId,filialId),
+      this.variationExecutions(periodoId,filialId),this.variationExecutions(anteriorId,filialId),
       this.prisma.formula.findMany({where:{filial_id:filialId,ativa:true},
         select:{formula_id:true,nome:true,versao:true,tipo:true,expressao:true,codEvento:true,polaridade:true}}),
     ]);

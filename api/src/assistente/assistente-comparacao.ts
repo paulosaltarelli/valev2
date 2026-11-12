@@ -90,7 +90,7 @@ export class AssistenteComparacao {
         if(populacao.length>4000)throw new VariationLimitError();
         const pessoas=(id:number)=>new Set(populacao.filter(p=>p.execucao_id===id).map(p=>JSON.stringify([p.codcoligada,p.funcionario_id_rm.trim()])));
         const now=pessoas(pair[0]),before=pessoas(pair[1]);
-        const variacao=await this.relatorios.variation(atual.periodo_id,prev.periodo_id,filial.filial_id,10000);
+        const variacao=await this.relatorios.variation(atual.periodo_id,prev.periodo_id,filial.filial_id,10000,opcoes);
         if(variacao.execucaoAtual!==pair[0]||variacao.execucaoAnterior!==pair[1]){parcial=true;linhas.push(vazio(filial.nome,'Execuções alteradas','As execuções mudaram durante a consulta; esta filial não foi consolidada.',aid,bid));continue;}
         const s=resumirVariacao(variacao.rows),fila=pendentes.some(x=>pair.includes(x.execucao_id));
         const notas=[

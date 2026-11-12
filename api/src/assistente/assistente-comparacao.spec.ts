@@ -27,6 +27,10 @@ it('reutiliza snapshots, controla população e não soma dias nem regras altera
  const s=resumirVariacao(rows());
  expect(s.pago).toEqual(['0','100.25','100.25']);expect(s.desconto).toEqual(['10','10','0']);expect(s.comparaveis).toBe(3);expect(s.comVariacao).toBe(2);expect(s.regrasAlteradas).toBe(1);expect(s.versoesAlteradas).toBe(1);
 });
+it('mantém a mesma comparação sem consultar contagens de memória de cálculo',()=>{
+ const lean=(people:ReportPerson[])=>people.map(p=>({...p,execucao_funcionario:p.execucao_funcionario.map(({_count,...r})=>r)}));
+ expect(variationRows(lean(current),lean(previous),true,true)).toEqual(rows());
+});
 it('não usa o cadastro atual como classificação monetária histórica',()=>{
  const parcial=JSON.stringify({nome:pago.nome,expressao:pago.expressao,versao:1});
  const rs=variationRows([person('001',[result(pago,'20',parcial)])],[person('001',[result(pago,'10')])],true,true);
@@ -36,7 +40,7 @@ it('não usa o cadastro atual como classificação monetária histórica',()=>{
 });
 it('gera tabela por filial sem filtros, preserva zero e declara ausência de execução anterior',async()=>{
  const f=fixture(),r=await f.service.responder({pergunta:'Compare a competência ativa com a anterior por filial'},'operator');
- expect(r.competencia).toBe('09/2026 × 08/2026');expect(f.reports.variation).toHaveBeenCalledWith(12,11,1,10000);
+ expect(r.competencia).toBe('09/2026 × 08/2026');expect(f.reports.variation).toHaveBeenCalledWith(12,11,1,10000,f.options);
  const a=r.tabela!.linhas[0],b=r.tabela!.linhas[1];expect(a.length).toBe(r.tabela!.colunas.length);
  expect(a.slice(1,7)).toEqual(['0','100.25','100.25','10','10','0']);expect(a.slice(7,12)).toEqual([2,2,1,1,1]);
  expect(b.slice(1,7)).toEqual([null,null,null,null,null,null]);expect(b[23]).toBe('Sem execução anterior');expect(r.texto).not.toMatch(/selecione|informe/i);
@@ -54,7 +58,7 @@ it('compara apenas a principal e informa os IDs históricos preservados',async()
  const r=await f.service.responder({pergunta:'Comparar competência ativa e anterior por filial'},'operator');
  const row=r.tabela!.linhas[0];expect(row[23]).not.toBe('Execuções duplicadas');
  expect(row[24]).toContain('#21 → principal #20');expect(row[25]).toBe(20);expect(row[26]).toBe(10);
- expect(f.reports.variation).toHaveBeenCalledWith(12,11,1,10000);
+ expect(f.reports.variation).toHaveBeenCalledWith(12,11,1,10000,f.options);
 });
 it('limites e lotes em voo impedem consolidar valores parciais como completos',async()=>{
  const f=fixture();f.reports.variation.mockRejectedValue(new VariationLimitError());

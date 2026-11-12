@@ -116,7 +116,7 @@ export class OperacaoService {
       return { message: action === 'pausar'
         ? 'Pausa registrada. O lote em andamento pode terminar.'
         : 'Cancelamento registrado. O lote em andamento pode terminar.' };
-    });
+    }, {maxWait:30000,timeout:30000});
   }
 
   async summary(periodoId?: number) {

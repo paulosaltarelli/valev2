@@ -16,7 +16,9 @@ export type ReportPerson = {
   funcionario_id_rm: string; codcoligada: number; nome_funcionario: string | null;
   regras_rm?: string | null; status: string | null; execucao_funcionario: ReportResult[];
 };
-export const hasCalculatedValue = (r: ReportResult) =>
+type VariationResult = Omit<ReportResult,'_count'>;
+export type VariationPerson = Omit<ReportPerson,'execucao_funcionario'> & {execucao_funcionario:VariationResult[]};
+export const hasCalculatedValue = (r: Pick<ReportResult,'status'|'valor_calculado'>) =>
   ['PROCESSADO', 'ENVIADO_RM'].includes(r.status) && r.valor_calculado !== null;
 
 export function closingCounts(people: ReportPerson[], formulaIds?: number[]) {
@@ -46,14 +48,14 @@ export function lerSnapshotFormula(snapshot: string | null): ReportFormula | nul
   } catch { /* Invalid legacy snapshots are explicitly non-comparable. */ }
   return null;
 }
-function savedFormula(result: ReportResult): { formula: ReportFormula; verified: boolean } {
+function savedFormula(result: Pick<ReportResult,'formula'|'formula_snapshot'>): { formula: ReportFormula; verified: boolean } {
   const snapshot = lerSnapshotFormula(result.formula_snapshot);
   return snapshot
     ? { formula: { ...result.formula, ...snapshot }, verified: true }
     : { formula: result.formula, verified: false };
 }
 const formulaKey = (f: ReportFormula) => JSON.stringify([f.nome.trim().toLocaleLowerCase('pt-BR'), f.codEvento?.trim() ?? '', f.tipo?.trim() ?? '', f.polaridade?.trim() ?? '']);
-const personKey = (p: ReportPerson) => JSON.stringify([p.codcoligada, p.funcionario_id_rm.trim()]);
+const personKey = (p: Pick<ReportPerson,'codcoligada'|'funcionario_id_rm'>) => JSON.stringify([p.codcoligada, p.funcionario_id_rm.trim()]);
 export type VariationRow = {
   key: string; nome: string; matricula: string; formula: string; tipo: string | null;
   anterior: string | null; atual: string | null; diferenca: string | null;
@@ -69,7 +71,7 @@ export class VariationLimitError extends Error {
 }
 
 /** Compare persisted calculated values, never final overrides or absent values as zero. */
-export function variationRows(current: ReportPerson[], previous: ReportPerson[],
+export function variationRows(current: VariationPerson[], previous: VariationPerson[],
   currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = [], maxRows = Number.POSITIVE_INFINITY): VariationRow[] {
   const now = new Map(current.map(p => [personKey(p), p]));
   const before = new Map(previous.map(p => [personKey(p), p]));
@@ -82,7 +84,7 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
       seen.add(key);
     }
   }
-  const knownFormulas = (people: ReportPerson[], configured: ReportFormula[] = []) => {
+  const knownFormulas = (people: VariationPerson[], configured: ReportFormula[] = []) => {
     const formulas = new Map(configured.map(f => [formulaKey(f), f]));
     for (const person of people) for (const result of person.execucao_funcionario) {
       const formula = savedFormula(result).formula;
@@ -94,15 +96,15 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
   const rows: VariationRow[] = [];
   for (const key of new Set([...now.keys(), ...before.keys()])) {
     const person = now.get(key), oldPerson = before.get(key);
-    const group = (p: ReportPerson | undefined, expected: Map<string, ReportFormula>) => {
-      const groups = new Map<string, ReportResult[]>();
+    const group = (p: VariationPerson | undefined, expected: Map<string, ReportFormula>) => {
+      const groups = new Map<string, VariationResult[]>();
       for (const r of p?.execucao_funcionario ?? []) {
         const fkey = formulaKey(savedFormula(r).formula);
         groups.set(fkey, [...(groups.get(fkey) ?? []), r]);
       }
       if (p) for (const [key, formula] of expected) if (!groups.has(key)) groups.set(key, [{
         formula, formula_snapshot: null, status: 'PREVIA', valor_calculado: null,
-        revisao: 0, enviado_revisao: null, _count: { memoria_calculo: 0 },
+        revisao: 0, enviado_revisao: null,
       }]);
       return groups;
     };
