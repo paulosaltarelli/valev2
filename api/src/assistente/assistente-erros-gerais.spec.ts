@@ -7,6 +7,102 @@ import type { ExecucaoService } from '../execucao/execucao.service';
 import type { DashService } from '../dash/dash.service';
 import type { AssistenteSql } from './assistente-sql';
 import type { AssistenteInvestigacao } from './assistente-investigacao';
+import { contextoConsulta, type ContextoErros } from './assistente-tipos';
+
+it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcionário, sem SQL paralelo', async () => {
+  const grupo: ContextoErros = {
+    tipo: 'funcionarios_com_erro',
+    periodoId: 7,
+    competencia: '10/2026',
+    filial: 'Todas as filiais ativas',
+    execucaoIds: [1],
+    funcionarioBaseIds: [123],
+    total: 1,
+    parcial: false,
+    capturadoEm: new Date().toISOString(),
+  };
+  const consultas = {
+    consultar: jest
+      .fn()
+      .mockResolvedValue({ texto: 'Panorama', [contextoConsulta]: grupo }),
+  };
+  const investigacao = {
+    responderGrupo: jest
+      .fn()
+      .mockResolvedValue({
+        texto: 'Detalhado',
+        tabela: {
+          colunas: ['Funcionário'],
+          linhas: [['Caso']],
+          parcial: false,
+        },
+      }),
+  };
+  const sql = { responder: jest.fn() };
+  const fetchMock = jest
+    .spyOn(global, 'fetch')
+    .mockResolvedValue(
+      Response.json({
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({
+                  acao: 'sql',
+                  consulta: 'erros',
+                  periodoId: 7,
+                  filialId: null,
+                  titulo: 'Relatório',
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  try {
+    const service = new AssistenteAvancado(
+      consultas as unknown as AssistenteConsultas,
+      {
+        options: async () => ({
+          periodos: [{ periodo_id: 7, competencia: '10/2026', ativo: true }],
+          filiais: [],
+        }),
+      } as unknown as OperationalReportsService,
+      new AssistenteConhecimento(),
+      sql as unknown as AssistenteSql,
+      investigacao as unknown as AssistenteInvestigacao,
+    );
+    const r = await service.responder(
+      {
+        pergunta:
+          'Gere HTML e Excel dos funcionários com erro na competência ativa',
+      },
+      'operator',
+      'gpt-institucional',
+      { modelo: 'gpt-5.4-mini', chave: 'teste' },
+      null,
+      [],
+    );
+    expect(r.texto).toBe('Detalhado');
+    expect(consultas.consultar).toHaveBeenCalledWith(
+      'erros',
+      expect.objectContaining({ periodoId: 7, filialId: undefined }),
+      'operator',
+    );
+    expect(investigacao.responderGrupo).toHaveBeenCalledWith(
+      grupo,
+      'gpt-institucional',
+      expect.any(Object),
+      null,
+    );
+    expect(sql.responder).not.toHaveBeenCalled();
+  } finally {
+    fetchMock.mockRestore();
+  }
+});
 
 it('consulta erros em todas as filiais e evidencia duplicidades sem consolidá-las', async () => {
   const prisma = {

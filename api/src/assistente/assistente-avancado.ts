@@ -21,6 +21,7 @@ import { AssistenteConhecimento } from './assistente-conhecimento';
 import { consultarModelo } from './assistente-intencao';
 import { promptSugerido, regrasFixas } from './assistente-prompt';
 import type { ResultadoAssistente, TurnoAssistente } from './assistente-tipos';
+import { contextoConsulta } from './assistente-tipos';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { AssistenteSql } from './assistente-sql';
 import { AssistenteInvestigacao } from './assistente-investigacao';
@@ -194,6 +195,14 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       .normalize('NFD')
       .replace(/\p{Diacritic}/gu, '')
       .toLowerCase();
+    const relatorioErros =
+      !input.matricula &&
+      !plano.funcionario &&
+      /funcionar|colaborador/.test(perguntaNormalizada) &&
+      /erro|falh|problema/.test(perguntaNormalizada) &&
+      /relatorio|dashboard|\bhtml\b|\bexcel\b|\bxlsx\b/.test(
+        perguntaNormalizada,
+      );
     const panoramaErros =
       !input.matricula &&
       !plano.funcionario &&
@@ -209,12 +218,13 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
     }
     const investigar =
       !panoramaErros &&
+      !relatorioErros &&
       (plano.acao === 'investigar' ||
         (/funcion[aá]rio|colaborador/i.test(input.pergunta) &&
           /por qu[eê]|\bpq\b|problema|sem valor|n[aã]o (?:vieram|teve|calcul)/i.test(
             input.pergunta,
           )));
-    if (plano.acao === 'conhecimento' && !investigar) {
+    if (plano.acao === 'conhecimento' && !investigar && !relatorioErros) {
       const texto = await consultarModelo(
         provedor,
         credencial,
@@ -298,6 +308,19 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
         'Esta consulta não aceita filtro de matrícula.',
       );
     const filtros = { ...input, periodoId, filialId };
+    if (relatorioErros) {
+      // A lista e o diagnóstico compartilham as regras operacionais; o modelo
+      // não inventa um SELECT paralelo nem troca pessoas por totais de filial.
+      const panorama = await this.consultas.consultar('erros', filtros, perfil);
+      const grupo = panorama[contextoConsulta];
+      if (!grupo?.funcionarioBaseIds.length) return panorama;
+      return this.investigacao.responderGrupo(
+        grupo,
+        provedor,
+        credencial,
+        contexto,
+      );
+    }
     const rankingDeFiliais =
       comparaFiliais &&
       /\b(maior|menor|mais|menos|ranking)\b/.test(perguntaNormalizada);

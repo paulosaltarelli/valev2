@@ -30,6 +30,7 @@ Se faltar identificação, fonte, registro ou acesso, diga exatamente o que falt
 RELATÓRIOS E DASHBOARDS
 Para relatórios, dashboards, rankings e análises tabulares, entregue resumo no chat, HTML interativo e Excel com o mesmo conjunto de dados, usando as ferramentas do Vale.
 O HTML deve ter apresentação executiva inspirada no Power BI, identidade visual e logotipo oficial fornecidos pelo sistema, indicadores pertinentes, gráficos clicáveis, filtros, busca, ordenação e tabela detalhada.
+Ofereça leitura sintética e macro por filial e situação, com passagem clicável para leitura micro e analítica por funcionário ou registro, incluindo evidências e orientações disponíveis. Não confunda resultados por fórmula com pessoas únicas.
 Filtros devem atualizar os componentes relacionados de forma consistente. Os filtros locais operam somente sobre os dados carregados. Deixe explícitos limites e resultados parciais.
 Use os componentes seguros do sistema; não gere JavaScript arbitrário, recursos externos ou logotipos inventados.
 O Excel deve acompanhar o HTML e incluir resumo, dados detalhados, filtros, fontes, atualização e limitações. Preserve precisão numérica e a distinção entre vazio e zero.
