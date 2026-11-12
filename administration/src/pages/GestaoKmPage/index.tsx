@@ -197,7 +197,7 @@ export function GestaoKmPage() {
     void refreshGeoStatus(filialId);
 
     const id = window.setInterval(() => {
-      if (!filialId) return;
+      if (!filialId || document.hidden) return;
       void refreshGeoStatus(filialId);
     }, 20000);
 

@@ -210,7 +210,6 @@ function asR066Details(details: unknown): R066Row[] {
 
 function asKmMaxDetails(details: unknown): KmMaxRow[] {
   if (!Array.isArray(details)) return [];
-  console.log("details", details);
   return details
     .map((row) => {
       if (!isRecord(row)) return null;
@@ -407,10 +406,26 @@ export function DashboardPage() {
     null,
   );
 
+  const [detailSummary, setDetailSummary] = useState<DashSummary | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  useEffect(() => {
+    if (!showDetailsModal) return;
+    let stopped = false;
+    setDetailSummary(null);
+    setDetailsLoading(true);
+    setDetailsError("");
+    void DashApi.getSummary(selectedPeriodoId ?? undefined, selectedFilialId ?? undefined)
+      .then((data) => { if (!stopped) setDetailSummary(data); })
+      .catch((error: unknown) => { if (!stopped) setDetailsError(error instanceof Error ? error.message : String(error)); })
+      .finally(() => { if (!stopped) setDetailsLoading(false); });
+    return () => { stopped = true; };
+  }, [showDetailsModal, selectedPeriodoId, selectedFilialId]);
+
   const fetchSummary = useCallback(
     async (pid?: number | null, fid?: number | null) => {
       setError(null);
-      const data = await DashApi.getSummary(pid ?? undefined, fid ?? undefined);
+      const data = await DashApi.getSummary(pid ?? undefined, fid ?? undefined, false);
       setSummary(data);
       setSelectedPeriodoId(data.selectedPeriodoId);
       setSelectedFilialId(data.selectedFilialId);
@@ -712,7 +727,7 @@ export function DashboardPage() {
   const activeIndicator = activeIndicatorId
     ? indicatorsById.get(activeIndicatorId)
     : null;
-  const activeDetails: unknown = activeIndicator?.details ?? null;
+  const activeDetails: unknown = detailSummary?.indicators.find((indicator) => indicator.id === activeIndicatorId)?.details ?? null;
 
   return (
     <>
@@ -1156,7 +1171,11 @@ export function DashboardPage() {
                 </Modal.Title>
               </Modal.Header>
               <Modal.Body>
-                {!activeIndicator ? (
+                {detailsLoading ? (
+                  <div role="status">Carregando detalhes...</div>
+                ) : detailsError ? (
+                  <div role="alert" className="text-danger">{detailsError}</div>
+                ) : !activeIndicator ? (
                   <div className="text-secondary">
                     Nenhum detalhe disponível.
                   </div>

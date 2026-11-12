@@ -162,8 +162,13 @@ export function useOperationQuery<T>(fetcher: () => Promise<T>, poll = 20000) {
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
+    let running = false;
     setState({ data: null, loading: true, error: "", at: "" });
     const run = async () => {
+      if (stopped || running) return;
+      clearTimeout(timer);
+      if (document.hidden) return;
+      running = true;
       try {
         const data = await fetcher();
         if (!stopped)
@@ -181,13 +186,20 @@ export function useOperationQuery<T>(fetcher: () => Promise<T>, poll = 20000) {
             error: errorMessage(e),
           }));
       } finally {
-        if (!stopped && poll) timer = setTimeout(run, poll);
+        running = false;
+        if (!stopped && poll && !document.hidden) timer = setTimeout(run, poll);
       }
     };
+    const onVisibility = () => {
+      if (document.hidden) clearTimeout(timer);
+      else void run();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     void run();
     return () => {
       stopped = true;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [fetcher, poll, version]);
   return { ...state, refresh: () => setVersion((v) => v + 1) };

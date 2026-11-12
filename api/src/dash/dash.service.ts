@@ -638,6 +638,7 @@ export class DashService {
   async getSummary(
     periodoId?: number,
     filialId?: number,
+    includeDetails = true,
   ): Promise<DashSummary> {
     const minR066 = this.parseEnvNumber('R066_MIN_VAL', 50);
     const maxR066 = this.parseEnvNumber('R066_MAX_VAL', 400);
@@ -733,9 +734,9 @@ export class DashService {
     const filialFilterSql = selectedFilialId
       ? Prisma.sql` AND e.filial_id = ${selectedFilialId} `
       : Prisma.empty;
-
-    // Filiais pendentes (por período): “processou” = existe execucao FINALIZADA
-    const filiaisPendentes = await this.prisma.$queryRaw<
+    const geoDays = 7;
+    const [filiaisPendentes, filiaisAtivasCount, errosBaseAgg, errosBaseSample] = await Promise.all([
+      this.prisma.$queryRaw<
       Array<{ filial_id: number; nome: string }>
     >(
       Prisma.sql`
@@ -751,18 +752,11 @@ export class DashService {
         )
       ORDER BY f.nome ASC;
     `,
-    );
-
-    const filiaisAtivasCount = await this.prisma.filial.count({
+    ),
+      this.prisma.filial.count({
       where: { ativa: true },
-    });
-    const filiaisProcessadasCount = Math.max(
-      0,
-      filiaisAtivasCount - (filiaisPendentes?.length ?? 0),
-    );
-
-    // Erros não resolvidos (status em execucao_funcionario_base)
-    const errosBaseAgg = await this.prisma.$queryRaw<
+    }),
+      this.prisma.$queryRaw<
       Array<{ status: string; cnt: number }>
     >(
       Prisma.sql`
@@ -774,13 +768,8 @@ export class DashService {
         AND b.status IN ('ERRO_VARIAVEIS','ERRO_RESULTADOS','ERRO_RM')
       GROUP BY b.status;
     `,
-    );
-    const errosBaseTotal = (errosBaseAgg ?? []).reduce(
-      (acc, r) => acc + Number(r.cnt ?? 0),
-      0,
-    );
-
-    const errosBaseSample = await this.prisma.$queryRaw<
+    ),
+      (includeDetails ? this.prisma.$queryRaw<
       Array<{
         execucao_id: number;
         filial_id: number;
@@ -808,10 +797,10 @@ export class DashService {
         AND b.status IN ('ERRO_VARIAVEIS','ERRO_RESULTADOS','ERRO_RM')
       ORDER BY b.data_registro DESC;
     `,
-    );
-
-    // Fila de execução com erro (apenas execuções do período selecionado)
-    const execucaoQueueErrorsAgg = await this.prisma.$queryRaw<
+    ): Promise.resolve([])),
+    ]);
+    const [execucaoQueueErrorsAgg, execucaoQueueErrorsSample, kmMaxAgg, kmMaxSample] = await Promise.all([
+      this.prisma.$queryRaw<
       Array<{ execucao_queue_erros: number }>
     >(
       Prisma.sql`
@@ -822,12 +811,8 @@ export class DashService {
         ${filialFilterSql}
         AND q.last_error IS NOT NULL;
     `,
-    );
-    const execucaoQueueErrorsTotal = Number(
-      execucaoQueueErrorsAgg?.[0]?.execucao_queue_erros ?? 0,
-    );
-
-    const execucaoQueueErrorsSample = await this.prisma.$queryRaw<
+    ),
+      (includeDetails ? this.prisma.$queryRaw<
       Array<{
         execucao_id: number;
         filial_id: number;
@@ -860,10 +845,8 @@ export class DashService {
         AND q.last_error IS NOT NULL
       ORDER BY q.updated_at DESC;
     `,
-    );
-
-    // KM acima do limite (por período): b.km > filial.km_max
-    const kmMaxAgg = await this.prisma.$queryRaw<Array<{ cnt: number }>>(
+    ): Promise.resolve([])),
+      this.prisma.$queryRaw<Array<{ cnt: number }>>(
       Prisma.sql`
       SELECT COUNT(1) as cnt
       FROM dbo.execucao_funcionario_base b
@@ -875,10 +858,8 @@ export class DashService {
         AND f.km_max IS NOT NULL
         AND b.km > f.km_max;
     `,
-    );
-    const kmMaxTotal = Number(kmMaxAgg?.[0]?.cnt ?? 0);
-
-    const kmMaxSample = await this.prisma.$queryRaw<
+    ),
+      (includeDetails ? this.prisma.$queryRaw<
       Array<{
         execucao_id: number;
         filial_id: number;
@@ -910,11 +891,10 @@ export class DashService {
         AND b.km > f.km_max
       ORDER BY (b.km - f.km_max) DESC, b.km DESC;
     `,
-    );
-
-    // GEO (não depende de período): erros nos últimos 7 dias
-    const geoDays = 7;
-    const geoErrorsAgg = await this.prisma.$queryRaw<
+    ): Promise.resolve([])),
+    ]);
+    const [geoErrorsAgg, geoErrorsSample, r066Rows, execPorStatus] = await Promise.all([
+      this.prisma.$queryRaw<
       Array<{ geo_erros: number }>
     >(
       Prisma.sql`
@@ -923,10 +903,8 @@ export class DashService {
       WHERE g.last_error IS NOT NULL
         AND g.updated_at >= DATEADD(DAY, -${geoDays}, SYSDATETIME());
     `,
-    );
-    const geoErrorsTotal = Number(geoErrorsAgg?.[0]?.geo_erros ?? 0);
-
-    const geoErrorsSample = await this.prisma.$queryRaw<
+    ),
+      (includeDetails ? this.prisma.$queryRaw<
       Array<{
         geo_queue_id: number;
         filial_id: number;
@@ -952,10 +930,8 @@ export class DashService {
         AND g.updated_at >= DATEADD(DAY, -${geoDays}, SYSDATETIME())
       ORDER BY g.updated_at DESC;
     `,
-    );
-
-    // Alertas R066 (tipo V) fora do range
-    const r066Rows = await this.prisma.$queryRaw<
+    ): Promise.resolve([])),
+      this.prisma.$queryRaw<
       Array<{
         execucao_id: number;
         filial_id: number;
@@ -989,13 +965,8 @@ export class DashService {
         )
       ORDER BY e.execucao_id DESC;
     `,
-    );
-
-    const r066Count = r066Rows?.length ?? 0;
-
-    // Charts
-    // Execuções por status (no período)
-    const execPorStatus = await this.prisma.$queryRaw<
+    ),
+      this.prisma.$queryRaw<
       Array<{ status: string; cnt: number }>
     >(
       Prisma.sql`
@@ -1006,36 +977,14 @@ export class DashService {
       GROUP BY status
       ORDER BY COUNT(1) DESC;
     `,
-    );
-
-    // Execuções por dia (dentro do intervalo do período)
-    const periodoRange = await this.prisma.periodo.findUnique({
+    ),
+    ]);
+    const [periodoRange, impactoTotalsRows, impactoPorEventoRows, impactoExecucoesSample] = await Promise.all([
+      this.prisma.periodo.findUnique({
       where: { periodo_id: selectedPeriodoId },
       select: { data_inicio: true, data_fim: true },
-    });
-
-    const rangeStart = periodoRange?.data_inicio ?? new Date();
-    const rangeEnd = periodoRange?.data_fim ?? new Date();
-
-    const execPorDia = await this.prisma.$queryRaw<
-      Array<{ dia: string; cnt: number }>
-    >(
-      Prisma.sql`
-      SELECT
-        CONVERT(varchar(10), e.data_execucao, 120) as dia,
-        COUNT(1) as cnt
-      FROM dbo.execucao e
-      WHERE e.data_execucao >= ${rangeStart}
-        AND e.data_execucao < DATEADD(DAY, 1, ${rangeEnd})
-        AND e.periodo_id = ${selectedPeriodoId}
-        ${selectedFilialId ? Prisma.sql` AND e.filial_id = ${selectedFilialId} ` : Prisma.empty}
-      GROUP BY CONVERT(varchar(10), e.data_execucao, 120)
-      ORDER BY dia ASC;
-    `,
-    );
-
-    // Impacto financeiro (somente ENVIADO_RM, fórmulas tipo V)
-    const impactoTotalsRows = await this.prisma.$queryRaw<
+    }),
+      this.prisma.$queryRaw<
       Array<{
         total_pago: number | null;
         total_desconto: number | null;
@@ -1057,23 +1006,8 @@ export class DashService {
         AND fo.tipo = 'V'
         AND COALESCE(ef.valor_final, ef.valor_calculado) IS NOT NULL;
     `,
-    );
-
-    const tot = impactoTotalsRows?.[0] ?? {
-      total_pago: 0,
-      total_desconto: 0,
-      funcionarios_enviados: 0,
-    };
-    const totalPago = Number(tot.total_pago ?? 0);
-    const totalDescontado = Number(tot.total_desconto ?? 0);
-    const funcionariosEnviados = Number(tot.funcionarios_enviados ?? 0);
-    const saldoLiquido = totalPago - totalDescontado;
-    const mediaPagoPorFuncionario =
-      funcionariosEnviados > 0 ? totalPago / funcionariosEnviados : 0;
-    const mediaDescontoPorFuncionario =
-      funcionariosEnviados > 0 ? totalDescontado / funcionariosEnviados : 0;
-
-    const impactoPorEventoRows = await this.prisma.$queryRaw<
+    ),
+      this.prisma.$queryRaw<
       Array<{
         evento: string;
         pago: number | null;
@@ -1097,37 +1031,8 @@ export class DashService {
       GROUP BY ${savedCalculationEventSql}
       ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
     `,
-    );
-
-    const impactoPorFilialRows = selectedFilialId
-      ? []
-      : await this.prisma.$queryRaw<
-          Array<{
-            filial_nome: string;
-            pago: number | null;
-            desconto: number | null;
-          }>
-        >(
-          Prisma.sql`
-          SELECT TOP 12
-            fi.nome as filial_nome,
-            CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
-            CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
-          FROM dbo.execucao_funcionario ef
-          INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
-          INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
-          INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
-          LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id
-          WHERE e.periodo_id = ${selectedPeriodoId}
-            AND b.status = 'ENVIADO_RM'
-            AND fo.tipo = 'V'
-            AND COALESCE(ef.valor_final, ef.valor_calculado) IS NOT NULL
-          GROUP BY fi.nome
-          ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
-        `,
-        );
-
-    const impactoExecucoesSample = await this.prisma.$queryRaw<
+    ),
+      (includeDetails ? this.prisma.$queryRaw<
       Array<{
         execucao_id: number;
         filial_id: number;
@@ -1158,7 +1063,129 @@ export class DashService {
       GROUP BY e.execucao_id, e.filial_id, fi.nome
       ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
     `,
+    ): Promise.resolve([])),
+    ]);
+
+
+    // Filiais pendentes (por período): “processou” = existe execucao FINALIZADA
+
+
+
+    const filiaisProcessadasCount = Math.max(
+      0,
+      filiaisAtivasCount - (filiaisPendentes?.length ?? 0),
     );
+
+    // Erros não resolvidos (status em execucao_funcionario_base)
+
+    const errosBaseTotal = (errosBaseAgg ?? []).reduce(
+      (acc, r) => acc + Number(r.cnt ?? 0),
+      0,
+    );
+
+
+
+    // Fila de execução com erro (apenas execuções do período selecionado)
+
+    const execucaoQueueErrorsTotal = Number(
+      execucaoQueueErrorsAgg?.[0]?.execucao_queue_erros ?? 0,
+    );
+
+
+
+    // KM acima do limite (por período): b.km > filial.km_max
+
+    const kmMaxTotal = Number(kmMaxAgg?.[0]?.cnt ?? 0);
+
+
+
+    // GEO (não depende de período): erros nos últimos 7 dias
+
+
+    const geoErrorsTotal = Number(geoErrorsAgg?.[0]?.geo_erros ?? 0);
+
+
+
+    // Alertas R066 (tipo V) fora do range
+
+
+    const r066Count = r066Rows?.length ?? 0;
+
+    // Charts
+    // Execuções por status (no período)
+
+
+    // Execuções por dia (dentro do intervalo do período)
+
+
+    const rangeStart = periodoRange?.data_inicio ?? new Date();
+    const rangeEnd = periodoRange?.data_fim ?? new Date();
+
+    const execPorDia = await this.prisma.$queryRaw<
+      Array<{ dia: string; cnt: number }>
+    >(
+      Prisma.sql`
+      SELECT
+        CONVERT(varchar(10), e.data_execucao, 120) as dia,
+        COUNT(1) as cnt
+      FROM dbo.execucao e
+      WHERE e.data_execucao >= ${rangeStart}
+        AND e.data_execucao < DATEADD(DAY, 1, ${rangeEnd})
+        AND e.periodo_id = ${selectedPeriodoId}
+        ${selectedFilialId ? Prisma.sql` AND e.filial_id = ${selectedFilialId} ` : Prisma.empty}
+      GROUP BY CONVERT(varchar(10), e.data_execucao, 120)
+      ORDER BY dia ASC;
+    `,
+    );
+
+    // Impacto financeiro (somente ENVIADO_RM, fórmulas tipo V)
+
+
+    const tot = impactoTotalsRows?.[0] ?? {
+      total_pago: 0,
+      total_desconto: 0,
+      funcionarios_enviados: 0,
+    };
+    const totalPago = Number(tot.total_pago ?? 0);
+    const totalDescontado = Number(tot.total_desconto ?? 0);
+    const funcionariosEnviados = Number(tot.funcionarios_enviados ?? 0);
+    const saldoLiquido = totalPago - totalDescontado;
+    const mediaPagoPorFuncionario =
+      funcionariosEnviados > 0 ? totalPago / funcionariosEnviados : 0;
+    const mediaDescontoPorFuncionario =
+      funcionariosEnviados > 0 ? totalDescontado / funcionariosEnviados : 0;
+
+
+
+    const impactoPorFilialRows = selectedFilialId
+      ? []
+      : await this.prisma.$queryRaw<
+          Array<{
+            filial_nome: string;
+            pago: number | null;
+            desconto: number | null;
+          }>
+        >(
+          Prisma.sql`
+          SELECT TOP 12
+            fi.nome as filial_nome,
+            CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
+            CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
+          FROM dbo.execucao_funcionario ef
+          INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+          INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
+          INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
+          LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id
+          WHERE e.periodo_id = ${selectedPeriodoId}
+            AND b.status = 'ENVIADO_RM'
+            AND fo.tipo = 'V'
+            AND COALESCE(ef.valor_final, ef.valor_calculado) IS NOT NULL
+          GROUP BY fi.nome
+          ORDER BY (CAST(SUM(ABS(COALESCE(ef.valor_final, ef.valor_calculado))) AS decimal(18,2))) DESC;
+        `,
+        );
+
+
 
     const indicators: DashIndicator[] = [
       {
@@ -1344,7 +1371,7 @@ export class DashService {
       selectedPeriodoId,
       selectedFilialId,
       hasRunning,
-      indicators,
+      indicators: includeDetails ? indicators : indicators.map(({ details: _, ...indicator }) => indicator),
       charts: {
         execucoesPorStatus: {
           labels: (execPorStatus ?? []).map((r) =>

@@ -128,7 +128,8 @@ export class OperacaoService {
       throw new NotFoundException('Competência não encontrada.');
     if (!periodo)
       return { periodos, periodo: null, rows: [], updatedAt: new Date() };
-    const rows = await this.prisma.execucao.findMany({
+    const [rows, memory] = await Promise.all([
+      this.prisma.execucao.findMany({
       where: { periodo_id: periodo.periodo_id },
       orderBy: { execucao_id: 'desc' },
       include: {
@@ -169,15 +170,17 @@ export class OperacaoService {
           },
         },
       },
-    });
-    // Aggregate in SQL instead of loading every duplicated memory row or its value.
-    const memory = await this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
+    }),
+      this.prisma.$queryRaw<Array<{ baseId: number; codigo: string }>>(Prisma.sql`
       SELECT DISTINCT r.execucao_funcionario_base_id AS baseId, CASE WHEN r.codigo_regra_rm = '' THEN m.variavel_codigo ELSE CONCAT(r.codigo_regra_rm, '|', m.variavel_codigo) END AS codigo
       FROM dbo.memoria_calculo m
       INNER JOIN dbo.execucao_funcionario r ON r.execucao_funcionario_id = m.execucao_funcionario_id
       INNER JOIN dbo.execucao e ON e.execucao_id = r.execucao_id
       INNER JOIN dbo.formula f ON f.formula_id = r.formula_id AND f.ativa = 1
-      WHERE e.periodo_id = ${periodo.periodo_id}`);
+      WHERE e.periodo_id = ${periodo.periodo_id}`),
+    ]);
+    // Aggregate in SQL instead of loading every duplicated memory row or its value.
+
     const savedByBase = new Map<number, string[]>();
     for (const item of memory) {
       const saved = savedByBase.get(item.baseId) ?? [];
@@ -185,6 +188,7 @@ export class OperacaoService {
       savedByBase.set(item.baseId, saved);
     }
     const seen = new Set<number>();
+    const expressionCodes = new Map<string, Set<string>>();
     return {
       periodos,
       periodo,
@@ -201,7 +205,7 @@ export class OperacaoService {
         const total = bases.length;
         const progresso = bases.reduce((sum, base) => {
           const partial = operationProgress(e.filial.formula, e.filial.variavel.map((v) => v.codigo),
-            base.execucao_funcionario, savedByBase.get(base.execucao_funcionario_base_id) ?? []);
+            base.execucao_funcionario, savedByBase.get(base.execucao_funcionario_base_id) ?? [], expressionCodes);
           return {
             variaveisCalculadas: sum.variaveisCalculadas + partial.variaveisCalculadas,
             variaveisPrevistas: sum.variaveisPrevistas + partial.variaveisPrevistas,

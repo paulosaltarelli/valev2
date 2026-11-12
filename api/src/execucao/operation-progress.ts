@@ -15,6 +15,7 @@ export function operationProgress(
   variableCodes: string[],
   results: Result[],
   savedCodes: string[],
+  expressionCodes = new Map<string, Set<string>>(),
 ) {
   const expressions = new Map(formulas.map((f) => [f.formula_id, f.expressao]));
   for (const result of results) {
@@ -33,7 +34,12 @@ export function operationProgress(
   const registered = new Set(variableCodes);
   const expected = new Set<string>();
   for (const expression of expressions.values()) {
-    for (const code of analisarExpressao(expression).codigos) {
+    let codes = expressionCodes.get(expression);
+    if (!codes) {
+      codes = analisarExpressao(expression).codigos;
+      expressionCodes.set(expression, codes);
+    }
+    for (const code of codes) {
       if (registered.has(code)) for(const rule of rules) expected.add(ruleCode(rule,code));
     }
   }

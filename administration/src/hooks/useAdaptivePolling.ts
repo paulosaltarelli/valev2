@@ -24,11 +24,36 @@ export function useAdaptivePolling({
     if (!enabled) return;
 
     const intervalMs = isRunning ? fastMs : slowMs;
-    const timer = window.setTimeout(() => {
-      void onTickRef.current();
-    }, intervalMs);
-
-    return () => window.clearTimeout(timer);
+    let stopped = false;
+    let running = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      if (!stopped && !document.hidden) timer = window.setTimeout(run, intervalMs);
+    };
+    const run = async () => {
+      if (stopped || running || document.hidden) return;
+      clearTimeout(timer);
+      running = true;
+      try {
+        await onTickRef.current();
+      } catch {
+        // A próxima atualização tenta novamente após uma falha de rede.
+      } finally {
+        running = false;
+        schedule();
+      }
+    };
+    const onVisibility = () => {
+      clearTimeout(timer);
+      if (!document.hidden) void run();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    schedule();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [enabled, isRunning, fastMs, slowMs]);
 }
 

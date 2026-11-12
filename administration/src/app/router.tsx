@@ -2,23 +2,8 @@ import { createBrowserRouter, redirect, type LoaderFunctionArgs, Link } from "re
 import { safeReturn } from '../utils/safeReturn';
 import { AdminLayout } from "../layouts/AdminLayout";
 import { PageHeading } from "../shared/components/PageHeading";
-import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
 import { authApi } from "../shared/lib/http";
-import { FilialPage } from "../pages/FilialPage";
-import { FilialVariaveisPage } from "../components/Filiais/FilialVariaveisPage";
-import { UsuariosPage } from "../pages/UsuariosPage";
-import { AssistenteConfiguracaoPage } from "../pages/AssistenteConfiguracaoPage";
-import { FilialFormulasPage } from "../components/Filiais/FilialFormulasPage";
-import { PeriodoPage } from "../pages/PeriodoPage";
-import { ProcessamentoPage } from "../pages/ProcessamentoPage";
-import { ProcessamentoDetalhesPage } from "../components/Processamento/ProcessamentoDetalhesPage";
-import { GestaoKmPage } from "../pages/GestaoKmPage";
-import { RelatoriosPage } from "../pages/RelatoriosPage";
-import { ExtratoProcessamentoPage } from "../pages/ExtratoProcessamentoPage";
-import { FalhasPage } from "../pages/FalhasPage";
-import { FechamentoPage } from "../pages/FechamentoPage";
-import { VariacaoPage } from "../pages/VariacaoPage";
 
 async function requireAuth({ request }: LoaderFunctionArgs) {
   try {
@@ -84,64 +69,64 @@ export const router = createBrowserRouter([
       },
       {
         path: "dashboard",
-        element: <DashboardPage />,
+        lazy: async () => ({ Component: (await import("../pages/DashboardPage")).DashboardPage }),
       },
       {
         path: "usuarios",
         loader: requireAdmin,
-        element: <UsuariosPage />,
+        lazy: async () => ({ Component: (await import("../pages/UsuariosPage")).UsuariosPage }),
       },
       {
         path: "configuracao-ia",
         loader: requireAdmin,
-        element: <AssistenteConfiguracaoPage />,
+        lazy: async () => ({ Component: (await import("../pages/AssistenteConfiguracaoPage")).AssistenteConfiguracaoPage }),
       },
       {
         path: "filial",
         loader: requireAdmin,
-        element: <FilialPage />,
+        lazy: async () => ({ Component: (await import("../pages/FilialPage")).FilialPage }),
       },
       {
         path: "filial/variaveis/:filialId",
         loader: requireAdmin,
-        element: <FilialVariaveisPage />,
+        lazy: async () => ({ Component: (await import("../components/Filiais/FilialVariaveisPage")).FilialVariaveisPage }),
       },
       {
         path: "filial/formulas/:filialId",
         loader: requireAdmin,
-        element: <FilialFormulasPage />,
+        lazy: async () => ({ Component: (await import("../components/Filiais/FilialFormulasPage")).FilialFormulasPage }),
       },
       {
         path: "periodo",
         loader: requireAdmin,
-        element: <PeriodoPage />,
+        lazy: async () => ({ Component: (await import("../pages/PeriodoPage")).PeriodoPage }),
       },
       {
         path: "processamento",
-        element: <ProcessamentoPage />,
+        lazy: async () => ({ Component: (await import("../pages/ProcessamentoPage")).ProcessamentoPage }),
       },
       {
         path: "processamento/:execucaoId",
-        element: <ProcessamentoDetalhesPage />,
+        lazy: async () => ({ Component: (await import("../components/Processamento/ProcessamentoDetalhesPage")).ProcessamentoDetalhesPage }),
       },
       {
         path: "gestao-km",
-        element: <GestaoKmPage />,
+        lazy: async () => ({ Component: (await import("../pages/GestaoKmPage")).GestaoKmPage }),
       },
       {
         path: "relatorios",
-        element: <RelatoriosPage />,
+        lazy: async () => ({ Component: (await import("../pages/RelatoriosPage")).RelatoriosPage }),
       },
       {
         path: "extrato-processamento",
-        element: <ExtratoProcessamentoPage />,
+        lazy: async () => ({ Component: (await import("../pages/ExtratoProcessamentoPage")).ExtratoProcessamentoPage }),
       },
       {
         path: "falhas-por-causa",
-        element: <FalhasPage />,
+        lazy: async () => ({ Component: (await import("../pages/FalhasPage")).FalhasPage }),
       },
-      { path: 'fechamento', element: <FechamentoPage /> },
-      { path: 'variacao-competencias', element: <VariacaoPage /> },
+      { path: 'fechamento', lazy: async () => ({ Component: (await import("../pages/FechamentoPage")).FechamentoPage }) },
+      { path: 'variacao-competencias', lazy: async () => ({ Component: (await import("../pages/VariacaoPage")).VariacaoPage }) },
     ],
   },
 ]);

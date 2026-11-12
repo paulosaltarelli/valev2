@@ -55,12 +55,14 @@ export class DashController {
   async getSummary(
     @Query('periodoId') periodoId?: string,
     @Query('filialId') filialId?: string,
+    @Query('includeDetails') includeDetails?: string,
   ): Promise<DashSummary> {
     const pid = Number(periodoId);
     const fid = Number(filialId);
     return await this.dashService.getSummary(
       Number.isFinite(pid) && pid > 0 ? pid : undefined,
       Number.isFinite(fid) && fid > 0 ? fid : undefined,
+      includeDetails !== '0',
     );
   }
 
