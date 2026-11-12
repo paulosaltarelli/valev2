@@ -12,7 +12,7 @@ import {
 import { JwtAuthGuard } from 'src/auth/jwt.guard';
 import { CurrentUserService } from 'src/auth/current-user.service';
 import { OperacaoService } from './operacao.service';
-import type { PedidoOperacao } from './operacao.service';
+import type { PedidoOperacao, Etapa } from './operacao.service';
 
 @Controller('operacao')
 @UseGuards(JwtAuthGuard)
@@ -25,6 +25,25 @@ export class OperacaoController {
   @Header('Cache-Control', 'no-store')
   summary(@Query('periodo') periodo?: string) {
     return this.service.summary(periodo ? Number(periodo) : undefined);
+  }
+  @Get('competencia/:periodo/pendencias')
+  @Header('Cache-Control', 'no-store')
+  periodPendingScope(@Param('periodo', ParseIntPipe) periodo: number) { return this.service.periodPendingScope(periodo); }
+  @Post('competencia/:periodo/pendencias')
+  executePeriodPending(@Param('periodo', ParseIntPipe) periodo: number, @Body() body: { etapa: Etapa }) {
+    const user = this.user.getJwtPayload();
+    return this.service.executePeriodPending(periodo, body.etapa, user.usuarioId, user.sessionId);
+  }
+  @Get(':id/escopo-pendencias')
+  @Header('Cache-Control', 'no-store')
+  pendingScope(@Param('id', ParseIntPipe) id: number) { return this.service.retryScope(id, true); }
+  @Get(':id/retentativa-erros')
+  @Header('Cache-Control', 'no-store')
+  retryScope(@Param('id', ParseIntPipe) id: number) { return this.service.retryScope(id); }
+  @Get(':id/pessoas/:base/falhas')
+  @Header('Cache-Control', 'no-store')
+  employeeFailures(@Param('id', ParseIntPipe) id: number, @Param('base', ParseIntPipe) base: number) {
+    return this.service.employeeFailures(id, base);
   }
   @Get(':id/pessoas')
   @Header('Cache-Control', 'no-store')
@@ -43,6 +62,11 @@ export class OperacaoController {
     @Param('resultado', ParseIntPipe) result: number,
   ) {
     return this.service.result(id, result);
+  }
+  @Get(':id/pessoas/:base/eventos')
+  @Header('Cache-Control', 'no-store')
+  employeeEvents(@Param('id', ParseIntPipe) id: number, @Param('base', ParseIntPipe) base: number) {
+    return this.service.employeeEvents(id, base);
   }
   @Get(':id/pessoas/:base/variaveis')
   @Header('Cache-Control', 'no-store')

@@ -44,4 +44,8 @@ export class RmRequestGate {
     this.blockedUntil = Math.max(this.blockedUntil, deadline);
     return deadline - now;
   }
+
+  get retryNotBefore() {
+    return this.blockedUntil;
+  }
 }

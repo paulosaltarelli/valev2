@@ -23,8 +23,13 @@ describe('readRmVariable', () => {
 
   it('preserva zero explícito e sinaliza ausência em parâmetros de cálculo', () => {
     expect(readRmVariable('PVE.KM_CALCULO', [{ RESULTADO: 0 }])).toBe(0);
-    expect(readRmVariable('PVE.KM_CALCULO', [{ RESULTADO: null }])).toBeNaN();
+    expect(readRmVariable('PVE.KM_CALCULO', [{}])).toBeNaN();
     expect(readRmVariable('PVE.REGRA_PGTO', [])).toBeNaN();
     expect(readRmVariable('PVE.ATESTADO', { data: [] })).toBeNaN();
   });
+
+  it.each(['PVE.D.TRAB.REAL', 'PVE.VR_FIXO', 'PVE.KM_CALCULO'])(
+    'converte RESULTADO nulo em zero para %s',
+    (query) => expect(readRmVariable(query, [{ RESULTADO: null }])).toBe(0),
+  );
 });

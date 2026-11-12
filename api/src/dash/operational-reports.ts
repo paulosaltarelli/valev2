@@ -1,3 +1,4 @@
+import { reportCompletion } from './report-completion';
 import { Prisma } from '@prisma/client';
 
 export type ReportFormula = {
@@ -5,6 +6,7 @@ export type ReportFormula = {
   expressao: string; codEvento: string | null; polaridade: string | null;
 };
 export type ReportResult = {
+  formula_id?: number; codigo_regra_rm?: string; valor_final?: unknown;
   formula: ReportFormula; formula_snapshot: string | null;
   status: string; valor_calculado: { toString(): string } | null;
   revisao: number; enviado_revisao: number | null;
@@ -12,19 +14,19 @@ export type ReportResult = {
 };
 export type ReportPerson = {
   funcionario_id_rm: string; codcoligada: number; nome_funcionario: string | null;
-  status: string | null; execucao_funcionario: ReportResult[];
+  regras_rm?: string | null; status: string | null; execucao_funcionario: ReportResult[];
 };
 export const hasCalculatedValue = (r: ReportResult) =>
   ['PROCESSADO', 'ENVIADO_RM'].includes(r.status) && r.valor_calculado !== null;
 
-export function closingCounts(people: ReportPerson[]) {
+export function closingCounts(people: ReportPerson[], formulaIds?: number[]) {
   const counts = { total: people.length, completos: 0, parciais: 0, semCalculo: 0,
     comErro: 0, aguardandoEnvio: 0, enviados: 0 };
   for (const person of people) {
-    const results = person.execucao_funcionario;
-    const complete = ['RESULTADOS_PROCESSADOS','ENVIADO_RM','ERRO_RM'].includes(person.status ?? '') &&
-      results.length > 0 && results.every(hasCalculatedValue);
-    const sent = complete && results.every(r => r.status === 'ENVIADO_RM' && r.enviado_revisao === r.revisao);
+    const ids = formulaIds ?? [...new Set(person.execucao_funcionario.map(r => r.formula.formula_id))];
+    const state = reportCompletion(person, ids, person.execucao_funcionario.map(r => ({...r, formula_id:r.formula.formula_id, valor_final:r.valor_final === undefined ? r.valor_calculado : r.valor_final})));
+    const results = person.execucao_funcionario.filter(r => ids.includes(r.formula.formula_id));
+    const { complete, sent } = state;
     if (complete) counts.completos++;
     else if (results.some(r => hasCalculatedValue(r) || r._count.memoria_calculo > 0)) counts.parciais++;
     else counts.semCalculo++;

@@ -36,7 +36,7 @@ function fixture(concurrency: number, failEmployee?: string) {
       findMany: jest.fn().mockResolvedValue([]),
       upsert: jest.fn(({ create }) => Promise.resolve({ ...create, execucao_funcionario_id: create.execucao_funcionario_base_id * 10 + create.formula_id })),
     },
-    execucao_funcionario_base: { updateMany: jest.fn().mockResolvedValue({ count: 8 }) },
+    execucao_funcionario_base: { findMany: jest.fn().mockResolvedValue(bases), updateMany: jest.fn().mockResolvedValue({ count: 8 }) },
     memoria_calculo: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn(({ data }) => { memory.push(...data); return Promise.resolve({ count: data.length }); }),
