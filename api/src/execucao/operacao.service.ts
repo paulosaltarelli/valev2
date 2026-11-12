@@ -140,6 +140,7 @@ export class OperacaoService {
         execucao_funcionario_base: {
           select: {
             execucao_funcionario_base_id: true,
+            regras_rm: true,
             status: true,
             execucao_funcionario: {
               select: {
@@ -175,6 +176,7 @@ export class OperacaoService {
       FROM dbo.memoria_calculo m
       INNER JOIN dbo.execucao_funcionario r ON r.execucao_funcionario_id = m.execucao_funcionario_id
       INNER JOIN dbo.execucao e ON e.execucao_id = r.execucao_id
+      INNER JOIN dbo.formula f ON f.formula_id = r.formula_id AND f.ativa = 1
       WHERE e.periodo_id = ${periodo.periodo_id}`);
     const savedByBase = new Map<number, string[]>();
     for (const item of memory) {
@@ -190,7 +192,12 @@ export class OperacaoService {
       rows: rows.map((e) => {
         const latest = !seen.has(e.filial_id);
         seen.add(e.filial_id);
-        const bases = e.execucao_funcionario_base;
+        const activeIds = new Set(e.filial.formula.map(formula=>formula.formula_id));
+        const bases = e.execucao_funcionario_base.map(base=>({
+          ...base,execucao_funcionario:base.execucao_funcionario.filter(result=>activeIds.has(result.formula_id)),
+        }));
+        const hasAllResults=(base:(typeof bases)[number])=>activeIds.size>0 &&
+          base.execucao_funcionario.length === activeIds.size * transportRules(base).length;
         const total = bases.length;
         const progresso = bases.reduce((sum, base) => {
           const partial = operationProgress(e.filial.formula, e.filial.variavel.map((v) => v.codigo),
@@ -208,12 +215,12 @@ export class OperacaoService {
         const valores = bases.filter(
           (b) =>
             calculados.includes(b.status ?? '') &&
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(resultadoValido),
         ).length;
         const rm = bases.filter(
           (b) =>
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(
               (r) =>
                 r.status === 'ENVIADO_RM' && r.enviado_revisao === r.revisao,
@@ -221,7 +228,7 @@ export class OperacaoService {
         ).length;
         const conferidos = bases.filter(
           (b) =>
-            b.execucao_funcionario.length &&
+            hasAllResults(b) &&
             b.execucao_funcionario.every(
               (r) => resultadoValido(r) && r.conferido_revisao === r.revisao,
             ),
@@ -317,8 +324,8 @@ export class OperacaoService {
       where.AND = [{ OR: [
         { status: null },
         { status: { notIn: calculados } },
-        { execucao_funcionario: { none: {} } },
-        { execucao_funcionario: { some: { OR: [
+        { execucao_funcionario: { none: {formula:{ativa:true}} } },
+        { execucao_funcionario: { some: { formula:{ativa:true}, OR: [
           { status: { notIn: ['PROCESSADO', 'ENVIADO_RM'] } },
           { valor_final: null },
         ] } } },
@@ -340,6 +347,7 @@ export class OperacaoService {
         take: 25,
         include: {
           execucao_funcionario: {
+            where:{formula:{ativa:true}},
             select: {
               execucao_funcionario_id: true,
               revisao: true,
@@ -420,7 +428,7 @@ export class OperacaoService {
   async employeeEvents(execucaoId: number, baseId: number) {
     const base = await this.prisma.execucao_funcionario_base.findFirst({
       where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
-      select: { execucao_funcionario: { select: { execucao_funcionario_id: true, formula_snapshot: true } } },
+      select: { execucao_funcionario: { where:{formula:{ativa:true}}, select: { execucao_funcionario_id: true, formula_snapshot: true } } },
     });
     if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
     return { events: base.execucao_funcionario.map(result => {
@@ -946,7 +954,11 @@ export class OperacaoService {
       }
       return !p.somenteErros || hasStageFailure(b, p.etapa);
     }).map((b) => {
-      const results = b.execucao_funcionario;
+      const activeIds=new Set(b.execucao.filial.formula.map(formula=>formula.formula_id));
+      const rules=transportRules(b);
+      const results=b.execucao_funcionario.filter(result=>activeIds.has(result.formula_id) && rules.includes(result.codigo_regra_rm ?? ''));
+      const missingResults=activeIds.size===0 || [...activeIds].some(id=>rules.some(rule=>
+        !results.some(result=>result.formula_id===id && (result.codigo_regra_rm ?? '')===rule)));
       let reason = b.execucao.controle_fila === 'PAUSADA'
         ? 'Retome ou cancele a fila pausada desta execução'
         : draining.has(b.execucao_id)
@@ -974,7 +986,7 @@ export class OperacaoService {
         reason =
           'Conclua as variáveis; valores já concluídos ficam fora da retomada';
       if (!reason && p.etapa === 'CONFERIR') {
-        if (!calculados.includes(b.status ?? '') || !results.length || !results.every(resultadoValido))
+        if (missingResults || !calculados.includes(b.status ?? '') || !results.length || !results.every(resultadoValido))
           reason = 'Cálculo incompleto';
         else if (results.every((r) => r.conferido_revisao === r.revisao))
           reason = 'Versão atual já conferida';
@@ -983,6 +995,7 @@ export class OperacaoService {
         if (results.some((r) => !r.metadados_rm_id && started.has(r.execucao_funcionario_id)))
           reason = 'Aguardando confirmação do RM';
         else if (
+          missingResults ||
           !calculados.includes(b.status ?? '') ||
           !results.length ||
           !results.every(resultadoValido)
