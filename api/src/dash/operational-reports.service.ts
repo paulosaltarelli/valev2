@@ -34,7 +34,7 @@ export class OperationalReportsService {
 
   private async latest(periodoId: number, filialId?: number): Promise<ReportExecution[]> {
     const groups = await this.prisma.execucao.groupBy({by:['filial_id'],
-      where:{periodo_id:periodoId, ...(filialId ? {filial_id:filialId} : {})},_max:{execucao_id:true}});
+      where:{historica_de_execucao_id:null,periodo_id:periodoId, ...(filialId ? {filial_id:filialId} : {})},_max:{execucao_id:true}});
     const ids = groups.flatMap(g=>g._max.execucao_id ? [g._max.execucao_id] : []);
     return ids.length ? this.prisma.execucao.findMany({where:{execucao_id:{in:ids}},
       select:executionSelect}) : [];

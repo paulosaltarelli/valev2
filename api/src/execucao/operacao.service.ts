@@ -77,10 +77,11 @@ export class OperacaoService {
   private async lock(tx: Tx, ids: number[]) {
     // Todos os comandos de usuário adquirem o mesmo lock, em ordem estável.
     for (const id of [...ids].sort((a, b) => a - b)) {
-      const rows = await tx.$queryRaw<Array<{ execucao_id: number }>>(
-        Prisma.sql`SELECT execucao_id FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${id}`,
+      const rows = await tx.$queryRaw<Array<{ execucao_id: number; historica_de_execucao_id?:number|null }>>(
+        Prisma.sql`SELECT execucao_id,historica_de_execucao_id FROM dbo.execucao WITH (UPDLOCK, HOLDLOCK) WHERE execucao_id = ${id}`,
       );
       if (!rows.length) throw new NotFoundException('Execução não encontrada.');
+      if(rows[0].historica_de_execucao_id)throw new ConflictException('Execução histórica preservada. Use a execução principal #'+rows[0].historica_de_execucao_id+'.');
     }
   }
 
@@ -131,7 +132,7 @@ export class OperacaoService {
       return { periodos, periodo: null, rows: [], updatedAt: new Date() };
     const [rows, memory] = await Promise.all([
       this.prisma.execucao.findMany({
-      where: { periodo_id: periodo.periodo_id },
+      where: { historica_de_execucao_id:null, periodo_id: periodo.periodo_id },
       orderBy: { execucao_id: 'desc' },
       include: {
         filial: { select: {
@@ -1078,7 +1079,7 @@ export class OperacaoService {
   private async periodExecutionIds(periodoId: number) {
     idsValidos([periodoId]);
     const rows = await this.prisma.execucao.findMany({
-      where: { periodo_id: periodoId }, orderBy: { execucao_id: 'desc' },
+      where: { historica_de_execucao_id:null, periodo_id: periodoId }, orderBy: { execucao_id: 'desc' },
       distinct: ['filial_id'], select: { execucao_id: true, filial_id: true },
     });
     return rows.map(row => row.execucao_id);

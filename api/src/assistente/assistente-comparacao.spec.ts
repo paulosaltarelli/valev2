@@ -45,6 +45,17 @@ it('não escolhe silenciosamente entre execuções duplicadas',async()=>{
  const f=fixture();f.prisma.execucao.findMany.mockResolvedValue([{execucao_id:10,filial_id:1,periodo_id:12},{execucao_id:11,filial_id:1,periodo_id:12},{execucao_id:20,filial_id:1,periodo_id:11}]);
  const r=await f.service.responder({pergunta:'comparar competências com anterior'},'admin');expect(r.tabela!.linhas[0][23]).toBe('Execuções duplicadas');expect(f.reports.variation).not.toHaveBeenCalled();
 });
+it('compara apenas a principal e informa os IDs históricos preservados',async()=>{
+ const f=fixture();f.prisma.execucao.findMany.mockResolvedValue([
+  {execucao_id:10,filial_id:1,periodo_id:12},
+  {execucao_id:20,filial_id:1,periodo_id:11},
+  {execucao_id:21,filial_id:1,periodo_id:11,historica_de_execucao_id:20},
+ ] as any);
+ const r=await f.service.responder({pergunta:'Comparar competência ativa e anterior por filial'},'operator');
+ const row=r.tabela!.linhas[0];expect(row[23]).not.toBe('Execuções duplicadas');
+ expect(row[24]).toContain('#21 → principal #20');expect(row[25]).toBe(20);expect(row[26]).toBe(10);
+ expect(f.reports.variation).toHaveBeenCalledWith(12,11,1,10000);
+});
 it('limites e lotes em voo impedem consolidar valores parciais como completos',async()=>{
  const f=fixture();f.reports.variation.mockRejectedValue(new VariationLimitError());
  const r=await f.service.responder({pergunta:'comparar competência anterior'},'admin');expect(r.tabela!.parcial).toBe(true);expect(r.tabela!.linhas[0][23]).toBe('Limite de comparação');

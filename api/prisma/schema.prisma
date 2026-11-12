@@ -33,6 +33,11 @@ model ajuste_manual {
 }
 
 model execucao {
+  historica_de_execucao_id Int?
+  historica_em DateTime?
+  historica_motivo String? @db.NVarChar(1000)
+  principal execucao? @relation("ExecucoesHistoricas", fields: [historica_de_execucao_id], references: [execucao_id], onDelete: NoAction, onUpdate: NoAction)
+  historicas execucao[] @relation("ExecucoesHistoricas")
   execucao_id               Int                         @id(map: "PK__execucao__82E1C3EA2FB7A151") @default(autoincrement())
   filial_id                 Int
   periodo_id                Int

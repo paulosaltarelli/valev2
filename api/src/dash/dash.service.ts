@@ -91,7 +91,7 @@ export class DashService {
       throw new NotFoundException('Competência não encontrada.');
     }
     const executions = periodo === null ? [] : await this.prisma.execucao.findMany({
-      where: { periodo_id: periodo },
+      where: { historica_de_execucao_id:null, periodo_id: periodo },
       orderBy: { execucao_id: 'desc' },
       select: { execucao_id: true, filial_id: true, filial: { select: { nome: true } } },
     });
@@ -177,7 +177,7 @@ export class DashService {
     });
     const periodo = periodoId ?? periodos[0]?.periodo_id ?? null;
     const execucoes = periodo === null ? [] : await this.prisma.execucao.findMany({
-      where: { periodo_id: periodo },
+      where: { historica_de_execucao_id:null, periodo_id: periodo },
       orderBy: [{ data_execucao: 'desc' }, { execucao_id: 'desc' }],
       select: {
         execucao_id: true,
@@ -397,7 +397,7 @@ export class DashService {
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto,
         COUNT(DISTINCT b.execucao_funcionario_base_id) as funcionarios
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.periodo p ON p.periodo_id = e.periodo_id
       INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
@@ -436,7 +436,7 @@ export class DashService {
             CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
             CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
           FROM dbo.execucao_funcionario ef
-          INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+          INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
           INNER JOIN dbo.periodo p ON p.periodo_id = e.periodo_id
           INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
           INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
@@ -473,7 +473,7 @@ export class DashService {
             CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
             CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
           FROM dbo.execucao_funcionario ef
-          INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+          INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
           INNER JOIN dbo.periodo p ON p.periodo_id = e.periodo_id
           INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
           INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
@@ -555,7 +555,7 @@ export class DashService {
         CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.periodo p ON p.periodo_id = e.periodo_id
       INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
@@ -751,7 +751,7 @@ export class DashService {
       WHERE f.ativa = 1
         AND NOT EXISTS (
           SELECT 1
-          FROM dbo.execucao e
+          FROM (SELECT * FROM dbo.execucao WHERE historica_de_execucao_id IS NULL) e
           WHERE e.filial_id = f.filial_id
             AND e.periodo_id = ${selectedPeriodoId}
             AND e.status = 'FINALIZADA'
@@ -768,7 +768,7 @@ export class DashService {
       Prisma.sql`
       SELECT b.status, COUNT(1) as cnt
       FROM dbo.execucao_funcionario_base b
-      INNER JOIN dbo.execucao e ON e.execucao_id = b.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = b.execucao_id
       WHERE e.periodo_id = ${selectedPeriodoId}
         ${filialFilterSql}
         AND b.status IN ('ERRO_VARIAVEIS','ERRO_RESULTADOS','ERRO_RM')
@@ -796,7 +796,7 @@ export class DashService {
         b.status,
         b.data_registro as updated_at
       FROM dbo.execucao_funcionario_base b
-      INNER JOIN dbo.execucao e ON e.execucao_id = b.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = b.execucao_id
       LEFT JOIN dbo.filial f ON f.filial_id = e.filial_id
       WHERE e.periodo_id = ${selectedPeriodoId}
         ${filialFilterSql}
@@ -812,7 +812,7 @@ export class DashService {
       Prisma.sql`
       SELECT COUNT(1) as execucao_queue_erros
       FROM dbo.execucao_queue q
-      INNER JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = q.execucao_id
       WHERE e.periodo_id = ${selectedPeriodoId}
         ${filialFilterSql}
         AND q.last_error IS NOT NULL;
@@ -843,7 +843,7 @@ export class DashService {
         fb.funcionario_id_rm,
         fb.nome_funcionario
       FROM dbo.execucao_queue q
-      INNER JOIN dbo.execucao e ON e.execucao_id = q.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = q.execucao_id
       LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id
       LEFT JOIN dbo.execucao_funcionario_base fb ON fb.execucao_funcionario_base_id = q.execucao_funcionario_base_id
       WHERE e.periodo_id = ${selectedPeriodoId}
@@ -856,7 +856,7 @@ export class DashService {
       Prisma.sql`
       SELECT COUNT(1) as cnt
       FROM dbo.execucao_funcionario_base b
-      INNER JOIN dbo.execucao e ON e.execucao_id = b.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = b.execucao_id
       INNER JOIN dbo.filial f ON f.filial_id = e.filial_id
       WHERE e.periodo_id = ${selectedPeriodoId}
         ${filialFilterSql}
@@ -888,7 +888,7 @@ export class DashService {
         CAST(f.km_max AS decimal(18,2)) as km_max,
         b.data_registro as updated_at
       FROM dbo.execucao_funcionario_base b
-      INNER JOIN dbo.execucao e ON e.execucao_id = b.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = b.execucao_id
       INNER JOIN dbo.filial f ON f.filial_id = e.filial_id
       WHERE e.periodo_id = ${selectedPeriodoId}
         ${filialFilterSql}
@@ -956,7 +956,7 @@ export class DashService {
         fb.nome_funcionario,
         CAST(COALESCE(ef.valor_final, ef.valor_calculado) AS decimal(18,2)) as valor
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
       LEFT JOIN dbo.execucao_funcionario_base fb ON fb.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id
@@ -978,7 +978,7 @@ export class DashService {
       Prisma.sql`
       SELECT status, COUNT(1) as cnt
       FROM dbo.execucao
-      WHERE periodo_id = ${selectedPeriodoId}
+      WHERE historica_de_execucao_id IS NULL AND periodo_id = ${selectedPeriodoId}
         ${selectedFilialId ? Prisma.sql` AND filial_id = ${selectedFilialId} ` : Prisma.empty}
       GROUP BY status
       ORDER BY COUNT(1) DESC;
@@ -1003,7 +1003,7 @@ export class DashService {
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as total_desconto,
         COUNT(DISTINCT b.execucao_funcionario_base_id) as funcionarios_enviados
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
       WHERE e.periodo_id = ${selectedPeriodoId}
@@ -1026,7 +1026,7 @@ export class DashService {
         CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
       WHERE e.periodo_id = ${selectedPeriodoId}
@@ -1057,7 +1057,7 @@ export class DashService {
         CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto,
         COUNT(DISTINCT b.execucao_funcionario_base_id) as funcionarios
       FROM dbo.execucao_funcionario ef
-      INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+      INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
       INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
       INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
       LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id
@@ -1134,7 +1134,7 @@ export class DashService {
       SELECT
         CONVERT(varchar(10), e.data_execucao, 120) as dia,
         COUNT(1) as cnt
-      FROM dbo.execucao e
+      FROM (SELECT * FROM dbo.execucao WHERE historica_de_execucao_id IS NULL) e
       WHERE e.data_execucao >= ${rangeStart}
         AND e.data_execucao < DATEADD(DAY, 1, ${rangeEnd})
         AND e.periodo_id = ${selectedPeriodoId}
@@ -1178,7 +1178,7 @@ export class DashService {
             CAST(SUM(CASE WHEN fo.polaridade = '+' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as pago,
             CAST(SUM(CASE WHEN fo.polaridade = '-' THEN COALESCE(ef.valor_final, ef.valor_calculado) ELSE 0 END) AS decimal(18,2)) as desconto
           FROM dbo.execucao_funcionario ef
-          INNER JOIN dbo.execucao e ON e.execucao_id = ef.execucao_id
+          INNER JOIN dbo.execucao e ON e.historica_de_execucao_id IS NULL AND e.execucao_id = ef.execucao_id
           INNER JOIN dbo.execucao_funcionario_base b ON b.execucao_funcionario_base_id = ef.execucao_funcionario_base_id
           INNER JOIN dbo.formula fo ON fo.formula_id = ef.formula_id
           LEFT JOIN dbo.filial fi ON fi.filial_id = e.filial_id

@@ -132,7 +132,7 @@ export class AssistenteInvestigacao {
           : 'A consulta anterior não encontrou funcionários com erro nos registros sem duplicidade.',
       };
     const runs = await this.prisma.execucao.findMany({
-      where: {
+      where: { historica_de_execucao_id:null,
         periodo_id: grupo.periodoId,
         filial: { ativa: true },
         ...(grupo.filialId ? { filial_id: grupo.filialId } : {}),
@@ -486,7 +486,7 @@ export class AssistenteInvestigacao {
     const pessoa = candidatos[0];
     const execucao = pessoa.execucao;
     const runs = await this.prisma.execucao.findMany({
-      where: { periodo_id: escopo.periodoId, filial_id: execucao.filial_id },
+      where: { historica_de_execucao_id:null, periodo_id: escopo.periodoId, filial_id: execucao.filial_id },
       select: { execucao_id: true },
       take: 3,
     });

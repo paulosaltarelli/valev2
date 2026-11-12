@@ -98,7 +98,7 @@ export class AssistenteConsultas {
     });
     if (!periodo) throw new BadRequestException('Competência não encontrada.');
     const runs = await this.prisma.execucao.findMany({
-      where: {
+      where: { historica_de_execucao_id:null,
         periodo_id: filtros.periodoId!,
         filial: filtros.filialId
           ? { filial_id: filtros.filialId }
@@ -295,7 +295,7 @@ export class AssistenteConsultas {
     }
 
     const runs = await this.prisma.execucao.findMany({
-      where: {
+      where: { historica_de_execucao_id:null,
         periodo_id: filtros.periodoId,
         filial: filtros.filialId
           ? { filial_id: filtros.filialId }
@@ -463,7 +463,7 @@ export class AssistenteConsultas {
     if (intent === 'comparacao') {
       const competenciaAnterior = anterior(periodo.competencia);
       const previousRuns = await this.prisma.execucao.findMany({
-        where: {
+        where: { historica_de_execucao_id:null,
           filial_id: run.filial_id,
           periodo: { competencia: competenciaAnterior },
         },

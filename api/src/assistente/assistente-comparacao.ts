@@ -66,7 +66,7 @@ export class AssistenteComparacao {
     const filiais=opcoes.filiais.filter(f=>f.ativa&&(!input.filialId||f.filial_id===input.filialId));
     if(!filiais.length)throw new BadRequestException('Filial não disponível para esta comparação.');
     if(filiais.length>100)throw new BadRequestException('O limite de filiais impede uma comparação completa.');
-    const runs=await this.prisma.execucao.findMany({where:{periodo_id:{in:[atual.periodo_id,...(prev?[prev.periodo_id]:[])]},filial_id:{in:filiais.map(f=>f.filial_id)}},select:{execucao_id:true,filial_id:true,periodo_id:true},take:2001});
+    const runs=await this.prisma.execucao.findMany({where:{periodo_id:{in:[atual.periodo_id,...(prev?[prev.periodo_id]:[])]},filial_id:{in:filiais.map(f=>f.filial_id)}},select:{execucao_id:true,filial_id:true,periodo_id:true,historica_de_execucao_id:true},take:2001});
     if(runs.length>2000)throw new BadRequestException('O limite de execuções impede verificar duplicidades com segurança.');
     const ids=runs.map(r=>r.execucao_id);
     const [tamanhos,processando,pendentes]=ids.length?await Promise.all([
@@ -77,7 +77,8 @@ export class AssistenteComparacao {
     let parcial=false;const linhas:Cell[][]=[];
     const vazio=(nome:string,estado:string,nota:string,a:string|null,b:string|null):Cell[]=>[nome,...Array<Cell>(22).fill(null),estado,nota,b,a];
     for(const filial of filiais){
-      const a=runs.filter(r=>r.filial_id===filial.filial_id&&r.periodo_id===atual.periodo_id),b=runs.filter(r=>r.filial_id===filial.filial_id&&r.periodo_id===prev?.periodo_id);
+      const a=runs.filter(r=>!r.historica_de_execucao_id&&r.filial_id===filial.filial_id&&r.periodo_id===atual.periodo_id),b=runs.filter(r=>!r.historica_de_execucao_id&&r.filial_id===filial.filial_id&&r.periodo_id===prev?.periodo_id);
+      const historicas=runs.filter(r=>r.historica_de_execucao_id&&r.filial_id===filial.filial_id);
       const aid=a.length?a.map(r=>r.execucao_id).join(', '):null,bid=b.length?b.map(r=>r.execucao_id).join(', '):null;
       if(a.length>1||b.length>1){linhas.push(vazio(filial.nome,'Execuções duplicadas','Nenhuma execução foi escolhida para consolidar a comparação.',aid,bid));continue;}
       if(!prev||!a.length||!b.length){linhas.push(vazio(filial.nome,!prev?'Competência anterior não cadastrada':!a.length?'Sem execução atual':'Sem execução anterior','Não é possível inferir valores ou mudanças de população a partir de uma execução ausente.',aid,bid));continue;}
@@ -93,6 +94,7 @@ export class AssistenteComparacao {
         if(variacao.execucaoAtual!==pair[0]||variacao.execucaoAnterior!==pair[1]){parcial=true;linhas.push(vazio(filial.nome,'Execuções alteradas','As execuções mudaram durante a consulta; esta filial não foi consolidada.',aid,bid));continue;}
         const s=resumirVariacao(variacao.rows),fila=pendentes.some(x=>pair.includes(x.execucao_id));
         const notas=[
+          historicas.length?'Execuções históricas preservadas: '+historicas.map(h=>'#'+h.execucao_id+' → principal #'+h.historica_de_execucao_id).join('; ')+'. Não entram novamente na consolidação.':'',
           'Valores calculados; base comparável restrita à mesma pessoa, regra e versão verificáveis. Valores ajustados e registros de envio ao RM não entram nesta soma.',
           s.regrasAlteradas?`${s.regrasAlteradas} resultado(s) com regra alterada excluídos das diferenças comparáveis.`:'',
           s.historicoAusente||s.classificacaoAusente?'Há histórico ou classificação monetária não verificável; não foram substituídos pelo cadastro atual.':'',

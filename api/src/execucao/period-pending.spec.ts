@@ -12,7 +12,7 @@ describe('Pendências de todas as filiais da competência', () => {
         : [{execucaoId: 20, reason: ''}];
     });
     expect(await service.periodPendingScope(13)).toEqual({VARIAVEIS: {elegiveis: 2, bloqueados: 1, filiais: 2}, VALORES: {elegiveis: 1, bloqueados: 0, filiais: 1}});
-    expect(findMany).toHaveBeenCalledWith({where: {periodo_id: 13}, orderBy: {execucao_id: 'desc'}, distinct: ['filial_id'], select: {execucao_id: true, filial_id: true}});
+    expect(findMany).toHaveBeenCalledWith({where: {historica_de_execucao_id:null, periodo_id: 13}, orderBy: {execucao_id: 'desc'}, distinct: ['filial_id'], select: {execucao_id: true, filial_id: true}});
     const execute = jest.spyOn(service, 'execute').mockResolvedValue({status: true, message: 'ok'});
     await service.executePeriodPending(13, 'VALORES', 7, 'session');
     expect(execute).toHaveBeenCalledWith({etapa: 'VALORES', execucaoIds: [21, 11], somentePendencias: true}, 7, 'session');
