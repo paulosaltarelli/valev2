@@ -11,6 +11,7 @@ import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { hasStageFailure, hasStagePending } from './retry-errors';
 import { operationProgress } from './operation-progress';
+import { fixedPaymentZeroDaysError } from '../helpers/calculator/fixed-payment-error';
 import { RmService } from 'src/rm/rm.service';
 import { employeeKey, isBatchChapa, isPve2EventQuery, readPve2EventValues } from './rm-variable-batch';
 
@@ -1110,7 +1111,10 @@ export class OperacaoService {
   async employeeFailures(execucaoId: number, baseId: number) {
     const base = await this.prisma.execucao_funcionario_base.findFirst({
       where: { execucao_id: execucaoId, execucao_funcionario_base_id: baseId },
-      include: { execucao_funcionario: true },
+      include: { execucao_funcionario: { include: {
+        formula: { select: { expressao: true } },
+        memoria_calculo: { select: { variavel_codigo: true, valor: true } },
+      } } },
     });
     if (!base) throw new NotFoundException('Funcionário não pertence a esta execução.');
     const stages = ['VARIAVEIS', 'VALORES'].filter(stage => hasStageFailure(base, stage));
@@ -1127,7 +1131,18 @@ export class OperacaoService {
       const messages = [...new Set(logs.map(log => log.mensagem).filter(message => etapa === 'VARIAVEIS'
         ? message.startsWith('Erro RM variavel ')
         : etapa === 'VALORES' ? /calcular fórmula|processar valores|Sem memoria_calculo/.test(message) : false))].slice(0, 6);
-      return { etapa, mensagens: messages.length ? messages : [queue?.last_error || 'O processamento registrou uma falha, mas não armazenou o detalhe individual.'], atualizadoEm: queue?.updated_at ?? null };
+      const presented = (messages.length ? messages : [queue?.last_error || 'O processamento registrou uma falha, mas não armazenou o detalhe individual.']).map(message => {
+        if (etapa !== 'VALORES' || !message.includes('A fórmula deve retornar um número finito')) return message;
+        const formulaId = /Erro ao calcular fórmula (\d+) para funcionário/.exec(message)?.[1];
+        const failed = base.execucao_funcionario.find(result =>
+          result.status === 'ERRO' && String(result.formula_id) === formulaId);
+        if (!failed) return message;
+        const variables = Object.fromEntries(failed.memoria_calculo.map(item =>
+          [item.variavel_codigo, Number(item.valor)]));
+        const reason = fixedPaymentZeroDaysError(failed.formula.expressao, variables);
+        return reason ? message.replace(/(?:Erro ao calcular fórmula: )?A fórmula deve retornar um número finito/, reason) : message;
+      });
+      return { etapa, mensagens: presented, atualizadoEm: queue?.updated_at ?? null };
     }));
   }
 
