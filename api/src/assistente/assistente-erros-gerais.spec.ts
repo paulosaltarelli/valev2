@@ -9,7 +9,7 @@ import type { AssistenteSql } from './assistente-sql';
 import type { AssistenteInvestigacao } from './assistente-investigacao';
 import { contextoConsulta, type ContextoErros } from './assistente-tipos';
 
-it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcionário, sem SQL paralelo', async () => {
+it.each(['Gere HTML e Excel dos funcionários com erro na competência ativa','tem funcionário com erro?'])('detalha o grupo sem SQL paralelo: %s', async (pergunta) => {
   const grupo: ContextoErros = {
     tipo: 'funcionarios_com_erro',
     periodoId: 7,
@@ -55,7 +55,7 @@ it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcion
                   periodoId: 7,
                   filialId: null,
                   titulo: 'Relatório',
-                  funcionario: 'funcionarios com erro',
+                  funcionario: pergunta.startsWith('Gere')?'funcionarios com erro':undefined,
                 }),
               },
             ],
@@ -78,14 +78,13 @@ it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcion
     );
     const r = await service.responder(
       {
-        pergunta:
-          'Gere HTML e Excel dos funcionários com erro na competência ativa',
+        pergunta,
       },
       'operator',
       'gpt-institucional',
       { modelo: 'gpt-5.4-mini', chave: 'teste' },
       null,
-      [],
+      [{pergunta:'consulta anterior',resposta:'IDENTIFICACAO_PRIVADA_123',respostaModelo:'Resumo anonimizado'}],
     );
     expect(r.texto).toBe('Detalhado');
     expect(consultas.consultar).toHaveBeenCalledWith(
@@ -100,6 +99,8 @@ it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcion
       null,
     );
     expect(sql.responder).not.toHaveBeenCalled();
+    expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain('IDENTIFICACAO_PRIVADA_123');
+    expect(String(fetchMock.mock.calls[0][1]?.body)).toContain('Resumo anonimizado');
   } finally {
     fetchMock.mockRestore();
   }

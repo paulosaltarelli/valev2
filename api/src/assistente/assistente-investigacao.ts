@@ -26,8 +26,8 @@ function contextoDoDiagnostico(dados: ResultadoFatos) {
   const formulas=foco.map(r=>`${r.formula} (#${r.formulaId}; versão histórica ${r.versaoHistorica??'não identificada'}; estado ${r.status})`).join('; ')||'Fórmula não identificada nos registros disponíveis.';
   const memorias=[...new Set(foco.flatMap(r=>(r.variaveisIdentificadas??r.variaveisComMemoria.map(codigo=>({codigo,nome:null}))).map(v=>v.codigo+(v.nome?' — '+v.nome:''))))];
   const ausentes=[...new Set(foco.flatMap(r=>r.variaveisHistoricasSemMemoria??[]))];
-  const logs=(fatos?.logsHistoricos??[]) as {alvo?:string;codigo?:string}[];
-  const erros=[...new Set(logs.filter(l=>l.alvo==='Variável'&&l.codigo).map(l=>l.codigo!))];
+  const logs=(fatos?.logsHistoricos??[]) as {alvo?:string;codigo?:string;variavel?:string}[];
+  const erros=[...new Set(logs.flatMap(l=>[...(l.alvo==='Variável'&&l.codigo?[l.codigo]:[]),...(l.variavel?[l.variavel]:[])]))];
   const variaveis=[erros.length?'Variáveis citadas em erros históricos: '+erros.join(', ')+'.':'Nenhuma variável identificada em log de erro reconhecido.',
     memorias.length?'Com memória nas fórmulas listadas: '+memorias.slice(0,40).join(', ')+(memorias.length>40?' (limitado às primeiras 40)':'')+'.':'Não há variável com memória identificada nas fórmulas listadas.',
     ausentes.length?'Dependências históricas sem memória: '+ausentes.slice(0,40).join(', ')+'. Ausência de memória não comprova falha no RM.':''].filter(Boolean).join(' ');
@@ -100,6 +100,7 @@ export function resumirLogInvestigacao(mensagem: string, matricula: string) {
       tipo: 'Log histórico',
       alvo: 'Fórmula',
       codigo: calculo[1],
+      ...(simbolo?{variavel:simbolo[1]}:{}),
       evidencia,
     };
   }
@@ -280,6 +281,7 @@ export class AssistenteInvestigacao {
                 fatos: f
                   ? {
                       statusFuncionario: f.statusFuncionario,
+                      filasDaExecucaoInteiraIncluindoHistorico:f.filasDaExecucaoInteiraIncluindoHistorico,
                       resultados: [...resultados]
                         .sort(
                           (a, b) =>
@@ -292,6 +294,8 @@ export class AssistenteInvestigacao {
                           formula: r.formula,
                           status: r.status,
                           calculado: r.calculado,
+                          possuiFinalLocal:r.finalLocal!==null,
+                          ajusteManual:r.ajusteManual,
                           versaoHistorica: r.versaoHistorica,
                           memoriasGravadas: r.memoriasGravadas,
                           variaveisHistoricasSemMemoria:
