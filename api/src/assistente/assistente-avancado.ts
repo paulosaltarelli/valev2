@@ -135,6 +135,15 @@ export class AssistenteAvancado {
       const todas=/\bpor filial\b|\bentre filiais\b|\btodas (?:as )?filiais\b/.test(continuacao);
       return this.comparacao.responder({...input,filialId:todas?undefined:input.filialId},perfil);
     }
+    if(!input.matricula&&/^(?:tem|ha|existe|existem|quais|quantos)\s+(?:(?:alguns?|algumas?|os|as)\s+)?(?:funcionarios?|colaboradores?)\s+(?:com|em)\s+(?:erros?|falhas?|problemas?)(?:\s+(?:nesta|nessa|na)\s+competencia)?[\s?!.]*$/.test(continuacao)){
+      const periodo=input.periodoId?periodos.find(p=>p.periodo_id===input.periodoId):periodos[0];
+      if(!periodo)throw new BadRequestException('Não há competência ativa compatível com a consulta.');
+      const filialId=input.todasFiliais?undefined:input.filialId;
+      if(filialId&&!filiais.some(f=>f.filial_id===filialId))throw new BadRequestException('Filial não disponível para esta consulta.');
+      const panorama=await this.consultas.consultar('erros',{...input,periodoId:periodo.periodo_id,filialId},perfil);
+      const grupo=panorama[contextoConsulta];
+      return grupo?.funcionarioBaseIds.length?this.investigacao.responderGrupo(grupo,provedor,credencial,contexto):panorama;
+    }
     if (
       grupoAnterior?.tipo === 'funcionarios_com_erro' &&
       /\b(?:eles|elas|esses|essas|estes|estas)\b/.test(continuacao) &&

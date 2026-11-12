@@ -99,8 +99,10 @@ it.each(['Gere HTML e Excel dos funcionários com erro na competência ativa','t
       null,
     );
     expect(sql.responder).not.toHaveBeenCalled();
-    expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain('IDENTIFICACAO_PRIVADA_123');
-    expect(String(fetchMock.mock.calls[0][1]?.body)).toContain('Resumo anonimizado');
+    if(pergunta.startsWith('Gere')){
+      expect(String(fetchMock.mock.calls[0][1]?.body)).not.toContain('IDENTIFICACAO_PRIVADA_123');
+      expect(String(fetchMock.mock.calls[0][1]?.body)).toContain('Resumo anonimizado');
+    }else expect(fetchMock).not.toHaveBeenCalled();
   } finally {
     fetchMock.mockRestore();
   }
