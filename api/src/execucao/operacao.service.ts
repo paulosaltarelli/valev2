@@ -180,7 +180,7 @@ export class OperacaoService {
       WHERE e.periodo_id = ${periodo.periodo_id}`),
     ]);
     // Aggregate in SQL instead of loading every duplicated memory row or its value.
-
+    
     const savedByBase = new Map<number, string[]>();
     for (const item of memory) {
       const saved = savedByBase.get(item.baseId) ?? [];
@@ -247,6 +247,7 @@ export class OperacaoService {
             .filter((q) => q.next_run_at && q.tentativas > 0)
             .map((q) => q.next_run_at!)
             .sort((a, b) => +a - +b)[0] ?? null;
+        const errorPeople = bases.filter(b => ['ERRO_VARIAVEIS','ERRO_RESULTADOS','RESULTADOS_PARCIAL','ERRO_RM'].includes(b.status ?? '') || b.execucao_funcionario.some(r=>r.status === 'ERRO')).length;
         const errors = bases.filter(
           (b) =>
             [
@@ -292,6 +293,7 @@ export class OperacaoService {
           rm,
           conferidos,
           errors,
+          errorPeople,
           processing,
           pending,
           controleFila: e.controle_fila,
@@ -335,6 +337,10 @@ export class OperacaoService {
         ] } } },
         ...(filter === 'pendencias' ? [{ status: 'ERRO_RM' }] : []),
       ] }];
+    if (filter === 'erros') where.AND = [{ OR: [
+      {status:{in:['ERRO_VARIAVEIS','ERRO_RESULTADOS','RESULTADOS_PARCIAL','ERRO_RM']}},
+      {execucao_funcionario:{some:{formula:{ativa:true},status:'ERRO'}}},
+    ] }];
     if (filter === 'conferencia' || filter === 'resultados')
       where.status = { in: ['RESULTADOS_PROCESSADOS', 'ERRO_RM'] };
     if (filter === 'enviados') where.status = 'ENVIADO_RM';

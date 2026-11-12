@@ -125,7 +125,11 @@ export const router = createBrowserRouter([
         path: "falhas-por-causa",
         lazy: async () => ({ Component: (await import("../pages/FalhasPage")).FalhasPage }),
       },
-      { path: 'fechamento', lazy: async () => ({ Component: (await import("../pages/FechamentoPage")).FechamentoPage }) },
+      { path: 'fechamento', loader: ({request}) => {
+        const params = new URL(request.url).searchParams;
+        params.set('detalhes', '1');
+        throw redirect(`/processamento?${params}`);
+      } },
       { path: 'variacao-competencias', lazy: async () => ({ Component: (await import("../pages/VariacaoPage")).VariacaoPage }) },
     ],
   },
