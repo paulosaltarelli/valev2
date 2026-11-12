@@ -55,6 +55,7 @@ it('gera relatório de erros com o mesmo grupo operacional e detalhe por funcion
                   periodoId: 7,
                   filialId: null,
                   titulo: 'Relatório',
+                  funcionario: 'funcionarios com erro',
                 }),
               },
             ],

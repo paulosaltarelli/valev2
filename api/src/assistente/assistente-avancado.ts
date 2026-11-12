@@ -197,8 +197,7 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       .toLowerCase();
     const relatorioErros =
       !input.matricula &&
-      !plano.funcionario &&
-      /funcionar|colaborador/.test(perguntaNormalizada) &&
+      /funcionarios|colaboradores/.test(perguntaNormalizada) &&
       /erro|falh|problema/.test(perguntaNormalizada) &&
       /relatorio|dashboard|\bhtml\b|\bexcel\b|\bxlsx\b/.test(
         perguntaNormalizada,
