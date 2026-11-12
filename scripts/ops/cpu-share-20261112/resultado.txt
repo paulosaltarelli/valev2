@@ -1,0 +1,16 @@
+API sem teto de CPU; prioridade relativa cpu_shares=512; cpu.max='max 100000'; cpu.weight=59 confirmado no host. VPS: 2 CPUs. Memória da API mantida em 768 MiB. Banco, web, PHP e filas sem alteração de configuração. Apenas API recriada, usando a mesma imagem.
+
+Antes, a API estava limitada a 1 CPU. Na rodada final anterior à mudança, houve 66 intervalos com throttling em 92, e 3.819.761 microssegundos de throttling. Após a remoção, os contadores de throttling ficaram zerados.
+
+Benchmark somente leitura: resumo Processamentos, seis amostras por competência em cada rodada, mesmo código e mesmos dados. Antes e depois com duas consultas de aquecimento. A primeira rodada posterior ainda sofreu oscilações após recriação; foi registrada integralmente e uma nova rodada foi feita após estabilização.
+Competência interna 11: média antes 758 ms; imediatamente depois 733 ms; estabilizada 556 ms (26,6% menor). Mediana antes 577,5; estabilizada 474 ms.
+Competência interna 12: média antes 526 ms; imediatamente depois 1028 ms; estabilizada 672 ms (27,8% maior). Mediana antes 605; estabilizada 612 ms.
+Conclusão: eliminada a restrição artificial por quota, mas não comprovado ganho consistente de latência em todas as consultas. Carga concorrente e tempo do banco continuam influenciando. Não generalizar o ganho de uma competência para todo o sistema.
+
+Filas comparadas antes e após todas as medições: sem nenhuma alteração. 17 execuções PAUSADA; 1951 itens PENDENTE; 3606 CONCLUIDO; 587 ERRO; zero PROCESSANDO. Não foram iniciados testes de processamento nem enviados eventos ao RM.
+
+Arquivos no servidor: /opt/valeexpresso/releases/cpu-share-20261112
+Backup: compose.before.yml e resources.before.json.
+Medições: before.json, after.json e after-stable.json.
+Configuração persistente: /opt/valeexpresso/app/deploy/compose.vps.yml, serviço api, substituição exclusiva de cpus: 1.0 por cpu_shares: 512.
+Reversão: python3 /opt/valeexpresso/releases/cpu-share-20261112/rollback.py (verifica alterações posteriores e recria somente API). Não requer restaurar banco.
