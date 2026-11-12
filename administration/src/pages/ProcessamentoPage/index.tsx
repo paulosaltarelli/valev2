@@ -331,7 +331,7 @@ export function ProcessamentoPage() {
           </button>
         </div>
       </section>
-      {!history && query.data?.periodo && <OperationReportTools periodo={String(query.data.periodo.periodo_id)} refreshKey={query.data.updatedAt} />}
+      {!history && query.data?.periodo && <OperationReportTools periodo={String(query.data.periodo.periodo_id)} visibleExecutionIds={rows.map(r=>r.id)} />}
       {(focus || branchTerm) && <div className="op-toolbar mb-3"><span className="op-muted">Recorte ativo{branchTerm ? ` · ${branchTerm}` : ""}</span><button className="btn btn-link btn-sm" onClick={()=>{const next=new URLSearchParams(params);next.delete('foco');next.delete('busca');setParams(next);}}>Limpar recorte</button></div>}
 
       <QueryNotice {...query} />

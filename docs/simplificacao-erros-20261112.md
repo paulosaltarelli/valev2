@@ -15,7 +15,14 @@ Base obtida da fonte atual de produção, sem alterar cálculos, elegibilidade d
 ## Verificação antes da publicação
 - TypeScript/Vite e build da API aprovados.
 - 40 testes em 6 suítes aprovados, incluindo fórmulas desativadas, zero, regras múltiplas, revisões de envio e regressões de pendências/processamento.
-- Leitura com classes candidatas, sem bootstrap de workers: 18 execuções e 1.134 funcionários. Contagens de completos/enviados/erros iguais entre operação e relatório; extrato e filtro Erros conferidos.
+- Leitura com classes candidatas, sem bootstrap de workers: 45 execuções e 2.895 funcionários. Contagens de completos/enviados/erros iguais entre operação e relatório; extrato e filtro Erros conferidos.
 - A primeira comparação detectou dados mudando durante envios reais. Repetida a leitura estável, contagens bateram. Reinício bloqueado enquanto houver itens PROCESSANDO.
-- Backup previsto: /opt/valeexpresso/releases/simplificacao2-20261112/backup.
-- Validação visual e publicação: registrar após conclusão.
+- Backup publicado: /opt/valeexpresso/releases/simplificacao3-20261112/backup.
+- Publicação concluída; menu desktop/mobile, cartão Erros (ativar/limpar filtro), redirecionamento legado e exportação Excel verificados.
+
+## Ajustes finais
+- Uma lista por competência; versões anteriores em controle secundário quando existentes.
+- Modal de contagens acompanha o filtro operacional e atualiza ao abrir, sem recarga a cada atualização do resumo.
+- Tabela de contagens com rolagem horizontal própria no celular.
+- Frontend complementar: /opt/valeexpresso/releases/simplificacao-final3-20261112/backup. Sem reinício da API.
+- As 17 execuções inicialmente pausadas foram retomadas. Na conferência final, 16 estavam novamente pausadas e foram retomadas após nova autorização do usuário; 153 itens em andamento naquele instante.
