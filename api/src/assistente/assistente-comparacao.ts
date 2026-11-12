@@ -114,7 +114,7 @@ export class AssistenteComparacao {
       detalhes:'Atual: '+atual.competencia+'. Anterior: '+anterior+'. A competência anterior é o mês de calendário imediatamente anterior, mesmo quando inativa. Cada filial precisa ter uma única execução em cada período. Pessoas são identificadas por coligada + matrícula, sem nomes no relatório agregado. Entrada/saída na população não confirma admissão ou desligamento. As contagens de resultados são por funcionário e fórmula; mudanças de regra e versão podem se sobrepor. Fórmulas monetárias são classificadas exclusivamente por snapshots verificáveis (tipo V e polaridade + ou -). Dias e demais unidades não são somados a reais. Ausência de base comparável é —; zero calculado continua zero. Não há conciliação com RM nem atribuição causal automática. Cada linha é um snapshot de leitura da filial; filiais em lote ativo são sinalizadas e não consolidadas.',
       tabela:{colunas,linhas,parcial},
       apresentacao:{titulo:`Comparativo histórico · ${atual.competencia} × ${anterior}`,grafico:'barras',dimensao:'Filial',metrica:temPago?'Diferença do pago comparável':'Resultados não comparáveis'},
-      links:[{texto:'Variação por competência',url:'/variacao-competencias'},{texto:'Processamentos',url:'/processamento'}],
+      links:[{texto:'Variação por competência',url:'/variacao-competencias'},{texto:'Processamentos',url:'/processamento'},...runs.filter(r=>r.historica_de_execucao_id).map(r=>({texto:'Histórica #'+r.execucao_id+' · principal #'+r.historica_de_execucao_id,url:'/processamento/'+r.execucao_id}))],
     };
   }
 }
