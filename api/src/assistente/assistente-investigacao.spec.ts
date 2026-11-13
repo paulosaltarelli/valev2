@@ -144,8 +144,8 @@ it('distingue erro, ausência e zero e cruza fatos do banco com código sem envi
     expect(resposta.texto).toContain('Filial de teste');
     expect(resposta.texto).toContain('PESSOA DE TESTE');
     expect(resposta.texto).toContain('000123');
-    expect(resposta.texto).toContain('Vale (#1');
-    expect(resposta.texto).toContain('DIAS');
+    expect(resposta.detalhes).toContain('Vale (#1');
+    expect(resposta.detalhes).toContain('DIAS');
     expect(resposta.tabela?.colunas).toContain('Competência');
     expect(resposta[respostaParaModelo]).not.toContain('000123');
     expect(resposta[respostaParaModelo]).not.toContain('PESSOA DE TESTE');
@@ -255,7 +255,9 @@ it('lista o grupo capturado com banco e código e não envia nomes ou matrícula
     );
     expect(resposta.competencia).toBe('10/2026');
     expect(resposta.texto).toContain('PESSOA DE TESTE');
-    expect(resposta.texto).toContain('Fórmulas: Vale (#1');
+    expect(resposta.texto).not.toContain('Fórmulas:');
+    expect(resposta.tabela?.linhas[0][10]).toContain('Vale (#1');
+    expect(resposta.tabela?.colunas).toContain('Interpretação para o usuário');
     expect(resposta.tabela?.colunas).toContain('Variáveis e memórias relacionadas');
     expect(resposta.tabela?.linhas[0][8]).toBe('10/2026');
     expect(resposta[respostaParaModelo]).not.toContain('PESSOA DE TESTE');

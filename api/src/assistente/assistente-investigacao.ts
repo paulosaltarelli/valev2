@@ -5,7 +5,7 @@ import { lerSnapshotFormula } from '../dash/operational-reports';
 import { classificarLog, situacaoValor } from './assistente-consultas';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { consultarModelo } from './assistente-intencao';
-import { classificarFalhaIndividual, criarAuditoria, formatarAuditoria, validarSelecao, type AchadoAuditavel, type FatosAuditaveis } from './assistente-auditoria';
+import { classificarFalhaIndividual, temRecusaDuplicidadeHistorica, criarAuditoria, formatarAuditoria, interpretarParaUsuario, validarSelecao, type AchadoAuditavel, type FatosAuditaveis } from './assistente-auditoria';
 import { promptSugerido, regrasFixas } from './assistente-prompt';
 import {
   contextoConsulta,
@@ -280,8 +280,7 @@ export class AssistenteInvestigacao {
       texto:
         `Listei ${casos.length} ${casos.length === 1 ? 'registro de funcionário' : 'registros de funcionários'} do grupo consultado em ${grupo.competencia}.` +
         '\n\n'+casos.slice(0,5).map(c=>{
-          const d=contextoDoDiagnostico(c.dados);
-          return `${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm}) · ${c.pessoa.execucao.filial.nome} · ${grupo.competencia} · Execução #${c.pessoa.execucao.execucao_id} · ${etapaDoEstado(c.pessoa.status)}.\nFórmulas: ${d.formulas}\nVariáveis: ${d.variaveis}\n${evidenciaDoCaso(c.dados)}\nInterpretação e próximos passos: ${explicacoes.get(c.referencia)??c.dados.texto}`;
+          return `${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm}) · ${c.pessoa.execucao.filial.nome} · ${grupo.competencia}.\n${interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])}`;
         }).join('\n\n')+(casos.length>5?'\n\nResumo textual dos primeiros 5 registros; a tabela detalha os '+casos.length+' registros lidos.':'') +
         (parcial
           ? ' O detalhamento é parcial: limite de 20 registros, alteração do recorte, duplicidade ou falha de leitura; não escolhi outra execução para substituir registros.'
@@ -326,6 +325,7 @@ export class AssistenteInvestigacao {
           'Etapa indicada pelo estado',
           'Fórmulas e versões históricas',
           'Variáveis e memórias relacionadas',
+          'Interpretação para o usuário',
         ],
         linhas: casos.map((c) => [
           c.pessoa.funcionario_id_rm,
@@ -351,6 +351,7 @@ export class AssistenteInvestigacao {
           etapaDoEstado(c.pessoa.status),
           contextoDoDiagnostico(c.dados).formulas,
           contextoDoDiagnostico(c.dados).variaveis,
+          interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[]),
         ]),
         parcial,
       },
@@ -554,7 +555,7 @@ export class AssistenteInvestigacao {
       formulasAtivasNoCadastroAtual: formulasAtivas,
       resultados: evidencias,
       logsHistoricos: historico,
-      filasIndividuais:filasIndividuais.slice(0,100).filter((f,i,all)=>all.findIndex(x=>x.tipo===f.tipo)===i).map(f=>({tipo:f.tipo,status:f.status,categoria:classificarFalhaIndividual(f.last_error,f.tipo),data:f.updated_at?.toISOString()??null})),
+      filasIndividuais:filasIndividuais.slice(0,100).filter((f,i,all)=>all.findIndex(x=>x.tipo===f.tipo)===i).map(f=>({tipo:f.tipo,status:f.status,categoria:classificarFalhaIndividual(f.last_error,f.tipo),recusaDuplicidadeHistorica:temRecusaDuplicidadeHistorica(f.last_error,f.tipo),data:f.updated_at?.toISOString()??null})),
       limites: {
         resultadosParciais: resultados.length > 100,
         logsParciais: logs.length > 100,
@@ -577,13 +578,14 @@ export class AssistenteInvestigacao {
       [fatosInternos]: fatos,
       auditoria:{versao:'evidencias-v1',casos:[{referencia:'Caso 1',selecaoModeloValidada,achados:catalogo.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}]},
       ...meta,
-      texto: `Competência ${escopo.competencia} · Filial ${meta.filial ?? execucao.filial.nome} · Funcionário ${pessoa.nome_funcionario ?? 'nome não informado'} (matrícula ${pessoa.funcionario_id_rm}) · Execução #${execucao.execucao_id}.\n\n` + resumo + '\nFórmulas: '+detalhe.formulas+'\nVariáveis: '+detalhe.variaveis + (explicacao ? '\n\n' + explicacao.slice(0, 6000) : ''),
+      texto: `Competência ${escopo.competencia} · Filial ${meta.filial ?? execucao.filial.nome} · Funcionário ${pessoa.nome_funcionario ?? 'nome não informado'} (matrícula ${pessoa.funcionario_id_rm}).\n\n` + interpretarParaUsuario(fatos,catalogo),
       fonte:
         meta.fonte +
         (codigo.fontes.length
           ? ' · ' + codigo.fontes.join(' · ')
           : ' · código indisponível'),
       detalhes:
+        explicacao + '\nFórmulas: '+detalhe.formulas+'\nVariáveis: '+detalhe.variaveis+'\n' +
         'As memórias foram contadas por resultado/fórmula; podem repetir variáveis. Os valores são registros existentes, sem recalcular benefícios. ' +
         'Logs reconhecidos: ' +
         JSON.stringify(historico) +

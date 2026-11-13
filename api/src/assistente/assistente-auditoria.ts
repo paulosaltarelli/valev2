@@ -4,7 +4,7 @@ export type ResultadoAuditavel = {
   variaveisHistoricasSemMemoria:string[]|null;
 };
 export type CategoriaFila = 'HTTP_401'|'HTTP_403'|'HTTP_400'|'HTTP_429'|'TIMEOUT'|'SEM_CONFIRMACAO'|'REGRA_AUSENTE'|'REGRA_DUPLICADA'|'SESSAO_AUSENTE'|'NAO_CLASSIFICADO';
-export type FilaAuditavel={tipo:string;status:string;categoria:CategoriaFila;data:string|null};
+export type FilaAuditavel={tipo:string;status:string;categoria:CategoriaFila;data:string|null;recusaDuplicidadeHistorica?:boolean};
 export type FatosAuditaveis={
   statusFuncionario?:string|null;resultados?:ResultadoAuditavel[];
   logsHistoricos?:{alvo?:string;codigo?:string;variavel?:string;evidencia:string;data:string}[];
@@ -30,6 +30,14 @@ export function classificarFalhaIndividual(raw:string|null,tipo:string):Categori
   if(ultimo.includes('Regra não retornada pelo RM. Atualize os vínculos antes de processar.'))return 'REGRA_AUSENTE';
   if(ultimo.includes('Mais de um vínculo para a mesma regra. Atualize os vínculos antes de processar.'))return 'REGRA_DUPLICADA';
   return 'NAO_CLASSIFICADO';
+}
+
+/** Reconhece a última recusa específica do envio, sem promovê-la à causa atual. */
+export function temRecusaDuplicidadeHistorica(raw:string|null,tipo:string):boolean {
+  if(tipo!=='ENVIAR_RM'||!raw)return false;
+  const eventos=raw.replace(/\\n/g,'\n').split(/(?=^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - \[[A-Z_]+\])/m).map(s=>s.trim());
+  const especifico=eventos.filter(e=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - \[ERRO_ENVIAR_RM\]/.test(e)).at(-1);
+  return !!especifico&&/chave duplicada/i.test(especifico)&&/Erro ao salvar metadados no RM/i.test(especifico);
 }
 
 export function criarAuditoria(fatos:FatosAuditaveis|undefined,codigo:TrechoAuditavel[]):AchadoAuditavel[]{
@@ -73,6 +81,12 @@ export function criarAuditoria(fatos:FatosAuditaveis|undefined,codigo:TrechoAudi
       add('hipotese_individual_'+i,'hipotese',interpretacoes[fila.categoria]+' Não atribuir essa falha a outras fórmulas, variáveis ou pessoas.',evidencias,verificacao);
     }
   }
+  for(const [i,fila]of (fatos.filasIndividuais??[]).entries()){
+    if(!fila.recusaDuplicidadeHistorica||fila.tipo!=='ENVIAR_RM')continue;
+    const evidencias=['banco:fila_individual:'+i,...(fonteRm?[ref(fonteRm)]:[])];
+    add('recusa_duplicidade_'+i,'historico','O RM informou chave duplicada em uma tentativa registrada de envio deste funcionário. O registro não comprova que a mesma situação persista nem identifica a composição da chave.',evidencias,'Conferir o lançamento correspondente no RM antes de repetir o envio.');
+    if(fonteRm)add('possibilidade_duplicidade_'+i,'hipotese','Uma possibilidade para aquela recusa é já existir um lançamento para o funcionário, evento e competência. A mensagem não identifica qual campo duplicou; isso precisa ser conferido no RM e não confirma a causa atual.',evidencias,'Conferir funcionário, evento, competência e demais campos da chave no RM. Não excluir, substituir ou reenviar automaticamente. Este diagnóstico não realiza conciliação com RM.');
+  }
   for(const [i,log]of logs.slice(0,10).entries()){
     add('log_historico_'+i,'historico',log.evidencia+' Registro histórico: '+log.data+'. Não comprova, sozinho, a causa atual.',['banco:log_reconhecido:'+i],'Correlacionar o log à fórmula, revisão e tentativa afetadas.');
     const r=rs.find(r=>String(r.formulaId)===log.codigo&&r.status==='ERRO');
@@ -96,4 +110,33 @@ export function formatarAuditoria(catalogo:AchadoAuditavel[],selecao:string[]=[]
   const nomes:Record<string,string>={'banco:estado_funcionario':'estado do funcionário','banco:resultados':'resultados persistidos','banco:memorias_por_resultado':'memórias por fórmula','banco:formula_snapshot':'fórmula histórica','banco:limites_de_leitura':'limites da consulta'};
   const fonte=(id:string)=>nomes[id]??id.replace(/^codigo:/,'código ').replace(/^banco:resultado:/,'resultado da fórmula #').replace(/^banco:fila_individual:(\d+)$/,(_,n)=>'fila individual '+(Number(n)+1)).replace(/^banco:log_reconhecido:(\d+)$/,(_,n)=>'log histórico '+(Number(n)+1));
   return ordem.map(id=>catalogo.find(a=>a.id===id)!).filter(Boolean).map(a=>`${a.tipo==='hipotese'?'Hipótese apoiada, não confirmada':a.tipo==='historico'?'Evidência histórica':a.tipo==='limitacao'?'Limitação':'Evidência'}: ${a.texto}${a.evidencias.length?' Fontes: '+a.evidencias.map(fonte).join(', ')+'.':''} Verificação: ${a.verificacao}`).join('\n');
+}
+
+/** Linguagem de operação; detalhes e fontes continuam na auditoria expansível. */
+export function interpretarParaUsuario(fatos:FatosAuditaveis|undefined,catalogo:AchadoAuditavel[]):string {
+  if(!fatos) return 'Não consegui consultar os dados deste funcionário. Tente novamente antes de concluir o motivo do problema.';
+  const rs=fatos.resultados??[], valores=rs.filter(r=>r.calculado!==null).length, estado=fatos.statusFuncionario??'';
+  const etapa=estado==='ERRO_RM'?'O registro indica um problema na etapa de envio ao RM. Isso não confirma se o RM recebeu os valores.':/VARIAVEIS/.test(estado)?'O registro indica um problema na busca das informações usadas no cálculo.':/RESULTADO|FORMULA|CALCULO/.test(estado)?'O registro indica um problema na etapa de cálculo.':'Há um problema registrado para este funcionário; os dados consultados não esclarecem a etapa.';
+  const impacto=valores>0?'Há valores já calculados. O erro não significa que todos os valores estejam faltando.':'Não encontrei valores calculados nos resultados consultados. Isso não significa que o valor seja zero.';
+  const hip=catalogo.filter(a=>a.tipo==='hipotese');
+  // Categorias reconhecidas pela auditoria individual; nenhuma inferência a partir da fila global.
+  const fila=(fatos.filasIndividuais??[]).find(f=>f.status==='ERRO'&&((estado==='ERRO_RM'&&f.tipo==='ENVIAR_RM')||(/VARIAVEIS/.test(estado)&&f.tipo==='VARIAVEIS')||(/RESULTADO/.test(estado)&&f.tipo==='VALORES')));
+  let orientacao='Os registros disponíveis ainda não permitem confirmar o motivo. Peça ao responsável pelo processamento para conferir a última tentativa deste funcionário antes de tentar novamente.';
+  if(hip.length&&fila){
+    const mensagens:Partial<Record<CategoriaFila,string>>={
+      HTTP_401:'O serviço recusou a autenticação naquela tentativa. Peça ao responsável para verificar a conexão com o RM; isso não comprova que a senha esteja errada agora.',
+      HTTP_403:'O serviço recusou o acesso naquela tentativa. Peça ao responsável para conferir a permissão de acesso ao RM.',
+      HTTP_400:'O serviço recusou os dados enviados. Peça ao responsável para conferir quais informações foram recusadas; os registros não identificam o campo.',
+      HTTP_429:'O serviço limitou as solicitações naquela tentativa. Peça ao responsável para conferir a disponibilidade antes de tentar novamente.',
+      TIMEOUT:'A resposta demorou além do permitido. Confira no RM se o envio foi recebido antes de repetir, para evitar duplicidade.',
+      SEM_CONFIRMACAO:'O envio ficou sem confirmação. Confira no RM se os valores chegaram antes de repetir.',
+      SESSAO_AUSENTE:'A tentativa não tinha uma sessão disponível. Peça ao responsável para entrar novamente e conferir a tentativa pendente.',
+      REGRA_AUSENTE:'Não foi encontrada a regra de transporte necessária. Confira o cadastro aplicável ao funcionário.',
+      REGRA_DUPLICADA:'Foi encontrada mais de uma regra de transporte aplicável. Peça ao responsável para revisar o cadastro antes de repetir.'
+    };
+    orientacao=mensagens[fila.categoria]??orientacao;
+  }
+  if(hip.some(a=>a.id.startsWith('hipotese_simbolo_'))) orientacao='Uma informação necessária ao cálculo aparece sem valor e também é citada no erro. Confira se ela foi obtida para este funcionário; ainda falta confirmar por que está ausente.';
+  if(catalogo.some(a=>a.id.startsWith('possibilidade_duplicidade_'))) orientacao='O RM informou que um registro já existia em uma tentativa de envio. Pode já haver um lançamento deste funcionário para o mesmo evento e competência. Confira o lançamento no RM antes de reenviar, para evitar duplicidade. A mensagem não identifica qual campo duplicou nem confirma que o problema continue agora.';
+  return [etapa,rs.length?`${valores} de ${rs.length} resultados consultados têm valor calculado.`:'',impacto,orientacao].filter(Boolean).join(' ');
 }

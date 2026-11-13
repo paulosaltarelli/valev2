@@ -225,6 +225,7 @@ try {
         "Estado atual",
         "Resultados com erro",
         "Evidência e orientação",
+        "Interpretação para o usuário",
       ],
       linhas: Array.from({ length: 20 }, (_, i) => [
         String(i + 1).padStart(6, "0"),
@@ -235,6 +236,7 @@ try {
         i === 0
           ? '=HYPERLINK("https://example.invalid")'
           : "Evidência de teste\nOrientação de teste",
+        "Pode já haver um lançamento. Confira no RM antes de reenviar.",
       ]),
       parcial: false,
     },
@@ -260,6 +262,8 @@ try {
     pacote20.html.includes("visao-sintetica") &&
       pacote20.html.includes("visao-analitica"),
   );
+  assert(pacote20.html.includes('id="casos-funcionarios"'));
+  assert.equal(dados20.tabela.linhas[0][6], "Pode já haver um lançamento. Confira no RM antes de reenviar.");
   await assert.rejects(
     prepararPacote({
       texto: "segredo-que-nao-deve-aparecer",

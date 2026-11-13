@@ -40,6 +40,7 @@ export function iniciarRelatorio(
   };
   const formatMetric = (v: unknown, m: number) =>
     formatar(v, m < 0 ? "inteiro" : plano.colunas[m].tipo);
+  const casosIndividuais = colunas.some(c => /^funcionario$/i.test(normal(c))) && colunas.some(c => /erro|estado atual|evidencia/.test(normal(c)));
   const visao = (analitica: boolean) => {
     $("analitico").hidden = !analitica;
     $("visao-sintetica").setAttribute("aria-pressed", String(!analitica));
@@ -512,6 +513,30 @@ export function iniciarRelatorio(
     const tamanho = Number(select("tamanho").value),
       total = Math.max(1, Math.ceil(recorte.length / tamanho));
     pagina = Math.max(0, Math.min(pagina, total - 1));
+    const casos = $("casos-funcionarios");
+    casos.replaceChildren();
+    casos.hidden = !casosIndividuais;
+    if (casosIndividuais) {
+      const nome = colunas.findIndex(c => /^funcionario$/i.test(normal(c)));
+      const campos = colunas.map((c,i) => ({c,i})).filter(x => /^(filial|competencia|matricula)$/.test(normal(x.c)));
+      const exibidas = imprimir ? recorte : recorte.slice(pagina*tamanho,(pagina+1)*tamanho);
+      exibidas.forEach(row => {
+        const caso = document.createElement("details"), resumo = document.createElement("summary"), titulo = document.createElement("strong"), contexto = document.createElement("span"), dl = document.createElement("dl");
+        titulo.textContent = valor(row[nome]);
+        contexto.textContent = campos.map(({i}) => plano.colunas[i].titulo + ": " + formatar(row[i],plano.colunas[i].tipo)).join(" · ");
+        resumo.append(titulo,contexto);
+        const simples=colunas.findIndex(c => c==='Interpretação para o usuário');
+        if(simples>=0){const leitura=document.createElement("p");leitura.textContent=valor(row[simples]);resumo.appendChild(leitura);}
+        const dica=document.createElement("small");dica.textContent="Abrir detalhes e evidências";resumo.appendChild(dica);
+        plano.colunas.forEach((c,i) => {
+          const dt = document.createElement("dt"), dd = document.createElement("dd");
+          if(c.nome==='Interpretação para o usuário')return;
+          dt.textContent = c.titulo; dd.textContent = formatar(row[i],c.tipo); dl.append(dt,dd);
+        });
+        caso.append(resumo,dl); casos.append(caso);
+      });
+      if (!recorte.length) casos.textContent = "Nenhum funcionário corresponde a este recorte.";
+    }
     const body = $("corpo");
     body.replaceChildren();
     (imprimir
@@ -700,5 +725,6 @@ export function iniciarRelatorio(
       b.disabled = false;
     }
   };
+  visao(casosIndividuais);
   atualizar();
 }

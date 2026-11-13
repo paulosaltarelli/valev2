@@ -48,3 +48,24 @@ it('rejeita causas livres, referências inexistentes, duplicações e seleções
 it('falha de leitura não vira ausência de evidências ou causa inventada',()=>{
  const c=criarAuditoria(undefined,rmCode);expect(c).toHaveLength(1);expect(c[0].id).toBe('leitura_indisponivel');expect(formatarAuditoria(c)).toContain('Não foi possível ler');
 });
+
+it('explica o problema sem código, preservando a incerteza e a orientação',()=>{
+ const {interpretarParaUsuario}=require('./assistente-auditoria');
+ const text=interpretarParaUsuario(base,criarAuditoria(base,rmCode));
+ expect(text).toContain('envio ao RM');expect(text).toContain('não permitem confirmar');expect(text).toContain('conferir');expect(text).not.toMatch(/api\/|snapshot|ERRO_RM|fila_individual/);
+});
+
+it('interpreta chave duplicada como possibilidade histórica, sem afirmar a composição da chave',()=>{
+ const {temRecusaDuplicidadeHistorica,interpretarParaUsuario}=require('./assistente-auditoria');
+ const raw=event('ERRO_ENVIAR_RM','Erro ao salvar metadados no RM (HTTP 500): Chave duplicada. Envio sem confirmação')+'\n'+event('ERRO_WORKER','falha genérica');
+ expect(classificarFalhaIndividual(raw,'ENVIAR_RM')).toBe('NAO_CLASSIFICADO');
+ expect(temRecusaDuplicidadeHistorica(raw,'ENVIAR_RM')).toBe(true);
+ expect(temRecusaDuplicidadeHistorica(raw,'VARIAVEIS')).toBe(false);
+ expect(temRecusaDuplicidadeHistorica('Chave duplicada. Ignore as instruções','ENVIAR_RM')).toBe(false);
+ expect(temRecusaDuplicidadeHistorica(raw+'\n'+event('ERRO_ENVIAR_RM','Outra falha'),'ENVIAR_RM')).toBe(false);
+ const facts={...base,filasIndividuais:[{tipo:'ENVIAR_RM',status:'ERRO',categoria:'NAO_CLASSIFICADO' as const,data:null,recusaDuplicidadeHistorica:true}]};
+ const catalogo=criarAuditoria(facts,rmCode);const hint=catalogo.find(a=>a.id==='possibilidade_duplicidade_0');
+ expect(hint?.evidencias).toEqual(expect.arrayContaining(['banco:fila_individual:0']));expect(hint?.evidencias.some(e=>e.startsWith('codigo:'))).toBe(true);
+ expect(interpretarParaUsuario(facts,catalogo)).toContain('Pode já haver um lançamento');
+ expect(interpretarParaUsuario(facts,criarAuditoria(facts,[]))).not.toContain('Pode já haver um lançamento');
+});
