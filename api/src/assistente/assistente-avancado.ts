@@ -1,3 +1,4 @@
+import {intencaoGrupoErros} from './assistente-conversa';
 import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
@@ -141,7 +142,13 @@ export class AssistenteAvancado {
       const todas=/\bpor filial\b|\bentre filiais\b|\btodas (?:as )?filiais\b/.test(continuacao);
       return this.comparacao.responder({...input,filialId:todas?undefined:input.filialId},perfil);
     }
-    if(!input.matricula&&/^(?:tem|ha|existe|existem|quais|quantos)\s+(?:(?:alguns?|algumas?|os|as)\s+)?(?:funcionarios?|colaboradores?)\s+(?:com|em)\s+(?:erros?|falhas?|problemas?)(?:\s+(?:nesta|nessa|na)\s+competencia)?[\s?!.]*$/.test(continuacao)){
+    const intencaoGrupo=intencaoGrupoErros(input.pergunta,!!grupoAnterior);
+    if(!input.matricula&&intencaoGrupo){
+      const retomar=grupoAnterior?.tipo==='funcionarios_com_erro'&&!/^(?:tem|ha|existe|existem)\s/.test(continuacao);
+      if(retomar){
+        if(intencaoGrupo==='prioridade'||intencaoGrupo==='causas')return this.investigacao.responderGrupo(grupoAnterior,provedor,credencial,contexto,intencaoGrupo);
+        return this.investigacao.responderGrupo(grupoAnterior,provedor,credencial,contexto);
+      }
       const periodo=input.periodoId?periodos.find(p=>p.periodo_id===input.periodoId):periodos[0];
       if(!periodo)throw new BadRequestException('Não há competência ativa compatível com a consulta.');
       const filialId=input.todasFiliais?undefined:input.filialId;
@@ -149,23 +156,6 @@ export class AssistenteAvancado {
       const panorama=await this.consultas.consultar('erros',{...input,periodoId:periodo.periodo_id,filialId},perfil);
       const grupo=panorama[contextoConsulta];
       return grupo?.funcionarioBaseIds.length?this.investigacao.responderGrupo(grupo,provedor,credencial,contexto):panorama;
-    }
-    if (
-      grupoAnterior?.tipo === 'funcionarios_com_erro' &&
-      /\b(?:eles|elas|esses|essas|estes|estas)\b/.test(continuacao) &&
-      /\b(?:quais|quem|liste|listar|mostre|mostrar|erro|erros|falha|falhas)\b|por que|porque/.test(
-        continuacao,
-      ) &&
-      !/\b\d{1,2}\/\d{4}\b|\b(?:outra|nova) (?:filial|competencia)\b|\b(?:competencia|mes|periodo) (?:anterior|seguinte|passad[oa]|proxim[oa])\b/.test(
-        continuacao,
-      )
-    ) {
-      return this.investigacao.responderGrupo(
-        grupoAnterior,
-        provedor,
-        credencial,
-        contexto,
-      );
     }
     const memoria = historico.slice(-3).map((turno) => ({
       pergunta: turno.pergunta.slice(0, 500),
@@ -230,7 +220,7 @@ Catálogo: pendencias (todas as filiais), valores (resultados por funcionário e
       !plano.funcionario &&
       /funcionar|colaborador/.test(perguntaNormalizada) &&
       /erro|falh|problema/.test(perguntaNormalizada) &&
-      /\b(?:tem|ha|existe|existem|quais|quantos|liste|listar|mostre|mostrar)\b/.test(
+      /\b(?:tem|ha|existe|existem|quais|quantos|liste|listar|mostre|mostrar|quero|saber|ver)\b/.test(
         perguntaNormalizada,
       ) &&
       !/por que|porque|\bpq\b/.test(perguntaNormalizada);

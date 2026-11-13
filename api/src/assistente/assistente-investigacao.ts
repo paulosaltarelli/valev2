@@ -130,6 +130,7 @@ export class AssistenteInvestigacao {
     provedor: 'claude' | 'gpt-institucional',
     credencial: { modelo: string; chave: string },
     contexto?: string | null,
+    objetivo?: 'prioridade'|'causas',
   ): Promise<ResultadoAssistente> {
     const consultadoEm = new Date().toISOString();
     const base = {
@@ -273,27 +274,23 @@ export class AssistenteInvestigacao {
       texto: 'Abrir execução ' + id,
       url: '/processamento/' + id,
     }));
+    const filiaisDoGrupo=[...new Set(casos.map(c=>c.pessoa.execucao.filial.nome))];
+    const interpretacoes=[...new Set(casos.map(c=>interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])))];
+    const lista=casos.map(c=>`• ${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm})${filiaisDoGrupo.length>1?' — '+c.pessoa.execucao.filial.nome:''}`).join('\n');
+    const introducao=objetivo==='prioridade'?'Eu começaria conferindo a última tentativa antes de repetir o processamento.':objetivo==='causas'?'Conferi os registros desse mesmo grupo. Isto é o que eles permitem explicar:':`Encontrei ${casos.length} ${casos.length===1?'funcionário no grupo de erros':'funcionários no grupo de erros'}${filiaisDoGrupo.length===1?' em '+filiaisDoGrupo[0]:', em '+filiaisDoGrupo.length+' filiais'}, na competência ${grupo.competencia}.`;
+    const conversa=introducao+(objetivo?'':'\n\nSão estes:\n'+lista)+'\n\n'+interpretacoes.slice(0,3).map((t,i)=>interpretacoes.length>1?`Situação ${i+1}: ${t}`:t).join('\n\n')+(interpretacoes.length>3?'\n\nHá outras situações nos detalhes de cada funcionário.':'')+'\n\nDeixei os links das execuções abaixo para você conferir a tentativa de cada caso.'+(parcial?' Estou mostrando apenas os registros que consegui analisar; a consulta está parcial.':'');
     return {
       ...base,
       auditoria:{versao:'evidencias-v1',casos:[...catalogos].map(([referencia,achados])=>({referencia,selecaoModeloValidada:selecoesValidadas.has(referencia),achados:achados.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}))},
       [respostaParaModelo]:`Diagnóstico de ${casos.length} registros do grupo de erros em ${grupo.competencia}; detalhes individuais disponíveis somente no Vale.`,
-      texto:
-        `Listei ${casos.length} ${casos.length === 1 ? 'registro de funcionário' : 'registros de funcionários'} do grupo consultado em ${grupo.competencia}.` +
-        '\n\n'+casos.slice(0,5).map(c=>{
-          return `${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm}) · ${c.pessoa.execucao.filial.nome} · ${grupo.competencia}.\n${interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])}`;
-        }).join('\n\n')+(casos.length>5?'\n\nResumo textual dos primeiros 5 registros; a tabela detalha os '+casos.length+' registros lidos.':'') +
-        (parcial
-          ? ' O detalhamento é parcial: limite de 20 registros, alteração do recorte, duplicidade ou falha de leitura; não escolhi outra execução para substituir registros.'
-          : '') +
-        (sinteseFalhou
-          ? ' A síntese do provedor está indisponível; mantive os dados e as limitações verificáveis.'
-          : ''),
+      texto: conversa,
       fonte:
         base.fonte +
         (codigo.fontes.length
           ? ' · ' + codigo.fontes.join(' · ')
           : ' · código indisponível'),
       detalhes:
+        (sinteseFalhou?'A síntese do provedor está indisponível; mantive as evidências verificáveis.\n':'')+
         'Grupo preservado da consulta de ' +
         grupo.capturadoEm +
         '. Situações foram consultadas novamente e podem ter mudado desde o panorama. Diagnóstico limitado a 20 registros por resposta. Nomes e matrículas não foram enviados ao provedor. Código: pacote ' +

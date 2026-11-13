@@ -32,7 +32,7 @@ const grupo: ContextoErros = {
   capturadoEm: '2026-11-11T12:00:00Z',
 };
 
-it('a continuação usa o grupo e a competência anteriores, sem pedir nome ou filtro e sem novo planejamento pelo modelo', async () => {
+it.each(['quais são eles e por que deram erro?','quero saber os funcionarios com erro'])('a continuação preserva o grupo e evita filtros: %s', async (pergunta) => {
   const investigar = {
     responderGrupo: jest
       .fn()
@@ -57,7 +57,7 @@ it('a continuação usa o grupo e a competência anteriores, sem pedir nome ou f
   const fetchMock = jest.spyOn(global, 'fetch');
   try {
     const res = await service.responder(
-      { pergunta: 'quais são eles e por que deram erro?', periodoId: 99 },
+      { pergunta, periodoId: 99 },
       'operator',
       'gpt-institucional',
       { modelo: 'teste', chave: 'teste' },
@@ -243,4 +243,18 @@ describe('Contexto privado através da API HTTP', () => {
       .send({ pergunta: 'quais são eles?', contexto: grupo })
       .expect(400);
   });
+});
+
+it.each(['onde tem erro ?','e agora?'])('a conversa usa as ferramentas corretas sem repetir filtros: %s',async pergunta=>{
+ const consultas={consultar:jest.fn().mockResolvedValue({texto:'Panorama',[contextoConsulta]:grupo})};
+ const investigacao={responderGrupo:jest.fn().mockResolvedValue({texto:'Funcionários e orientação',competencia:'09/2026'})};
+ const service=new AssistenteAvancado(consultas as unknown as AssistenteConsultas,{options:async()=>({periodos:[{periodo_id:7,competencia:'09/2026',ativo:true}],filiais:[]})} as unknown as OperationalReportsService,new AssistenteConhecimento(),{} as AssistenteSql,investigacao as unknown as AssistenteInvestigacao);
+ const fetchMock=jest.spyOn(global,'fetch');
+ try{
+  const prioridade=pergunta==='e agora?';
+  const resposta=await service.responder({pergunta},'operator','gpt-institucional',{modelo:'teste',chave:'teste'},null,prioridade?[{pergunta:'onde tem erro?',resposta:'Grupo encontrado',contexto:grupo}]:[]);
+  expect(resposta.texto).toBe('Funcionários e orientação');expect(fetchMock).not.toHaveBeenCalled();
+  if(prioridade){expect(consultas.consultar).not.toHaveBeenCalled();expect(investigacao.responderGrupo).toHaveBeenCalledWith(grupo,'gpt-institucional',expect.any(Object),null,'prioridade');}
+  else expect(consultas.consultar).toHaveBeenCalledWith('erros',expect.objectContaining({periodoId:7}),'operator');
+ }finally{fetchMock.mockRestore()}
 });

@@ -332,7 +332,7 @@ it('não associa uma explicação do modelo a uma referência de pessoa inventad
       'gpt-institucional',
       credencial,
     );
-    expect(result.texto).toContain('síntese do provedor está indisponível');
+    expect(result.detalhes).toContain('síntese do provedor está indisponível');
     expect(JSON.stringify(result)).not.toContain('Causa falsa inventada');
   } finally {
     fetchMock.mockRestore();
@@ -436,7 +436,7 @@ it('não trata uma resposta sobre apenas uma pessoa como diagnóstico completo d
       'gpt-institucional',
       credencial,
     );
-    expect(r.texto).toContain('síntese do provedor está indisponível');
+    expect(r.detalhes).toContain('síntese do provedor está indisponível');
     expect(r.tabela?.linhas).toHaveLength(2);
     expect(JSON.stringify(r)).not.toContain('Resposta incompleta.');
   } finally {

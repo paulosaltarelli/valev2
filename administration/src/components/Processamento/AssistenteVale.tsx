@@ -53,6 +53,7 @@ type Contexto = {
   filtro: { periodo_id: number; filial_id: number } | null;
 };
 type Resposta = {
+  auditoria?:{versao:string};
   relatorio?:{solicitado:boolean};
   apresentacao?: import("./relatorioVisual").SugestaoVisual;
   texto: string;
@@ -801,7 +802,7 @@ function MensagemVale({
       {resposta.tabela && (
         <>
           {!(resposta.relatorio?.solicitado || relatorioSolicitado) ? (
-            <div className="mb-2"><span>Quer que eu organize esses dados em um relatório interativo?</span>{" "}<Button size="sm" variant="outline-primary" onClick={()=>setRelatorioSolicitado(true)}>Gerar relatório + Excel</Button></div>
+            <div className="mb-2">{!resposta.auditoria && resposta.tabela.linhas.length>1 && <span>Se quiser explorar esses dados, posso organizar um relatório interativo. </span>}<Button size="sm" variant="outline-primary" onClick={()=>setRelatorioSolicitado(true)}>Gerar relatório + Excel</Button></div>
           ) : arquivos ? (
             <div
               className="d-flex gap-2 flex-wrap mb-2"

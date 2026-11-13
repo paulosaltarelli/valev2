@@ -1,0 +1,4 @@
+import {intencaoGrupoErros} from './assistente-conversa';
+it.each(['onde tem erro ?','quero saber os funcionarios com erro','me mostra os funcionários que deram erro','tem funcionário com erro?','quais são eles e por que deram erro?'])('entende a intenção sem exigir frase exata: %s',q=>expect(intencaoGrupoErros(q,true)).toBe('lista'));
+it.each(['e agora?','o que devo verificar primeiro?','por onde começo?','como resolvo?'])('retoma o grupo para orientar: %s',q=>{expect(intencaoGrupoErros(q,true)).toBe('prioridade');expect(intencaoGrupoErros(q,false)).toBeUndefined();});
+it.each(['funcionários com erro na filial ABC','funcionários com erro em 09/2026','funcionários com erro na competência anterior','por que o funcionário João deu erro?','erro na fórmula X'])('não substitui uma pergunta de outro escopo: %s',q=>expect(intencaoGrupoErros(q,true)).toBeUndefined());

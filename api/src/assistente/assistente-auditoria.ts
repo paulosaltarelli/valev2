@@ -116,6 +116,7 @@ export function formatarAuditoria(catalogo:AchadoAuditavel[],selecao:string[]=[]
 export function interpretarParaUsuario(fatos:FatosAuditaveis|undefined,catalogo:AchadoAuditavel[]):string {
   if(!fatos) return 'Não consegui consultar os dados deste funcionário. Tente novamente antes de concluir o motivo do problema.';
   const rs=fatos.resultados??[], valores=rs.filter(r=>r.calculado!==null).length, estado=fatos.statusFuncionario??'';
+  if(estado&&!/ERRO|FALHA/.test(estado))return 'O estado atual deste funcionário já não está marcado como erro. Confira a situação atual e a última tentativa nos detalhes antes de repetir uma operação. Isso, sozinho, não confirma o recebimento no RM.';
   const etapa=estado==='ERRO_RM'?'O registro indica um problema na etapa de envio ao RM. Isso não confirma se o RM recebeu os valores.':/VARIAVEIS/.test(estado)?'O registro indica um problema na busca das informações usadas no cálculo.':/RESULTADO|FORMULA|CALCULO/.test(estado)?'O registro indica um problema na etapa de cálculo.':'Há um problema registrado para este funcionário; os dados consultados não esclarecem a etapa.';
   const impacto=valores>0?'Há valores já calculados. O erro não significa que todos os valores estejam faltando.':'Não encontrei valores calculados nos resultados consultados. Isso não significa que o valor seja zero.';
   const hip=catalogo.filter(a=>a.tipo==='hipotese');
