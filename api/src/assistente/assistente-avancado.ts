@@ -1,3 +1,4 @@
+import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
   Injectable,
@@ -107,7 +108,12 @@ export class AssistenteAvancado {
     return this.conhecimento.estado();
   }
 
-  async responder(
+  async responder(input:AssistenteDto,perfil:string,provedor:'claude'|'gpt-institucional',credencial:{modelo:string;chave:string},contexto:string|null|undefined,historico:TurnoAssistente[],usuarioId?:number):Promise<ResultadoAssistente>{
+    const resultado=await this.responderDados(input,perfil,provedor,credencial,contexto,historico,usuarioId);
+    return planejarApresentacao(resultado,input.pergunta,provedor,credencial);
+  }
+
+  private async responderDados(
     input: AssistenteDto,
     perfil: string,
     provedor: 'claude' | 'gpt-institucional',

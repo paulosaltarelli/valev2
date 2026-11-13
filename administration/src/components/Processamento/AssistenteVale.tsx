@@ -53,6 +53,7 @@ type Contexto = {
   filtro: { periodo_id: number; filial_id: number } | null;
 };
 type Resposta = {
+  relatorio?:{solicitado:boolean};
   apresentacao?: import("./relatorioVisual").SugestaoVisual;
   texto: string;
   detalhes?: string;
@@ -222,6 +223,11 @@ export function AssistenteVale() {
     if (!texto.trim() || ocupado || carregandoContexto || !provedor) return;
     setErro("");
     const pedido = texto.trim();
+    const ultima=mensagens.at(-1);
+    if(!consulta && /^(?:sim|pode(?: gerar)?|quero(?: o relatório)?|gere (?:o |um )?relatório)(?:[.!?\s]*)$/i.test(pedido) && ultima?.resposta?.tabela && !ultima.resposta.relatorio?.solicitado){
+      setMensagens(atuais=>atuais.map(m=>m.id===ultima.id?{...m,resposta:{...ultima.resposta!,relatorio:{solicitado:true}}}:m));
+      setPergunta("");return;
+    }
     const exportar =
       /^(?:excel|xlsx|exportar|(?:gere|gerar|baixar)(?: um| uma)? (?:excel|xlsx|planilha))\s*[.!?]?$/i.test(
         pedido,
@@ -558,7 +564,7 @@ export function AssistenteVale() {
                       <div className="vale-ia-balao vale-ia-resposta">
                         <strong className="vale-ia-autor">Vale IA</strong>
                         {resposta ? (
-                          <MensagemVale resposta={resposta} fechar={fechar} />
+                          <MensagemVale resposta={resposta} fechar={fechar} objetivo={texto} provedor={provedor} />
                         ) : falha ? (
                           <p className="mb-0">{falha}</p>
                         ) : (
@@ -670,7 +676,11 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
 function MensagemVale({
   resposta,
   fechar,
+  objetivo,
+  provedor,
 }: {
+  objetivo:string;
+  provedor?:Provedor|"local";
   resposta: Resposta;
   fechar: () => void;
 }) {
@@ -684,6 +694,7 @@ function MensagemVale({
   }>();
   const [falhaArquivos, setFalhaArquivos] = useState<string>();
   const [tentativa, setTentativa] = useState(0);
+  const [relatorioSolicitado,setRelatorioSolicitado]=useState(false);
   const visual = criarModeloVisual();
   const colunasVisuais = resposta.tabela?.colunas.map((nome, i) =>
     visual.coluna(
@@ -692,14 +703,24 @@ function MensagemVale({
     ),
   );
   useEffect(() => {
-    if (!resposta.tabela) return;
+    if (!resposta.tabela || !(resposta.relatorio?.solicitado || relatorioSolicitado)) return;
     let cancelado = false;
     const urls: string[] = [];
     setArquivos(undefined);
     setFalhaArquivos(undefined);
     // O gerador é carregado com a página: uma publicação posterior não pode
     // quebrar esta conversa ao remover um chunk ainda não solicitado.
-    void prepararPacote(resposta)
+    const preparar = async () => {
+      let dados=resposta;
+      if(provedor && provedor!=="local" && resposta.apresentacao?.composicao?.origem!=="ia") {
+        const visual=criarModeloVisual();
+        const numericas=resposta.tabela!.colunas.filter((c,i)=>{const meta=visual.coluna(c,resposta.tabela!.linhas.map(r=>r[i]));return !meta.tecnica&&["inteiro","decimal","moeda"].includes(meta.tipo)});
+        const {data}=await http.post<NonNullable<import("./relatorioVisual").SugestaoVisual["composicao"]>>("/assistente/apresentacao",{objetivo:objetivo.slice(0,500),provedor,colunas:resposta.tabela!.colunas,numericas,quantidadeLinhas:resposta.tabela!.linhas.length,parcial:resposta.tabela!.parcial},{timeout:40000});
+        dados={...resposta,apresentacao:{...resposta.apresentacao,composicao:data}};
+      }
+      return prepararPacote(dados);
+    };
+    void preparar()
       .then((pacote) => {
         if (cancelado) return;
         const urlHtml = URL.createObjectURL(
@@ -722,7 +743,7 @@ function MensagemVale({
       cancelado = true;
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [resposta, tentativa]);
+  }, [resposta, tentativa, relatorioSolicitado, objetivo, provedor]);
   const moeda = (valor: number) =>
     valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return (
@@ -779,7 +800,9 @@ function MensagemVale({
       )}
       {resposta.tabela && (
         <>
-          {arquivos ? (
+          {!(resposta.relatorio?.solicitado || relatorioSolicitado) ? (
+            <div className="mb-2"><span>Quer que eu organize esses dados em um relatório interativo?</span>{" "}<Button size="sm" variant="outline-primary" onClick={()=>setRelatorioSolicitado(true)}>Gerar relatório + Excel</Button></div>
+          ) : arquivos ? (
             <div
               className="d-flex gap-2 flex-wrap mb-2"
               aria-label="Arquivos gerados da consulta"

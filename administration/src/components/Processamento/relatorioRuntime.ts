@@ -11,6 +11,7 @@ export function iniciarRelatorio(
     tabela: { colunas: string[]; linhas: CelulaVisual[][]; parcial: boolean };
     filtros: [string, string | undefined][];
     plano: PlanoVisual;
+    layout?:string;
   },
   visual: ReturnType<typeof criarModeloVisual>,
   workbook: typeof criarWorkbook,
@@ -725,6 +726,6 @@ export function iniciarRelatorio(
       b.disabled = false;
     }
   };
-  visao(casosIndividuais);
+  visao(casosIndividuais || dados.layout === "analitico" || dados.layout === "editorial");
   atualizar();
 }

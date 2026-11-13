@@ -1,3 +1,4 @@
+import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
   Body,
@@ -30,6 +31,7 @@ import { CryptoService } from '../security/crypto.service';
 import { AssistenteConsultas } from './assistente-consultas';
 import {
   AssistenteConfiguracaoDto,
+  AssistenteApresentacaoDto,
   AssistenteDto,
   AssistenteTesteDto,
 } from './assistente.dto';
@@ -434,6 +436,22 @@ export class AssistenteController {
         em: new Date().toISOString(),
       });
       return resultado;
+    });
+  }
+
+  @Post('apresentacao')
+  @Header('Cache-Control','no-store')
+  async planejarRelatorio(@Req() req:Request,@Body() input:AssistenteApresentacaoDto){
+    const usuario=await this.autorizar(req);this.validarOrigem(req);
+    return this.sessoes.consultar(usuario.id,async()=>{
+      if(input.numericas.some(c=>!input.colunas.includes(c)))throw new BadRequestException('Colunas de apresentação inválidas.');
+      const config=await this.prisma.assistente_configuracao.findUnique({where:{id:1}});
+      const gpt=input.provedor==='gpt-institucional';
+      if(!config||(gpt?!config.gpt_institucional_ativo:!config.claude_ativo))throw new ForbiddenException('Provedor desabilitado.');
+      const chave=this.lerChave(gpt?config.gpt_chave:config.claude_chave);
+      if(!chave)throw new BadRequestException('Provedor sem credencial.');
+      const r=await planejarApresentacao({texto:'Plano visual',tabela:{colunas:input.colunas,linhas:[],parcial:input.parcial}},'Gere relatório. Objetivo: '+input.objetivo,input.provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},input);
+      return r.apresentacao?.composicao;
     });
   }
 

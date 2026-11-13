@@ -1,5 +1,9 @@
 import {
   IsIn,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -103,4 +107,13 @@ export class AssistenteDto {
   @Length(1, 50)
   @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
   matricula?: string;
+}
+
+export class AssistenteApresentacaoDto {
+ @IsString() @Length(1,500) objetivo!:string;
+ @IsIn(['claude','gpt-institucional']) provedor!:'claude'|'gpt-institucional';
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) colunas!:string[];
+ @IsArray() @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) numericas!:string[];
+ @IsInt() @Min(0) @Max(2000) quantidadeLinhas!:number;
+ @IsBoolean() parcial!:boolean;
 }

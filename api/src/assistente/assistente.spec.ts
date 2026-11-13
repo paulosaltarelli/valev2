@@ -115,6 +115,15 @@ describe('Assistente do Vale', () => {
   const cookie = (usuarioId: number, sessionId: string) =>
     `access_token=${jwt.sign({ usuarioId, sessionId, username: 'operador', perfil: 'admin' })}`;
 
+  it('protege o planejamento visual e rejeita dados brutos ou campos inesperados',async()=>{
+    const body={objetivo:'Funcionários com erro',provedor:'gpt-institucional',colunas:['Filial','Estado'],numericas:[],quantidadeLinhas:20,parcial:true};
+    await request(app.getHttpServer()).post('/assistente/apresentacao').send(body).expect(401);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(91,'expirada')).send(body).expect(401);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(92,'visual')).set('Origin','https://outra-origem.invalid').send(body).expect(403);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(93,'visual')).send({...body,linhas:[['NOME_PRIVADO']]}).expect(400);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(94,'visual')).send(body).expect(403);
+  });
+
   it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {
     const sessao = cookie(10, 'operador-config');
     const dados = {

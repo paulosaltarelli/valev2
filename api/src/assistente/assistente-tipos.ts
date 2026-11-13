@@ -22,8 +22,10 @@ export type TurnoAssistente = {
   respostaModelo?: string;
 };
 export type ResultadoAssistente = {
+  relatorio?:{solicitado:boolean};
   auditoria?:{versao:string;casos:{referencia:string;selecaoModeloValidada:boolean;achados:{id:string;tipo:string;evidencias:string[]}[]}[]};
   apresentacao?: {
+    composicao?:{layout:"executivo"|"editorial"|"analitico";secoes:("resumo"|"indicadores"|"grafico"|"composicao"|"detalhe")[];origem:"ia"|"automatico"};
     titulo?: string;
     grafico?: 'barras' | 'linha';
     dimensao?: string;

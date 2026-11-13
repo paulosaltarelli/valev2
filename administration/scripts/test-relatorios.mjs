@@ -274,6 +274,12 @@ try {
       e.etapa === "dados" &&
       !e.message.includes("segredo"),
   );
+  for(const [layout,secoes] of [["editorial",["resumo","detalhe"]],["executivo",["indicadores","grafico","detalhe"]],["analitico",["detalhe","resumo","grafico"]]]){
+    const personalizado=await prepararPacote({...preenchido,apresentacao:{composicao:{layout,secoes,origem:"ia"}}});
+    assert(personalizado.html.includes(`composicao-livre ${layout}`));
+    const posicoes=secoes.map(s=>personalizado.html.indexOf(`class="relatorio-bloco bloco-${s}"`));assert(posicoes.every((p,i)=>p>=0&&(i===0||p>posicoes[i-1])));
+    await fs.writeFile(path.join(output,`composicao-${layout}.html`),personalizado.html);
+  }
   await fs.writeFile(path.join(output, "relatorio20.html"), pacote20.html);
   await fs.writeFile(
     path.join(output, "pacote20.zip"),

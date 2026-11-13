@@ -7,6 +7,7 @@ export type ColunaVisual = {
   agregavel: boolean;
 };
 export type SugestaoVisual = {
+  composicao?:{layout:"executivo"|"editorial"|"analitico";secoes:("resumo"|"indicadores"|"grafico"|"composicao"|"detalhe")[];origem:"ia"|"automatico"};
   titulo?: string;
   grafico?: "barras" | "linha" | "rosca";
   dimensao?: string;
