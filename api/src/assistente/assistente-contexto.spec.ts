@@ -71,12 +71,7 @@ it.each(['quais são eles e por que deram erro?','quero saber os funcionarios co
       ],
     );
     expect(res.competencia).toBe('09/2026');
-    expect(investigar.responderGrupo).toHaveBeenCalledWith(
-      grupo,
-      'gpt-institucional',
-      expect.any(Object),
-      null,
-    );
+    expect(investigar.responderGrupo).toHaveBeenCalledWith(grupo,'gpt-institucional',expect.any(Object),null,...(pergunta.startsWith('quero')?['nomes']:[]));
     expect(fetchMock).not.toHaveBeenCalled();
   } finally {
     fetchMock.mockRestore();

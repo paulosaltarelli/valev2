@@ -130,7 +130,7 @@ export class AssistenteInvestigacao {
     provedor: 'claude' | 'gpt-institucional',
     credencial: { modelo: string; chave: string },
     contexto?: string | null,
-    objetivo?: 'prioridade'|'causas',
+    objetivo?: 'prioridade'|'causas'|'nomes',
   ): Promise<ResultadoAssistente> {
     const consultadoEm = new Date().toISOString();
     const base = {
@@ -277,8 +277,8 @@ export class AssistenteInvestigacao {
     const filiaisDoGrupo=[...new Set(casos.map(c=>c.pessoa.execucao.filial.nome))];
     const interpretacoes=[...new Set(casos.map(c=>interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])))];
     const lista=casos.map(c=>`• ${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm})${filiaisDoGrupo.length>1?' — '+c.pessoa.execucao.filial.nome:''}`).join('\n');
-    const introducao=objetivo==='prioridade'?'Eu começaria conferindo a última tentativa antes de repetir o processamento.':objetivo==='causas'?'Conferi os registros desse mesmo grupo. Isto é o que eles permitem explicar:':`Encontrei ${casos.length} ${casos.length===1?'funcionário no grupo de erros':'funcionários no grupo de erros'}${filiaisDoGrupo.length===1?' em '+filiaisDoGrupo[0]:', em '+filiaisDoGrupo.length+' filiais'}, na competência ${grupo.competencia}.`;
-    const conversa=introducao+(objetivo?'':'\n\nSão estes:\n'+lista)+'\n\n'+interpretacoes.slice(0,3).map((t,i)=>interpretacoes.length>1?`Situação ${i+1}: ${t}`:t).join('\n\n')+(interpretacoes.length>3?'\n\nHá outras situações nos detalhes de cada funcionário.':'')+'\n\nDeixei os links das execuções abaixo para você conferir a tentativa de cada caso.'+(parcial?' Estou mostrando apenas os registros que consegui analisar; a consulta está parcial.':'');
+    const introducao=objetivo==='nomes'?'São estes os funcionários do grupo que acabamos de consultar:':objetivo==='prioridade'?'Eu começaria conferindo a última tentativa antes de repetir o processamento.':objetivo==='causas'?'Conferi os registros desse mesmo grupo. Isto é o que eles permitem explicar:':`Encontrei ${casos.length} ${casos.length===1?'funcionário no grupo de erros':'funcionários no grupo de erros'}${filiaisDoGrupo.length===1?' em '+filiaisDoGrupo[0]:', em '+filiaisDoGrupo.length+' filiais'}, na competência ${grupo.competencia}.`;
+    const conversa=introducao+(objetivo&&objetivo!=='nomes'?'':'\n\n'+(objetivo==='nomes'?'':'São estes:\n')+lista)+(objetivo==='nomes'?'\n\nAs situações e orientações de cada um estão nos detalhes.':'\n\n'+interpretacoes.slice(0,3).map((t,i)=>interpretacoes.length>1?`Situação ${i+1}: ${t}`:t).join('\n\n')+(interpretacoes.length>3?'\n\nHá outras situações nos detalhes de cada funcionário.':'')+'\n\nDeixei os links das execuções abaixo para você conferir a tentativa de cada caso.')+(parcial?' Estou mostrando apenas os registros que consegui analisar; a consulta está parcial.':'');
     return {
       ...base,
       auditoria:{versao:'evidencias-v1',casos:[...catalogos].map(([referencia,achados])=>({referencia,selecaoModeloValidada:selecoesValidadas.has(referencia),achados:achados.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}))},

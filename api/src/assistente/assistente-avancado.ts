@@ -147,6 +147,7 @@ export class AssistenteAvancado {
       const retomar=grupoAnterior?.tipo==='funcionarios_com_erro'&&!/^(?:tem|ha|existe|existem)\s/.test(continuacao);
       if(retomar){
         if(intencaoGrupo==='prioridade'||intencaoGrupo==='causas')return this.investigacao.responderGrupo(grupoAnterior,provedor,credencial,contexto,intencaoGrupo);
+        if(!/por que|porque|\bpq\b/.test(continuacao))return this.investigacao.responderGrupo(grupoAnterior,provedor,credencial,contexto,'nomes');
         return this.investigacao.responderGrupo(grupoAnterior,provedor,credencial,contexto);
       }
       const periodo=input.periodoId?periodos.find(p=>p.periodo_id===input.periodoId):periodos[0];
