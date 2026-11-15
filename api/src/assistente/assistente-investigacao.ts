@@ -1,3 +1,4 @@
+import {lerFalhaColeta,formatarFalhaColeta} from './assistente-falha-coleta';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { analisarExpressao } from '../helpers/calculator/formula-expression';
@@ -63,6 +64,7 @@ type PessoaInvestigacao = {
   execucao_funcionario_base_id: number;
   funcionario_id_rm: string;
   nome_funcionario: string | null;
+  regras_rm?:string|null;
   status: string | null;
   execucao: {
     execucao_id: number;
@@ -190,6 +192,7 @@ export class AssistenteInvestigacao {
         execucao_funcionario_base_id: true,
         funcionario_id_rm: true,
         nome_funcionario: true,
+        regras_rm: true,
         status: true,
         execucao: {
           select: {
@@ -278,7 +281,7 @@ export class AssistenteInvestigacao {
     const interpretacoes=[...new Set(casos.map(c=>interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])))];
     const lista=casos.map(c=>`• ${c.pessoa.nome_funcionario??'Nome não informado'} (matrícula ${c.pessoa.funcionario_id_rm})${filiaisDoGrupo.length>1?' — '+c.pessoa.execucao.filial.nome:''}`).join('\n');
     const introducao=objetivo==='nomes'?'São estes os funcionários do grupo que acabamos de consultar:':objetivo==='prioridade'?'Eu começaria conferindo a última tentativa antes de repetir o processamento.':objetivo==='causas'?'Conferi os registros desse mesmo grupo. Isto é o que eles permitem explicar:':`Encontrei ${casos.length} ${casos.length===1?'funcionário no grupo de erros':'funcionários no grupo de erros'}${filiaisDoGrupo.length===1?' em '+filiaisDoGrupo[0]:', em '+filiaisDoGrupo.length+' filiais'}, na competência ${grupo.competencia}.`;
-    const conversa=introducao+(objetivo&&objetivo!=='nomes'?'':'\n\n'+(objetivo==='nomes'?'':'São estes:\n')+lista)+(objetivo==='nomes'?'\n\nAs situações e orientações de cada um estão nos detalhes.':'\n\n'+interpretacoes.slice(0,3).map((t,i)=>interpretacoes.length>1?`Situação ${i+1}: ${t}`:t).join('\n\n')+(interpretacoes.length>3?'\n\nHá outras situações nos detalhes de cada funcionário.':'')+'\n\nDeixei os links das execuções abaixo para você conferir a tentativa de cada caso.')+(parcial?' Estou mostrando apenas os registros que consegui analisar; a consulta está parcial.':'');
+    const conversa=introducao+(objetivo&&objetivo!=='nomes'?'':'\n\n'+(objetivo==='nomes'?'':'São estes:\n')+lista)+(objetivo==='nomes'?'\n\nAs situações e orientações de cada um estão nos detalhes.':'\n\n'+interpretacoes.slice(0,objetivo==='prioridade'?20:3).map((t,i)=>{const nomes=casos.filter(c=>interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[])===t).map(c=>c.pessoa.nome_funcionario??'matrícula '+c.pessoa.funcionario_id_rm).join(', ');return (objetivo==='prioridade'?'Para '+nomes+':\n':interpretacoes.length>1?'Situação '+(i+1)+': ':'')+t}).join('\n\n')+(interpretacoes.length>3?'\n\nHá outras situações nos detalhes de cada funcionário.':'')+'\n\nDeixei os links das execuções abaixo para você conferir a tentativa de cada caso.')+(parcial?' Estou mostrando apenas os registros que consegui analisar; a consulta está parcial.':'');
     return {
       ...base,
       auditoria:{versao:'evidencias-v1',casos:[...catalogos].map(([referencia,achados])=>({referencia,selecaoModeloValidada:selecoesValidadas.has(referencia),achados:achados.map(({id,tipo,evidencias})=>({id,tipo,evidencias}))}))},
@@ -323,6 +326,8 @@ export class AssistenteInvestigacao {
           'Fórmulas e versões históricas',
           'Variáveis e memórias relacionadas',
           'Interpretação para o usuário',
+          'Ponto de falha da coleta',
+          'Vínculos usados na execução',
         ],
         linhas: casos.map((c) => [
           c.pessoa.funcionario_id_rm,
@@ -349,6 +354,8 @@ export class AssistenteInvestigacao {
           contextoDoDiagnostico(c.dados).formulas,
           contextoDoDiagnostico(c.dados).variaveis,
           interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[]),
+          formatarFalhaColeta(c.dados[fatosInternos]?.falhaColeta),
+          Array.isArray(c.dados[fatosInternos]?.regrasDaExecucao)?(c.dados[fatosInternos]?.regrasDaExecucao as string[]).join(', '):'Vínculos históricos não disponíveis.',
         ]),
         parcial,
       },
@@ -392,6 +399,7 @@ export class AssistenteInvestigacao {
         execucao_funcionario_base_id: true,
         funcionario_id_rm: true,
         nome_funcionario: true,
+        regras_rm: true,
         status: true,
         execucao: {
           select: {
@@ -542,7 +550,13 @@ export class AssistenteInvestigacao {
       return seguro ? [{ ...seguro, data: l.data_log.toISOString() }] : [];
     });
     const codigo = this.conhecimento.investigacao();
+    const filaColeta=filasIndividuais.find(f=>f.tipo==='VARIAVEIS');
+    const falhaColeta=filaColeta?.status==='ERRO'?lerFalhaColeta(filaColeta.last_error,logs.slice(0,100),pessoa.funcionario_id_rm):undefined;
+    let regrasDaExecucao:string[]|null=null;
+    try{const regras=JSON.parse(pessoa.regras_rm??'null');if(Array.isArray(regras)&&regras.length<=100&&regras.every(x=>typeof x==='string'&&x.length<=100&&!/[\r\n<>]/.test(x)))regrasDaExecucao=regras;}catch{}
     const fatos = {
+      falhaColeta,
+      regrasDaExecucao,
       competencia: escopo.competencia,
       statusFuncionario: pessoa.status,
       filasDaExecucaoInteiraIncluindoHistorico: filas.map((f) => ({

@@ -1,3 +1,4 @@
+import {orientacaoColeta,type FalhaColeta} from './assistente-falha-coleta';
 export type ResultadoAuditavel = {
   formulaId:number; formula:string; versaoHistorica:number|null; status:string;
   calculado:string|null; memoriasGravadas:number;
@@ -6,6 +7,7 @@ export type ResultadoAuditavel = {
 export type CategoriaFila = 'HTTP_401'|'HTTP_403'|'HTTP_400'|'HTTP_429'|'TIMEOUT'|'SEM_CONFIRMACAO'|'REGRA_AUSENTE'|'REGRA_DUPLICADA'|'SESSAO_AUSENTE'|'NAO_CLASSIFICADO';
 export type FilaAuditavel={tipo:string;status:string;categoria:CategoriaFila;data:string|null;recusaDuplicidadeHistorica?:boolean};
 export type FatosAuditaveis={
+  falhaColeta?:FalhaColeta;regrasDaExecucao?:string[]|null;
   statusFuncionario?:string|null;resultados?:ResultadoAuditavel[];
   logsHistoricos?:{alvo?:string;codigo?:string;variavel?:string;evidencia:string;data:string}[];
   filasIndividuais?:FilaAuditavel[];
@@ -93,6 +95,14 @@ export function criarAuditoria(fatos:FatosAuditaveis|undefined,codigo:TrechoAudi
     if(fonteCalculo&&log.alvo==='Fórmula'&&log.variavel&&r?.versaoHistorica!==null&&r?.variaveisHistoricasSemMemoria?.includes(log.variavel))
       add('hipotese_simbolo_'+i,'hipotese',`A dependência ${log.variavel}, citada no log da fórmula #${r.formulaId}, também está sem memória na leitura da regra histórica. Isso é compatível com a falha, mas não confirma a origem da ausência nem uma falha no RM.`,['banco:resultado:'+r.formulaId,'banco:log_reconhecido:'+i,ref(fonteCalculo)],'Conferir a memória dessa variável, sua coleta e a revisão/data da tentativa antes de confirmar a causa.');
   }
+  const coleta=fatos.falhaColeta;
+  if(coleta&&fatos.statusFuncionario==='ERRO_VARIAVEIS'&&fatos.filasIndividuais?.some(f=>f.tipo==='VARIAVEIS'&&f.status==='ERRO')){
+    const fonte=/REGRA_|CONJUNTO/.test(coleta.categoria)?codigo.find(c=>/transport-rules\.ts$/.test(c.caminho)&&c.trecho.includes('Regra não retornada')):fonteVariaveis;
+    const evidencias=['banco:fila_individual:coleta',...(coleta.logIndividualCompativel?['banco:log_individual:coleta']:[]),...(fonte?[ref(fonte)]:[])];
+    add('falha_especifica_coleta','fato',`A última falha específica da coleta cita a variável ${coleta.codigo}, consulta ${coleta.consulta}, categoria ${coleta.categoria}, em ${coleta.registradaEm}.${coleta.antesDoWorker?' Depois há apenas o aviso genérico do worker; ele não apaga o detalhe específico.':''}`,evidencias,'Conferir esta informação e o vínculo deste funcionário nos detalhes da execução.');
+    if(fonte&&coleta.logIndividualCompativel){motivoIndividual=true;add('orientacao_especifica_coleta','hipotese',orientacaoColeta(coleta),evidencias,'Conferir o vínculo de transporte usado na execução e o retorno da consulta para a mesma coligada, filial, matrícula e regra. Não alterar cadastros nem reprocessar automaticamente.');}
+    add('limite_origem_coleta','limitacao','O log confirma o ponto da falha, mas não preserva a resposta completa da consulta para determinar por que a combinação esperada não retornou. A coleta interrompe na primeira falha; não se conclui que todas as variáveis ou fórmulas estejam erradas.',evidencias,'Comparar o vínculo registrado na execução com o vínculo atual e o retorno autorizado da consulta no RM.');
+  }
   if(!motivoIndividual)add('causa_nao_confirmada','limitacao','Não foi identificado motivo individual específico que sustente uma causa atual. Status, filas da execução inteira e logs antigos não bastam para atribuir causa a esta pessoa.',['banco:estado_funcionario'],'Consultar a última falha individual e os registros da tentativa. Não presumir causas que os registros não demonstrem.');
   if(!codigo.length)add('codigo_ausente','limitacao','O código necessário ao confronto não está disponível; nenhuma hipótese de implementação foi confirmada.',['banco:estado_funcionario'],'Disponibilizar a versão do código correspondente à execução.');
   else add('versao_do_aplicativo','limitacao','O código consultado pertence ao pacote disponibilizado pelo servidor. Não comprova, por si só, qual versão do aplicativo executou uma tentativa passada.',codigo.slice(0,1).map(ref),'Correlacionar a tentativa à versão publicada antes de confirmar uma causa de implementação.');
@@ -137,6 +147,7 @@ export function interpretarParaUsuario(fatos:FatosAuditaveis|undefined,catalogo:
     };
     orientacao=mensagens[fila.categoria]??orientacao;
   }
+  if(fatos.falhaColeta&&catalogo.some(a=>a.id==='orientacao_especifica_coleta'))orientacao=orientacaoColeta(fatos.falhaColeta)+' A informação exata e os vínculos da execução estão nos detalhes deste funcionário.';
   if(hip.some(a=>a.id.startsWith('hipotese_simbolo_'))) orientacao='Uma informação necessária ao cálculo aparece sem valor e também é citada no erro. Confira se ela foi obtida para este funcionário; ainda falta confirmar por que está ausente.';
   if(catalogo.some(a=>a.id.startsWith('possibilidade_duplicidade_'))) orientacao='O RM informou que um registro já existia em uma tentativa de envio. Pode já haver um lançamento deste funcionário para o mesmo evento e competência. Confira o lançamento no RM antes de reenviar, para evitar duplicidade. A mensagem não identifica qual campo duplicou nem confirma que o problema continue agora.';
   return [etapa,rs.length?`${valores} de ${rs.length} resultados consultados têm valor calculado.`:'',impacto,orientacao].filter(Boolean).join(' ');

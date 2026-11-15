@@ -46,6 +46,7 @@ export class AssistenteConhecimento {
 
   investigacao() {
     const alvos = [
+      ['api/src/execucao/transport-rules.ts','Regra não retornada pelo RM'],
       ['api/src/cron/cron.service.ts','SESSION_ID_AUSENTE'],
       ['api/src/execucao/execucao.service.ts','ERRO_ENVIAR_RM'],
       ['api/src/execucao/execucao.service.ts','ERRO_VARIAVEIS'],
