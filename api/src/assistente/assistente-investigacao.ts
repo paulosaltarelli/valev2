@@ -327,7 +327,7 @@ export class AssistenteInvestigacao {
           'Variáveis e memórias relacionadas',
           'Interpretação para o usuário',
           'Ponto de falha da coleta',
-          'Vínculos usados na execução',
+          'Vínculos registrados na execução',
         ],
         linhas: casos.map((c) => [
           c.pessoa.funcionario_id_rm,

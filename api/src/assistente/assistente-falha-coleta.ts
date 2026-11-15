@@ -22,7 +22,7 @@ export function lerFalhaColeta(raw:string|null,logs:{mensagem:string}[],matricul
 }
 export function orientacaoColeta(f:FalhaColeta):string{
  switch(f.categoria){
- case 'REGRA_AUSENTE':return 'A coleta parou porque a combinação deste funcionário com a regra de transporte esperada não apareceu no retorno consultado. Confira se o vínculo de transporte continua válido e corresponde ao vínculo usado nesta execução. Se estiver correto, peça ao responsável para conferir se a consulta retorna o funcionário e a mesma regra. O registro não prova que o vínculo foi excluído do RM.';
+ case 'REGRA_AUSENTE':return 'A coleta parou porque a combinação deste funcionário com a regra de transporte esperada não apareceu no retorno consultado. Confira se o vínculo de transporte continua válido e corresponde ao vínculo registrado nesta execução. Se estiver correto, peça ao responsável para conferir se a consulta retorna o funcionário e a mesma regra. O registro não prova que o vínculo foi excluído do RM.';
  case 'REGRA_DUPLICADA':return 'A coleta encontrou mais de um retorno para a mesma combinação de funcionário e regra. Confira os vínculos de transporte e se a consulta está duplicando essa combinação antes de repetir.';
  case 'CONJUNTO_DIVERGENTE':return 'O conjunto de regras retornado não corresponde ao esperado na execução. Confira os vínculos usados e o formato da consulta com o responsável antes de repetir; ainda falta identificar a diferença exata.';
  case 'DADO_INVALIDO':return 'A coleta recebeu um dado ausente ou inválido para esta informação. Confira o retorno dessa consulta para este funcionário; o registro não permite afirmar se faltou uma linha, um campo ou um valor válido.';
