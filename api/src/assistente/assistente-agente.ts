@@ -448,19 +448,20 @@ export class AssistenteAgente {
           s.periodoId = periodoId;
           s.filialId = filialId;
           if (ultimo) this.guardarResultado(s, ultimo);
+          const base = ultimo ?? s.ultimo;
           return {
-            ...ultimo,
+            ...base,
             texto: resposta,
             fonte:
-              ultimo?.fonte ??
+              base?.fonte ??
               (codigoUsado.length ? 'Guia e código do Vale' : undefined),
             detalhes:
-              ultimo?.detalhes ??
+              base?.detalhes ??
               (codigoUsado.length
                 ? 'Fontes consultadas: ' + codigoUsado.join(' · ')
                 : undefined),
             consultadoEm:
-              ultimo?.consultadoEm ??
+              base?.consultadoEm ??
               (evidencias.length ? new Date().toISOString() : undefined),
             agente: {
               versao: 'v2',

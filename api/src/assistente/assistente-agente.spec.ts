@@ -74,6 +74,39 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('mantém competência e origem ao explicar o histórico sem repetir a consulta', async () => {
+  queries.consultar.mockResolvedValue({
+    texto: 'Há erros.',
+    competencia: '10/2026',
+    fonte: 'Banco do Vale',
+    consultadoEm: '2026-11-16T10:00:00Z',
+    tabela: { colunas: ['Filial'], linhas: [['A']] },
+  });
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'erros' }),
+    )
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'Encontrei erros nessa competência.', {}, [
+        'T1',
+      ]),
+    )
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'Eu começaria verificando o cadastro indicado.',
+      ),
+    );
+  await perguntar('Onde tem erro?');
+  const r = await perguntar('E agora?');
+  expect(r.competencia).toBe('10/2026');
+  expect(r.fonte).toBe('Banco do Vale');
+  expect(r.consultadoEm).toBe('2026-11-16T10:00:00Z');
+  expect(r.agente?.ferramentas).toEqual([]);
+  expect(r.tabela).toBeUndefined();
+  expect(queries.consultar).toHaveBeenCalledTimes(1);
+});
 it('busca o código para explicar uma dúvida sem exigir filtros', async () => {
   (consultarModelo as jest.Mock)
     .mockResolvedValueOnce(
