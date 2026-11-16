@@ -98,6 +98,42 @@ it('busca o código para explicar uma dúvida sem exigir filtros', async () => {
   );
   expect(queries.consultar).not.toHaveBeenCalled();
 });
+it('recupera um pedido indevido de filtros usando a competência ativa', async () => {
+  queries.consultar.mockResolvedValue({
+    texto: 'Não há erros.',
+    competencia: '10/2026',
+  });
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'Em qual competência ou filial você quer ver erros?',
+      ),
+    )
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'erros' }),
+    )
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'Não encontrei erros na competência ativa.',
+        {},
+        ['T1'],
+      ),
+    );
+  const r = await perguntar('Onde tem erro?');
+  expect(queries.consultar).toHaveBeenCalledWith(
+    'erros',
+    expect.objectContaining({ periodoId: 1, todasFiliais: true }),
+    'operator',
+  );
+  expect(r.texto).toBe('Não encontrei erros na competência ativa.');
+  expect((consultarModelo as jest.Mock).mock.calls[1][3]).toContain(
+    'não peça filtros',
+  );
+});
 it('constrói SQL validado e oculta dados pessoais mesmo com aliases', async () => {
   const query =
     'SELECT TOP 20 Funcionario AS Apelido, Matricula AS CodigoPessoa FROM vale_ia.funcionarios';
