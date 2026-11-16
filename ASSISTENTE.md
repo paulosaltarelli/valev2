@@ -12,6 +12,10 @@ Relatórios são opcionais: o agente consulta os dados quando solicitados e a in
 
 Os registros de implantação e os testes reais ficam no release `assistente-agente-v2-20261116` na VPS. Respostas contendo dados de funcionários permanecem no servidor; apenas metadados de validação devem sair dele. As seções abaixo documentam a infraestrutura e o fluxo legado; o orçamento curto de classificação e o fallback local não descrevem a nova conversa.
 
+Publicação final em 16/11/2026: código `d94cc96`, release `assistente-agente-v2-20261116-r4`. Passaram 57 testes automatizados. Na API publicada, a sequência de saudação, levantamento de erros, pedido nominal, orientação e pedido de relatório manteve 10/2026 sem pedir filtros; os oito nomes apareceram no chat. O HTML pesquisável e o Excel continham os mesmos oito casos. Um SELECT autorizado retornou as 16 filiais na validação da API. Nenhuma execução foi pausada por estas publicações. Backup oficial e rollback de origem e imagens foram preparados em cada troca. A validação real usou GPT; Claude não foi testado sem credencial disponível.
+
+A integração distingue comentários intermediários da mensagem estruturada final da Responses API, conforme a [documentação oficial da OpenAI](https://developers.openai.com/api/reference/resources/responses/methods/create). Respostas que pedem filtros já disponíveis ou omitem os nomes num pedido nominal são devolvidas ao modelo para correção, dentro do orçamento do agente; não são substituídas por um texto fixo de atendimento.
+
 O botão flutuante **Vale IA** fica no canto inferior das telas autenticadas. Em Processamentos, a competência e a filial vêm da tela quando selecionadas. O usuário pode conferir o recorte antes de consultar. A resposta mostra a fonte, a hora da leitura, os detalhes, a tabela e os links pertinentes.
 
 | Pergunta | Resultado |
