@@ -384,7 +384,7 @@ export class AssistenteAgente {
             );
           if (
             periodoId &&
-            /(?:qual|em qual|informe|selecione|preciso.{0,35})(?:[^?.\n]{0,55})(?:compet[eê]ncia|filial)/i.test(
+            /(?:qual|em qual|algum[ao]?|informe|selecione|preciso.{0,35})(?:[^?.\n]{0,55})(?:compet[eê]ncia|filial)/i.test(
               p.texto,
             ) &&
             !evidencias.length

@@ -141,7 +141,7 @@ it('recupera um pedido indevido de filtros usando a competência ativa', async (
       passo(
         'resposta',
         'nenhuma',
-        'Em qual competência ou filial você quer ver erros?',
+        'Tem erro em alguma filial ou em algum funcionário específico?',
       ),
     )
     .mockResolvedValueOnce(
