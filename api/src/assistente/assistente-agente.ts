@@ -263,7 +263,7 @@ export class AssistenteAgente {
             row[i] = '[identificação omitida]';
             continue;
           }
-          ref = `[${/funcionario|^nome$/i.test(c) ? 'PESSOA' : 'IDENTIFICACAO'}_${s.referencias.size + 1}]`;
+          ref = `[${/funcionario|^nome$/i.test(c.normalize('NFD').replace(/\p{Diacritic}/gu, '')) ? 'PESSOA' : 'IDENTIFICACAO'}_${s.referencias.size + 1}]`;
           s.referencias.set(ref, valor);
         }
         row[i] = ref;
@@ -438,6 +438,34 @@ export class AssistenteAgente {
             .filter((e) => !(e.dados as { falhou?: boolean })?.falhou)
             .map((e) => e.ferramenta);
           const resposta = this.revelar(s, p.texto);
+          const perguntaNormal = input.pergunta
+            .normalize('NFD')
+            .replace(/\p{Diacritic}/gu, '')
+            .toLowerCase();
+          const indiceNome =
+            ultimo?.tabela?.colunas.findIndex((c) =>
+              /^(funcionario|nome)$/.test(
+                c
+                  .normalize('NFD')
+                  .replace(/\p{Diacritic}/gu, '')
+                  .toLowerCase(),
+              ),
+            ) ?? -1;
+          if (
+            indiceNome >= 0 &&
+            ultimo?.tabela &&
+            ultimo.tabela.linhas.length <= 20 &&
+            /\bquem\b|\bquais (?:sao )?(?:eles|os funcionarios)|quero saber.{0,40}funcionarios|liste.{0,40}funcionarios/.test(
+              perguntaNormal,
+            ) &&
+            ultimo.tabela.linhas.some(
+              (row) =>
+                row[indiceNome] && !resposta.includes(String(row[indiceNome])),
+            )
+          )
+            throw new BadRequestException(
+              'A pergunta pede quem são os funcionários. Inclua no texto as referências PESSOA de todos os nomes retornados, não apenas a contagem ou o resumo da filial.',
+            );
           s.turnos = [
             ...s.turnos,
             {

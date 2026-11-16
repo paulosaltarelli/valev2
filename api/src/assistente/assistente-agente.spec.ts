@@ -74,6 +74,33 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('inclui os nomes no chat quando pedem quem são, em vez de repetir a contagem', async () => {
+  queries.consultar.mockResolvedValue({
+    texto: 'Há dois funcionários com erro.',
+    tabela: {
+      colunas: ['Funcionário'],
+      linhas: [['Pessoa Teste A'], ['Pessoa Teste B']],
+    },
+  });
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'erros' }),
+    )
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'Há dois funcionários com erro.', {}, [
+        'T1',
+      ]),
+    )
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'São [PESSOA_1] e [PESSOA_2].', {}, ['T1']),
+    );
+  const r = await perguntar('Quero saber os funcionários com erro.');
+  expect(r.texto).toContain('Pessoa Teste A');
+  expect(r.texto).toContain('Pessoa Teste B');
+  expect((consultarModelo as jest.Mock).mock.calls[2][3]).toContain(
+    'não apenas a contagem',
+  );
+});
 it('mantém competência e origem ao explicar o histórico sem repetir a consulta', async () => {
   queries.consultar.mockResolvedValue({
     texto: 'Há erros.',
