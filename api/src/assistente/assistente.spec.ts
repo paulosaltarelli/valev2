@@ -1,3 +1,4 @@
+import {AssistenteAgente} from './assistente-agente';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -27,6 +28,7 @@ describe('Assistente do Vale', () => {
   const consultas = {
     consultar: jest.fn().mockResolvedValue({ texto: 'Resultado verificado' }),
   };
+  const agente={responder:jest.fn().mockResolvedValue({texto:'Conversa natural da versão nova'}),limpar:jest.fn()};
   const avancado = {
     responder: jest
       .fn()
@@ -69,6 +71,7 @@ describe('Assistente do Vale', () => {
         AssistenteSessoes,
         CryptoService,
         { provide: AssistenteAvancado, useValue: avancado },
+        { provide: AssistenteAgente, useValue: agente },
         { provide: PrismaService, useValue: prisma },
         { provide: AssistenteConsultas, useValue: consultas },
         {
@@ -122,6 +125,17 @@ describe('Assistente do Vale', () => {
     await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(92,'visual')).set('Origin','https://outra-origem.invalid').send(body).expect(403);
     await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(93,'visual')).send({...body,linhas:[['NOME_PRIVADO']]}).expect(400);
     await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(94,'visual')).send(body).expect(403);
+  });
+
+  it('usa o agente novo com a mesma autenticação e isola o reinício de conversa',async()=>{
+    const sessao=cookie(81,'agente-v2');
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').send({pergunta:'Oi'}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',cookie(81,'expirada')).send({pergunta:'Oi'}).expect(401);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'gpt-5.4-mini',gpt_chave:new CryptoService().encryptJson('chave-teste'),contexto:'Contexto do Vale'});
+    const r=await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',sessao).send({pergunta:'Oi',provedor:'gpt-institucional'}).expect(201);
+    expect(r.body.texto).toBe('Conversa natural da versão nova');expect(agente.responder).toHaveBeenCalledWith(expect.objectContaining({pergunta:'Oi'}),'operator','gpt-institucional',expect.any(Object),'Contexto do Vale',81,'81:agente-v2');
+    await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).set('Origin','https://outro.invalid').expect(403);
+    await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).expect(201);expect(agente.limpar).toHaveBeenCalledWith('81:agente-v2');
   });
 
   it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {

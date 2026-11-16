@@ -219,6 +219,8 @@ export function AssistenteVale() {
   };
 
   const fechar = () => setAberto(false);
+  const novaConversa=async()=>{if(ocupado)return;setOcupado(true);setErro("");try{await http.post("/assistente/v2/nova-conversa");setMensagens([]);setPergunta("");perguntaSemFilial.current=null;}catch{setErro("Não foi possível iniciar uma nova conversa. Tente novamente.");}finally{setOcupado(false)}};
+
 
   const enviar = async (texto: string, consulta?: string) => {
     if (!texto.trim() || ocupado || carregandoContexto || !provedor) return;
@@ -299,7 +301,7 @@ export function AssistenteVale() {
     setOcupado(true);
     try {
       const { data } = await http.post<Resposta>(
-        "/assistente/conversar",
+        "/assistente/v2/conversar",
         {
           pergunta: textoConsulta.slice(0, 500),
           consulta: consultaEfetiva,
@@ -509,6 +511,7 @@ export function AssistenteVale() {
                     </option>
                   ))}
                 </Form.Select>
+                <button type="button" className="vale-ia-gerenciar-conexoes" disabled={ocupado} onClick={()=>void novaConversa()}>Nova conversa</button>
                 <button
                   type="button"
                   className="vale-ia-gerenciar-conexoes"

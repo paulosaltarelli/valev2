@@ -1,3 +1,4 @@
+import {AssistenteAgente} from './assistente-agente';
 import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
@@ -11,6 +12,7 @@ import {
   Injectable,
   Module,
   NotFoundException,
+  Optional,
   Post,
   Put,
   Req,
@@ -69,6 +71,8 @@ export class AssistenteSessoes {
     return sessao && sessao.expira > Date.now() ? sessao.turnos : [];
   }
 
+  limpar(chave:string){this.historico.delete(chave)}
+
   gravar(chave: string, turno: Turno) {
     if (!this.historico.has(chave) && this.historico.size >= 500) {
       const maisAntiga = this.historico.keys().next().value;
@@ -121,6 +125,7 @@ export class AssistenteController {
     private readonly relatorios: OperationalReportsService,
     private readonly crypto: CryptoService,
     private readonly avancado: AssistenteAvancado,
+    @Optional() private readonly agente?:AssistenteAgente,
   ) {}
 
   private async autorizar(req: Request, apenasAdmin = false) {
@@ -350,6 +355,7 @@ export class AssistenteController {
     @Req() req: Request,
     @Body() input: AssistenteDto,
     usarPlanejador = false,
+    usarAgente = false,
   ) {
     const usuario = await this.autorizar(req);
     this.validarOrigem(req);
@@ -376,6 +382,7 @@ export class AssistenteController {
           'O login pessoal do ChatGPT aguarda liberação da OpenAI.',
         );
       }
+      if(usarAgente&&provedor==='local')throw new BadRequestException('Configure e selecione um provedor de IA para iniciar a conversa.');
       const gpt = provedor === 'gpt-institucional';
       const habilitado = gpt
         ? config?.gpt_institucional_ativo
@@ -384,12 +391,13 @@ export class AssistenteController {
         provedor !== 'local' && habilitado
           ? this.lerChave(gpt ? config?.gpt_chave : config?.claude_chave)
           : undefined;
-      if (usarPlanejador && provedor !== 'local' && !input.consulta) {
+      if (usarPlanejador && provedor !== 'local' && (!input.consulta||usarAgente)) {
         if (!config || !chave)
           throw new BadRequestException(
             'O provedor escolhido está desabilitado ou sem credencial.',
           );
-        const resultado = await this.avancado.responder(
+        if(usarAgente&&!this.agente)throw new ServiceUnavailableException('A nova conversa ainda não está disponível.');
+        const resultado = usarAgente?await this.agente!.responder(input,usuario.perfil,provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},config.contexto,usuario.id,usuario.chave):await this.avancado.responder(
           input,
           usuario.perfil,
           provedor,
@@ -455,6 +463,14 @@ export class AssistenteController {
     });
   }
 
+  @Post('v2/conversar')
+  @Header('Cache-Control','no-store')
+  async conversarV2(@Req() req:Request,@Body() input:AssistenteDto){return this.consultar(req,{...input,consulta:undefined},true,true)}
+
+  @Post('v2/nova-conversa')
+  @Header('Cache-Control','no-store')
+  async novaConversaV2(@Req() req:Request){const u=await this.autorizar(req);this.validarOrigem(req);this.agente?.limpar(u.chave);this.sessoes.limpar(u.chave);return {texto:'Nova conversa iniciada.'}}
+
   @Post('conversar')
   @Header('Cache-Control', 'no-store')
   async conversar(@Req() req: Request, @Body() input: AssistenteDto) {
@@ -466,6 +482,7 @@ export class AssistenteController {
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [
+    AssistenteAgente,
     AssistenteComparacao,
     AssistenteInvestigacao,
     AssistenteSql,
