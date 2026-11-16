@@ -1,5 +1,17 @@
 # Assistente do Vale Expresso
 
+## Conversa com ferramentas — versão 2
+
+O chat usa `POST /assistente/v2/conversar`. GPT ou Claude decide se responde normalmente ou consulta uma ferramenta; saudações e dúvidas gerais não passam pelo antigo classificador de frases. A conversa mantém até oito interações por usuário e sessão autenticada, por 30 minutos de inatividade. **Nova conversa** limpa apenas esse contexto e não reinicia os limites de uso. O endpoint anterior permanece disponível para rollback.
+
+As ferramentas disponíveis buscam o guia e o código indexado permitido ao perfil, consultam serviços operacionais, investigam funcionários e grupos de erros, comparam competências e constroem SELECTs sobre as visões autorizadas `vale_ia`. O agente deve ler o esquema antes de executar SQL. O parser, os parâmetros de sessão, as permissões e os limites de banco continuam no servidor. Não há ferramenta de escrita operacional nem acesso irrestrito ao banco ou a todo o repositório. O código indexado explica a implementação; não comprova sozinho a causa de um caso concreto.
+
+O modelo recebe uma amostra limitada e identificações pessoais substituídas por referências; o servidor resolve essas referências na resposta ao usuário autorizado. Resultados completos não são guardados no histórico do modelo. Mensagens, código e dados são tratados como conteúdo, sem poder ampliar permissões. A competência ativa e a filial da tela são reaproveitadas. Levantamentos gerais consultam todas as filiais autorizadas quando nenhuma estiver selecionada. O agente tenta corrigir decisões inválidas e perguntas indevidas de filtros, com limites de chamadas e duração.
+
+Relatórios são opcionais: o agente consulta os dados quando solicitados e a interface utiliza a geração existente de HTML e Excel. Uma resposta de conversa não significa que arquivos já foram produzidos. O mecanismo de exportação permanece separado da decisão conversacional. Esta versão exige um provedor configurado; consultas locais antigas não se apresentam como uma conversa de IA quando o provedor estiver indisponível.
+
+Os registros de implantação e os testes reais ficam no release `assistente-agente-v2-20261116` na VPS. Respostas contendo dados de funcionários permanecem no servidor; apenas metadados de validação devem sair dele. As seções abaixo documentam a infraestrutura e o fluxo legado; o orçamento curto de classificação e o fallback local não descrevem a nova conversa.
+
 O botão flutuante **Vale IA** fica no canto inferior das telas autenticadas. Em Processamentos, a competência e a filial vêm da tela quando selecionadas. O usuário pode conferir o recorte antes de consultar. A resposta mostra a fonte, a hora da leitura, os detalhes, a tabela e os links pertinentes.
 
 | Pergunta | Resultado |
