@@ -37,12 +37,10 @@ let code: any,
 beforeEach(() => {
   jest.clearAllMocks();
   code = {
-    buscar: jest
-      .fn()
-      .mockReturnValue({
-        texto: 'Valor zero é diferente de ausência de cálculo.',
-        fontes: ['Guia'],
-      }),
+    buscar: jest.fn().mockReturnValue({
+      texto: 'Valor zero é diferente de ausência de cálculo.',
+      fontes: ['Guia'],
+    }),
   };
   queries = { consultar: jest.fn() };
   sql = { executar: jest.fn() };
@@ -194,7 +192,7 @@ it('não aceita referência pessoal inventada nem ferramentas desconhecidas', as
   (consultarModelo as jest.Mock).mockResolvedValue(
     passo('resposta', 'nenhuma', '[PESSOA_999]'),
   );
-  await expect(perguntar('quem?')).rejects.toThrow('referência desconhecida');
+  expect((await perguntar('quem?')).texto).not.toContain('[PESSOA_999]');
 });
 it('impõe limite ao ciclo de ferramentas', async () => {
   (consultarModelo as jest.Mock).mockResolvedValue(
@@ -226,7 +224,35 @@ it('rejeita ação não realizada e JSON inválido', async () => {
   (consultarModelo as jest.Mock).mockResolvedValue(
     passo('resposta', 'nenhuma', 'Reprocessei tudo.'),
   );
-  await expect(perguntar('Pode resolver?')).rejects.toThrow(
-    'ação não realizada',
+  expect((await perguntar('Pode resolver?')).texto).not.toContain(
+    'Reprocessei tudo',
+  );
+});
+
+it('corrige uma ação inconsistente sem interromper a conversa', async () => {
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(passo('resposta', 'executar_sql', 'Olá'))
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'Olá! Como posso ajudar?'),
+    );
+  expect((await perguntar('Oi')).texto).toContain('Como posso ajudar');
+  expect(
+    JSON.parse((consultarModelo as jest.Mock).mock.calls.at(-1)[3])
+      .ajusteNecessario,
+  ).toBeTruthy();
+  expect(sql.executar).not.toHaveBeenCalled();
+});
+
+it('não envia uma credencial colada por engano ao provedor', async () => {
+  (consultarModelo as jest.Mock).mockResolvedValue(
+    passo(
+      'resposta',
+      'nenhuma',
+      'Guarde a chave nas configurações, não no chat.',
+    ),
+  );
+  await perguntar('minha chave sk-proj-SEGREDODETESTE1234567890');
+  expect((consultarModelo as jest.Mock).mock.calls.at(-1)[3]).not.toContain(
+    'SEGREDODETESTE1234567890',
   );
 });

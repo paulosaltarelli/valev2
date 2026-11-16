@@ -138,6 +138,11 @@ describe('Assistente do Vale', () => {
     await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).expect(201);expect(agente.limpar).toHaveBeenCalledWith('81:agente-v2');
   });
 
+  it('aceita uma dúvida mais completa no agente novo',async()=>{
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'gpt-5.4-mini',gpt_chave:new CryptoService().encryptJson('chave-teste')});
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',cookie(83,'duvida-longa')).send({pergunta:'Quero entender o processo. '.repeat(80),provedor:'gpt-institucional'}).expect(201);
+  });
+
   it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {
     const sessao = cookie(10, 'operador-config');
     const dados = {

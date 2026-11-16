@@ -109,6 +109,43 @@ export class AssistenteDto {
   matricula?: string;
 }
 
+export class AssistenteAgenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
+
+  @IsString()
+  @Length(1, 6000)
+  pergunta!: string;
+
+  @IsOptional()
+  @IsIn(intents.filter((intent) => intent !== 'esclarecer'))
+  consulta?: Intent;
+
+  @IsOptional()
+  @IsIn(provedores)
+  provedor?: (typeof provedores)[number];
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  periodoId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  filialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
+  matricula?: string;
+}
+
+
 export class AssistenteApresentacaoDto {
  @IsString() @Length(1,500) objetivo!:string;
  @IsIn(['claude','gpt-institucional']) provedor!:'claude'|'gpt-institucional';

@@ -34,6 +34,7 @@ import { AssistenteConsultas } from './assistente-consultas';
 import {
   AssistenteConfiguracaoDto,
   AssistenteApresentacaoDto,
+  AssistenteAgenteDto,
   AssistenteDto,
   AssistenteTesteDto,
 } from './assistente.dto';
@@ -465,7 +466,7 @@ export class AssistenteController {
 
   @Post('v2/conversar')
   @Header('Cache-Control','no-store')
-  async conversarV2(@Req() req:Request,@Body() input:AssistenteDto){return this.consultar(req,{...input,consulta:undefined},true,true)}
+  async conversarV2(@Req() req:Request,@Body() input:AssistenteAgenteDto){return this.consultar(req,{...input,consulta:undefined},true,true)}
 
   @Post('v2/nova-conversa')
   @Header('Cache-Control','no-store')

@@ -303,7 +303,7 @@ export function AssistenteVale() {
       const { data } = await http.post<Resposta>(
         "/assistente/v2/conversar",
         {
-          pergunta: textoConsulta.slice(0, 500),
+          pergunta: textoConsulta.slice(0, 6000),
           consulta: consultaEfetiva,
           provedor,
           ...filtros,
@@ -573,7 +573,7 @@ export function AssistenteVale() {
                           <p className="mb-0">{falha}</p>
                         ) : (
                           <p role="status" className="mb-0">
-                            Consultando o Vale…
+                            Vale IA está respondendo…
                           </p>
                         )}
                       </div>
@@ -595,7 +595,7 @@ export function AssistenteVale() {
                 <Form.Control
                   as="textarea"
                   rows={2}
-                  maxLength={500}
+                  maxLength={6000}
                   value={pergunta}
                   onChange={(e) => setPergunta(e.target.value)}
                   onKeyDown={atalhosDeTeclado}
