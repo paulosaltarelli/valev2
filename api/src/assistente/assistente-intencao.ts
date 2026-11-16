@@ -165,12 +165,16 @@ export async function consultarModelo(
     if (!response.ok) throw new Error('Resposta inválida do provedor');
     type TextPart = { type: string; text?: string };
     const body = (await response.json()) as {
-      output?: { type: string; content?: TextPart[] }[];
+      output?: { type: string; phase?: string | null; content?: TextPart[] }[];
       content?: TextPart[];
     };
     const parts = gpt
       ? body.output
-          ?.filter((part) => part.type === 'message')
+          ?.filter(
+            (part) =>
+              part.type === 'message' &&
+              (!formato || !part.phase || part.phase === 'final_answer'),
+          )
           .flatMap((part) => part.content ?? [])
       : body.content;
     const answer = parts
