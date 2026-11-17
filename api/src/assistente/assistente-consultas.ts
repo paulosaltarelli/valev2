@@ -284,34 +284,34 @@ export class AssistenteConsultas {
         return [filiais.find(f=>f.filial_id===run.filial_id)!.nome, v.funcionario_id_rm,
           v.execucao_funcionario_base.nome_funcionario, formula.nome, saved?.versao ?? null,
           formula.tipo ?? 'Não identificado', formula.polaridade ?? 'Não identificada',
-          amount(v.valor_calculado), v.ajuste_manual ? amount(v.valor_final) : null,
+          v.status === 'PREVIA' ? null : amount(v.valor_calculado), v.ajuste_manual ? amount(v.valor_final) : null,
           amount(v.valor_final), currentSent ? amount(v.valor_final ?? v.valor_calculado) : null,
           v.status, v.execucao_funcionario_base.status, v.ajuste_manual ? 'Sim' : 'Não',
           v.revisao, v.enviado_revisao, currentSent ? 'Envio da revisão atual registrado' : v.enviado_revisao !== null ? 'Há registro de revisão anterior; valor enviado não inferido' : 'Sem envio confirmado da revisão atual',
-          v.execucao_id];
+          v.execucao_id, v.status === 'PREVIA' ? amount(v.valor_calculado) : null, situacaoValor(v.status,v.valor_calculado?.toString()??null)];
       });
       for (const filial of filiais) {
         const runs = report.runs.filter(r=>r.filial_id===filial.filial_id);
         if (report.duplicated.includes(filial.filial_id) || !runs.length || !report.results.some(v=>runs.some(r=>r.execucao_id===v.execucao_id)))
           rows.push([filial.nome,null,null,null,null,null,null,null,null,null,null,
-            report.duplicated.includes(filial.filial_id) ? 'Execuções duplicadas — valores não consolidados' : !runs.length ? 'Sem execução' : report.partial ? 'Sem resultados na base parcial retornada' : 'Sem resultados no recorte',null,null,null,null,null,null]);
+            report.duplicated.includes(filial.filial_id) ? 'Execuções duplicadas — valores não consolidados' : !runs.length ? 'Sem execução' : report.partial ? 'Sem resultados na base parcial retornada' : 'Sem resultados no recorte',null,null,null,null,null,null,null,null]);
       }
-      const groups = new Map<string,{filial:Cell;tipo:Cell;polaridade:Cell;registros:number;totais:(Prisma.Decimal|null)[]}>();
+      const groups = new Map<string,{filial:Cell;tipo:Cell;polaridade:Cell;estado:Cell;registros:number;totais:(Prisma.Decimal|null)[]}>();
       for (const row of rows) {
         if (row[1]===null) continue;
-        const key=JSON.stringify([row[0],row[5],row[6]]);
-        const g=groups.get(key) ?? {filial:row[0],tipo:row[5],polaridade:row[6],registros:0,totais:[null,null,null,null]};
+        const key=JSON.stringify([row[0],row[5],row[6],row[19]]);
+        const g=groups.get(key) ?? {filial:row[0],tipo:row[5],polaridade:row[6],estado:row[19],registros:0,totais:[null,null,null,null,null]};
         g.registros++;
-        [7,8,9,10].forEach((c,j)=>{if(row[c]!==null)g.totais[j]=(g.totais[j]??new Prisma.Decimal(0)).plus(String(row[c]));});
+        [7,8,9,10,18].forEach((c,j)=>{if(row[c]!==null)g.totais[j]=(g.totais[j]??new Prisma.Decimal(0)).plus(String(row[c]));});
         groups.set(key,g);
       }
       const totals=[...groups.values()].map(g=>({...g,totais:g.totais.map(v=>v?.toString()??null)}));
       return {
-        [respostaParaModelo]: 'Resultados completos para exportação. Resuma sem enumerar a amostra. Totais por filial, tipo e polaridade, na ordem Calculado, Ajustado (subconjunto), Final local e Valor local com envio registrado: '+JSON.stringify(totals)+'. Estes grupos não devem ser somados entre etapas ou polaridades. A tabela completa acompanha HTML e Excel. Base parcial: '+report.partial,
+        [respostaParaModelo]: 'Resultados completos para exportação. Resuma sem enumerar a amostra. Totais por filial, tipo e polaridade, na ordem Calculado, Ajustado (subconjunto), Final local, Valor local com envio registrado e Valor em prévia: '+JSON.stringify(totals)+'. Estes grupos não devem ser somados entre etapas ou polaridades. A tabela completa acompanha HTML e Excel. Base parcial: '+report.partial,
         ...base, fonte: 'Banco do Vale · resultados persistidos por funcionário e fórmula',
         texto: report.results.length + ' resultado(s) por funcionário e fórmula no recorte. Calculado, ajustado, final local e envio estão separados.' + (report.duplicated.length ? ' Há filiais com execuções duplicadas; seus valores não foram consolidados.' : ''),
-        detalhes: 'Calculado é o valor persistido, inclusive zero e valores presentes em resultados com erro (consulte o status). Ajustado é o valor final somente onde há marca de ajuste manual; não é uma parcela a somar ao calculado. Final local é o campo persistido, sem preencher ausências. Valor local com envio registrado só aparece com status ENVIADO_RM e revisão enviada igual à revisão atual; não é comprovante do valor recebido ou pago no RM. Revisão anterior não permite inferir o valor enviado. Não some etapas nem misture tipos de fórmula, polaridades ou unidades; para totais monetários filtre Tipo de fórmula V e separe polaridade. Fórmula histórica e versão são usadas quando disponíveis; versão vazia indica falta de snapshot confiável. Não há conciliação RM. Para causas de erro, investigue variáveis, logs e código: esta tabela de valores não prova a causa. Base parcial limita também os indicadores e o Excel.',
-        tabela: { colunas: ['Filial','Matrícula','Funcionário','Fórmula','Versão de cálculo','Tipo de fórmula','Polaridade','Calculado','Ajustado','Final local','Valor local com envio registrado','Status do resultado','Estado do funcionário','Ajuste manual','Revisão local','Revisão com envio registrado','Situação do envio','Execução'], linhas: rows, parcial: report.partial },
+        detalhes: 'Calculado é o valor persistido fora do estado PREVIA, inclusive zero e valores presentes em resultados com erro (consulte o status). Valores em PREVIA ficam na coluna Valor em prévia: não confirmam cálculo atual nem devem ser misturados ao calculado. Final local em prévia também não confirma cálculo. Ajustado é o valor final somente onde há marca de ajuste manual; não é uma parcela a somar ao calculado. Final local é o campo persistido, sem preencher ausências. Valor local com envio registrado só aparece com status ENVIADO_RM e revisão enviada igual à revisão atual; não é comprovante do valor recebido ou pago no RM. Revisão anterior não permite inferir o valor enviado. Não some etapas nem misture tipos de fórmula, polaridades ou unidades; para totais monetários filtre Tipo de fórmula V e separe polaridade. Fórmula histórica e versão são usadas quando disponíveis; versão vazia indica falta de snapshot confiável. Não há conciliação RM. Para causas de erro, investigue variáveis, logs e código: esta tabela de valores não prova a causa. Base parcial limita também os indicadores e o Excel.',
+        tabela: { colunas: ['Filial','Matrícula','Funcionário','Fórmula','Versão de cálculo','Tipo de fórmula','Polaridade','Calculado','Ajustado','Final local','Valor local com envio registrado','Status do resultado','Estado do funcionário','Ajuste manual','Revisão local','Revisão com envio registrado','Situação do envio','Execução','Valor em prévia','Situação do cálculo'], linhas: rows, parcial: report.partial },
         apresentacao: { titulo: 'Valores por etapa', dimensao: 'Filial', metrica: null },
         links: [{ texto: 'Processamentos', url: '/processamento' }],
       };

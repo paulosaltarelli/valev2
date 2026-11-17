@@ -266,9 +266,11 @@ export function criarModeloVisual() {
   const somarCompativel = (rows: CelulaVisual[][], nomes: string[], i: number) => {
     const tipo = nomes.indexOf("Tipo de fórmula"), polaridade = nomes.indexOf("Polaridade");
     const values = rows.filter(r=>r[i]!==null);
-    if (tipo >= 0 && polaridade >= 0 && ["Calculado","Ajustado","Final local","Valor local com envio registrado"].includes(nomes[i])) {
+    if (tipo >= 0 && polaridade >= 0 && ["Calculado","Ajustado","Final local","Valor local com envio registrado","Valor em prévia"].includes(nomes[i])) {
       if (values.some(r=>r[tipo]!=="V" || !["+","-"].includes(String(r[polaridade])))) return null;
       if (new Set(values.map(r=>r[polaridade])).size > 1) return null;
+      const state=nomes.indexOf("Situação do cálculo");
+      if(state>=0 && new Set(values.map(r=>r[state])).size>1 && values.some(r=>r[state]==="Sem cálculo confirmado")) return null;
     }
     return somar(rows.map(r=>r[i]));
   };

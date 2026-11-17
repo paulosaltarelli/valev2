@@ -16,7 +16,7 @@ it('inclui calculado sem envio, distingue zero, ajuste, revisão anterior e envi
  expect(rows[2].slice(7,11)).toEqual([null,null,null,null]);
  expect(rows[3][10]).toBeNull();expect(rows[4][10]).toBe(60);
  expect(rows[5][11]).toBe('Sem execução');
- expect(rows.every(r=>r.length===18)).toBe(true);
+ expect(rows.every(r=>r.length===20)).toBe(true);
 });
 it('preserva matrícula e escopo da filial, e marca truncamento',async()=>{
  const {service,reports,prisma}=setup([]);prisma.filial.findMany.mockResolvedValueOnce([{filial_id:1,nome:'A'}]);reports.financialStages.mockResolvedValueOnce({runs:[],duplicated:[1],results:[],partial:true});
@@ -30,3 +30,5 @@ it('leitor exclui históricos e duplicidades sem escolher execução silenciosam
  expect(r.duplicated).toEqual([1]);expect(prisma.execucao.findMany.mock.calls[0][0].where.historica_de_execucao_id).toBeNull();
  expect(prisma.execucao_funcionario.findMany.mock.calls[0][0].where).toEqual({execucao_id:{in:[20]},funcionario_id_rm:'001'});
 });
+
+it('não promove valor em prévia a cálculo confirmado',async()=>{const {service}=setup([result({status:'PREVIA',valor_calculado:'100'})]);const r=await service.consultar('financeiro',{pergunta:'dashboard',periodoId:13},'operator');expect(r.tabela!.linhas[0][7]).toBeNull();expect(r.tabela!.linhas[0][18]).toBe(100);expect(r.tabela!.linhas[0][19]).toBe('Sem cálculo confirmado');});
