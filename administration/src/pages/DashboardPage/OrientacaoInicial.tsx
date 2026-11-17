@@ -54,7 +54,7 @@ export function OrientacaoInicial({ periodos }: { periodos: { periodoId: number;
             <p className="mt-3" style={{ whiteSpace: 'pre-wrap' }}>{a.texto}</p>
             <p className="text-secondary small">{a.fonte ?? 'Banco do Vale'}{a.consultadoEm && ` · Consulta em ${new Date(a.consultadoEm).toLocaleString('pt-BR')}`}</p>
             <div className="d-flex flex-wrap gap-3">
-              <Link to={`/processamento?periodoId=${p.periodoId}`}>Abrir processamentos</Link>
+              <Link to={`/processamento?periodo=${p.periodoId}`}>Abrir processamentos</Link>
               {(a.links ?? []).filter((l, index, all) => l.url.startsWith('/') && !l.url.startsWith('//') && all.findIndex(x => x.url === l.url) === index).map(l => <Link key={l.url} to={l.url}>{l.texto}</Link>)}
             </div>
           </details>;
