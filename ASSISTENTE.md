@@ -2,6 +2,8 @@
 
 O pedido “quero um dash financeiro dos valores pagos” é reconhecido como relatório. A consulta financeira aceita todas as filiais ativas quando não há filial selecionada, mantendo a competência do contexto. Usa uma única chamada ao `DashService.getFinanceiroTimeline` com a lista completa de filiais e apresenta as séries por filial; não escolhe a primeira silenciosamente. Se houver filial selecionada, preserva esse recorte. Consultas por matrícula precisam usar a visão SQL autorizada, porque o relatório financeiro de origem não tem esse filtro.
 
+Ao repetir um pedido explícito de geração, o agente precisa obter uma tabela antes de concluir a resposta; não basta recuperar o texto do histórico. Relatórios de consultas sem registros financeiros continuam permitidos, identificando a ausência dos dados sem inventar valores. Agradecimentos que mencionam o relatório não disparam uma nova consulta. Os arquivos são confirmados pela interface após a preparação existente do HTML e do Excel.
+
 As células financeiras ficam vazias quando não existe registro elegível; zero é preservado somente quando retornado pela série de uma filial. “Pago” continua seguindo o relatório financeiro local: funcionário com registro de envio e fórmula do tipo V, usando o valor final local ou calculado conforme o serviço existente. Não confirma pagamento externo, valor efetivamente recebido pelo RM nem conciliação. A ausência de registros financeiros não significa ausência de valores calculados. A consulta de pendências anterior não é reaproveitada como se fosse uma consulta financeira.
 
 ## Orientação automática na Visão geral
