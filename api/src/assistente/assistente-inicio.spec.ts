@@ -22,6 +22,27 @@ it('não chama o modelo quando existe fila, inclusive pendente', async () => {
   ).toEqual({ estado: 'aguardando_fila' });
   expect(gerar).not.toHaveBeenCalled();
 });
+it('omite caminhos técnicos da fonte e recusa uma análise vazia', async () => {
+  const s = new AssistenteInicio();
+  const r = await s.consultar(
+    'valida',
+    async () => false,
+    async () => ({
+      ...resultado,
+      texto: '**Filial A**: confira o vínculo antes de tentar novamente.',
+      fonte: 'Banco · api/src/arquivo.ts:24',
+    }),
+  );
+  expect(r.fonte).toBe('Banco do Vale e regras do sistema');
+  expect(r.texto).not.toContain('**');
+  expect(
+    await s.consultar(
+      'vazia',
+      async () => false,
+      async () => ({ ...resultado, texto: '.' }),
+    ),
+  ).toEqual({ estado: 'indisponivel' });
+});
 it('reaproveita por sessão e competência, sem retornar nem guardar tabelas', async () => {
   const s = new AssistenteInicio(),
     gerar = jest.fn().mockResolvedValue(resultado);

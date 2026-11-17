@@ -44,16 +44,25 @@ export class AssistenteInicio {
               t,
             ),
           ) ||
-          !r.competencia
+          !r.competencia ||
+          r.texto.trim().length < 30
         )
           throw new Error(
             'A orientação precisa de dados operacionais consultados.',
           );
         const valor: OrientacaoInicial = {
           estado: 'pronto',
-          texto: r.texto,
+          texto: r.texto.replace(/\*\*/g, ''),
           competencia: r.competencia,
-          fonte: r.fonte,
+          fonte: r.agente.ferramentas.some((t) =>
+            [
+              'investigar_grupo',
+              'investigar_funcionario',
+              'buscar_codigo',
+            ].includes(t),
+          )
+            ? 'Banco do Vale e regras do sistema'
+            : 'Banco do Vale',
           consultadoEm: r.consultadoEm,
           links: r.links,
         };
@@ -80,4 +89,4 @@ export class AssistenteInicio {
 }
 
 export const perguntaInicial =
-  'Faça uma orientação proativa para a tela inicial, na competência selecionada e em todas as filiais ativas autorizadas. Consulte primeiro pendências e erros; se houver erros, use investigar_grupo para examinar evidências do banco, logs e código. Organize o texto por filial: diga quantos funcionários ou registros precisam de atenção, explique o significado dos erros em linguagem simples, indique o que conferir e o próximo passo mais seguro. Priorize corrigir a coleta antes de sugerir cálculo ou envio. Distinga evidência de hipótese e declare o que falta confirmar. Considere cálculos parciais, fórmulas pendentes e filiais sem execução conforme os dados retornados. Não conclua que ausência de cálculo significa zero ou que todo cálculo foi perdido. Se não houver erros, informe as pendências realmente encontradas; só diga que está tudo em ordem quando as consultas sustentarem isso. Responda com até 220 palavras, com nomes de filiais e passos práticos; preserve as identidades pessoais nesta visão inicial; apresente somente as filiais. Não peça filtros, não ofereça nem gere arquivos, não descreva ações como já realizadas e não execute alterações. Esta é uma análise automática de leitura, não uma ordem de processamento.';
+  'Faça uma orientação proativa para a tela inicial, na competência selecionada e em todas as filiais ativas autorizadas. Consulte primeiro pendências e erros; se houver erros, use investigar_grupo para examinar evidências do banco, logs e código. Organize o texto por filial: diga quantos funcionários ou registros precisam de atenção, explique o significado dos erros em linguagem simples, indique o que conferir e o próximo passo mais seguro. Priorize corrigir a coleta antes de sugerir cálculo ou envio. Distinga evidência de hipótese e declare o que falta confirmar. Considere cálculos parciais, fórmulas pendentes e filiais sem execução conforme os dados retornados. Não conclua que ausência de cálculo significa zero ou que todo cálculo foi perdido. Se não houver erros, informe as pendências realmente encontradas; só diga que está tudo em ordem quando as consultas sustentarem isso. Responda com até 220 palavras, com nomes de filiais e passos práticos; preserve as identidades pessoais nesta visão inicial; apresente somente as filiais. Não peça filtros, não ofereça nem gere arquivos, não descreva ações como já realizadas e não execute alterações. Escreva para usuários sem conhecimento técnico: traduza os códigos em uma explicação e uma verificação prática. Evite nomes internos de variáveis e fórmulas, siglas de estados, caminhos de arquivos e termos como snapshots. Por exemplo, explique a ausência do vínculo esperado como algo a conferir no cadastro e no retorno da consulta, sem afirmar que foi excluído. Use texto simples com parágrafos curtos. Esta é uma análise automática de leitura, não uma ordem de processamento.';
