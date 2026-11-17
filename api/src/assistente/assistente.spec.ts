@@ -210,7 +210,6 @@ describe('Assistente do Vale', () => {
       .expect(200);
     expect(leitura.body).toMatchObject({
       ativo: false,
-      gptAtivo: false,
       modelo: 'claude-haiku-5-5',
       credencialConfigurada: false,
       gptInstitucionalAtivo: false,
@@ -252,7 +251,6 @@ describe('Assistente do Vale', () => {
       .set('Cookie', cookie(12, 'admin-config'))
       .send({
         ativo: true,
-        gptAtivo: true,
         modelo,
         chave,
         gptInstitucionalAtivo: true,
@@ -262,7 +260,6 @@ describe('Assistente do Vale', () => {
       .expect(200);
     expect(resposta.body).toMatchObject({
       ativo: true,
-      gptAtivo: true,
       modelo,
       credencialConfigurada: true,
       gptInstitucionalAtivo: true,
@@ -344,11 +341,10 @@ describe('Assistente do Vale', () => {
     }
   });
 
-  it('aplica as flags no chat e bloqueia GPT até o login pessoal estar disponível', async () => {
+  it('oferece apenas provedores institucionais e rejeita provedores não suportados', async () => {
     const sessao = cookie(13, 'operador-provedores');
     const http = request(app.getHttpServer());
     const base = {
-      gpt_ativo: false,
       claude_ativo: false,
       claude_modelo: 'claude-haiku-5-5',
     };
@@ -359,7 +355,6 @@ describe('Assistente do Vale', () => {
     };
     const ambos = {
       ...claude,
-      gpt_ativo: true,
       gpt_institucional_ativo: true,
       gpt_modelo: 'gpt-5.4-mini',
       gpt_chave: new CryptoService().encryptJson('chave-gpt-teste'),
@@ -368,14 +363,12 @@ describe('Assistente do Vale', () => {
       .mockResolvedValueOnce(ambos)
       .mockResolvedValueOnce(claude)
       .mockResolvedValueOnce(ambos)
-      .mockResolvedValueOnce({ ...base, gpt_ativo: true })
       .mockResolvedValueOnce(base);
     const estado = await http
       .get('/assistente')
       .set('Cookie', sessao)
       .expect(200);
     expect(estado.body.provedores).toEqual([
-      { id: 'gpt', habilitado: true, disponivel: false },
       { id: 'claude', habilitado: true, disponivel: true },
       { id: 'gpt-institucional', habilitado: true, disponivel: true },
     ]);
@@ -414,12 +407,12 @@ describe('Assistente do Vale', () => {
         .post('/assistente/consultar')
         .set('Cookie', sessao)
         .send({ pergunta, provedor: 'local' })
-        .expect(503);
+        .expect(201);
       await http
         .post('/assistente/consultar')
         .set('Cookie', sessao)
         .send({ pergunta, provedor: 'gpt' })
-        .expect(403);
+        .expect(400);
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(fetchMock.mock.calls[0][0]).toBe(
         'https://api.anthropic.com/v1/messages',

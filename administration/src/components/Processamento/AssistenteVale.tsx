@@ -34,7 +34,6 @@ type Mensagem = {
   erro?: string;
 };
 const nomesDosProvedores = {
-  gpt: "Minha conta ChatGPT",
   claude: "Claude · API do Vale",
   "gpt-institucional": "GPT · API do Vale",
 };
@@ -583,9 +582,7 @@ export function AssistenteVale() {
                 {carregandoContexto && <p role="status">Carregando opções…</p>}
                 {!!provedores?.length && !provedor && (
                   <p role="status">
-                    {provedores.some(({ id }) => id === "gpt")
-                      ? "O login pessoal do ChatGPT aguarda liberação da OpenAI."
-                      : "O provedor institucional está indisponível."}
+                    O provedor institucional está indisponível.
                   </p>
                 )}
                 {erro && <Alert variant="warning">{erro}</Alert>}
@@ -645,25 +642,14 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
   return (
     <div className="vale-ia-contas">
       <h3>Suas conexões</h3>
-      <div className="vale-ia-conta-pessoal">
-        <strong>Minha conta ChatGPT</strong>
-        <p>Converse usando sua própria conta, com autorização na OpenAI.</p>
-        <Button type="button" variant="outline-primary" disabled>
-          Entrar com ChatGPT
-        </Button>
-        <span>Aguardando liberação da OpenAI para o Vale.</span>
-      </div>
       {provedores
-        .filter(({ id }) => id !== "gpt")
         .map(({ id, disponivel }) => (
           <div key={id}>
             <strong>{nomesDosProvedores[id]}</strong>
             <span>
               {disponivel
                 ? "Disponível"
-                : id === "gpt"
-                  ? "Aguardando liberação da OpenAI"
-                  : "Aguardando configuração institucional"}
+                : "Aguardando configuração institucional"}
             </span>
             <small>
               Conexão de API configurada pela administração do Vale.

@@ -177,12 +177,7 @@ export class AssistenteController {
     });
     return {
       provedores: [
-        {
-          id: 'gpt',
-          habilitado: Boolean(config?.gpt_ativo),
-          disponivel: false,
-        },
-        {
+{
           id: 'claude',
           habilitado: Boolean(config?.claude_ativo),
           disponivel: Boolean(config?.claude_ativo && config.claude_chave),
@@ -215,7 +210,6 @@ export class AssistenteController {
     claude_ativo: boolean;
     claude_modelo: string;
     claude_chave: string | null;
-    gpt_ativo: boolean;
     gpt_institucional_ativo: boolean;
     gpt_modelo: string;
     gpt_chave: string | null;
@@ -223,7 +217,6 @@ export class AssistenteController {
   }) {
     return {
       ativo: config.claude_ativo,
-      gptAtivo: Boolean(config.gpt_ativo),
       modelo: config.claude_modelo,
       credencialConfigurada: Boolean(config.claude_chave),
       gptInstitucionalAtivo: Boolean(config.gpt_institucional_ativo),
@@ -259,7 +252,6 @@ export class AssistenteController {
       data: {
         claude_ativo: input.ativo,
         ...(input.contexto !== undefined && { contexto: input.contexto }),
-        ...(input.gptAtivo != null && { gpt_ativo: input.gptAtivo }),
         ...(input.gptInstitucionalAtivo != null && {
           gpt_institucional_ativo: input.gptInstitucionalAtivo,
         }),
@@ -379,16 +371,7 @@ export class AssistenteController {
             ? 'claude'
             : config?.gpt_institucional_ativo
               ? 'gpt-institucional'
-              : config?.gpt_ativo
-                ? 'gpt'
-                : 'local';
-      if (provedor === 'gpt') {
-        if (!config?.gpt_ativo)
-          throw new ForbiddenException('ChatGPT está desabilitado no Vale IA.');
-        throw new ServiceUnavailableException(
-          'O login pessoal do ChatGPT aguarda liberação da OpenAI.',
-        );
-      }
+              : 'local';
       if(usarAgente&&provedor==='local')throw new BadRequestException('Configure e selecione um provedor de IA para iniciar a conversa.');
       const gpt = provedor === 'gpt-institucional';
       const habilitado = gpt

@@ -678,3 +678,11 @@ it('mantém o SQL completo apenas no Vale e transmite somente evidências estrut
  const r=await service.responder({pergunta:'gere dashboard de erros com SQL'},'admin','gpt-institucional',{modelo:'teste',chave:'teste'},null,1,'1:A',false,'A');
  expect(r.tabela?.linhas[0][1]).toContain('SEGREDO_SQL_LITERAL');expect(JSON.stringify((consultarModelo as jest.Mock).mock.calls)).not.toContain('SEGREDO_SQL_LITERAL');expect(investigation.responderGrupo.mock.calls[0].at(-1)).toEqual(expect.objectContaining({sessionId:'A',perfil:'admin',incluirTexto:true}));
 });
+
+it('encaminha a definição SQL do RM à investigação e não a SELECT nas visões do Vale',async()=>{
+ queries.consultar.mockResolvedValue({texto:'Erros',competencia:'10/2026',[contextoConsulta]:{tipo:'funcionarios_com_erro',periodoId:1,competencia:'10/2026',execucaoIds:[3],funcionarioBaseIds:[4],total:1,filial:'Todas',parcial:false,capturadoEm:'agora'}});
+ investigation.responderGrupo.mockResolvedValue({texto:'Definição consultada',competencia:'10/2026',tabela:{colunas:['Texto SQL completo (RM)'],linhas:[['SELECT 1']],parcial:false}});
+ (consultarModelo as jest.Mock).mockResolvedValueOnce(passo('ferramenta','executar_sql','',{sql:'SELECT TOP 5 * FROM vale_ia.funcionarios'})).mockResolvedValueOnce(passo('ferramenta','investigar_sql_rm')).mockResolvedValueOnce(passo('resposta','nenhuma','A definição atual aparece nos detalhes.',{},['T2']));
+ const r=await service.responder({pergunta:'SQL completa do RM dos erros'},'admin','gpt-institucional',{modelo:'teste',chave:'teste'},null,1,'1:A',false,'A');
+ expect(sql.executar).not.toHaveBeenCalled();expect(investigation.responderGrupo).toHaveBeenCalled();expect(r.agente?.ferramentas).toContain('investigar_sql_rm');
+});

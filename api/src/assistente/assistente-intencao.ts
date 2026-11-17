@@ -34,10 +34,6 @@ export async function selecionarConsulta(
   exigirRespostaDoProvedor = false,
 ): Promise<Intent> {
   const provedor = input.provedor ?? 'local';
-  if (provedor === 'gpt')
-    throw new BadRequestException(
-      'O login pessoal do ChatGPT aguarda liberação.',
-    );
   if (provedor !== 'local' && !credencial)
     throw new BadRequestException(
       provedor === 'claude'

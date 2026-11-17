@@ -50,11 +50,7 @@ export class AssistenteConfiguracaoDto {
   @IsBoolean()
   ativo!: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  gptAtivo?: boolean;
-
-  @IsOptional()
+@IsOptional()
   @IsBoolean()
   gptInstitucionalAtivo?: boolean;
 
@@ -85,7 +81,7 @@ export class AssistenteTesteDto extends AssistenteConfiguracaoDto {
   provedorTeste?: 'claude' | 'gpt-institucional';
 }
 
-const provedores = ['local', 'gpt', 'gpt-institucional', 'claude'] as const;
+const provedores = ['local', 'gpt-institucional', 'claude'] as const;
 
 export class AssistenteDto {
   @IsOptional()
