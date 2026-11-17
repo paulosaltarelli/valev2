@@ -32,7 +32,6 @@ function opcoesDeModelo(modelos: Record<string, string>, atual: string) {
 
 type Configuracao = {
   ativo: boolean;
-  gptAtivo: boolean;
   gptInstitucionalAtivo: boolean;
   gptModelo: string;
   gptCredencialConfigurada: boolean;
@@ -102,7 +101,6 @@ export function AssistenteConfiguracaoPage() {
           "/assistente/configuracao",
           {
             ...dados,
-            gptAtivo: config.gptAtivo,
             gptInstitucionalAtivo: config.gptInstitucionalAtivo,
             contexto: config.contexto,
           },
@@ -185,17 +183,6 @@ export function AssistenteConfiguracaoPage() {
                   : "Conhecimento do código indisponível. O assistente usa o guia operacional."}
               </p>
             </fieldset>
-            <h2>ChatGPT</h2>
-            <Form.Check
-              id="vale-gpt-ativo"
-              label="Disponibilizar login pessoal do ChatGPT no Vale IA"
-              checked={config.gptAtivo}
-              disabled={Boolean(acao)}
-              onChange={(event) =>
-                setConfig({ ...config, gptAtivo: event.target.checked })
-              }
-            />
-            <p>A conexão com a conta pessoal aguarda liberação da OpenAI.</p>
             <fieldset disabled={Boolean(acao)}>
               <h2>GPT institucional</h2>
               <Form.Group
