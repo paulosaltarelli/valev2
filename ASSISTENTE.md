@@ -2,6 +2,8 @@
 
 ## Orientação automática na Visão geral
 
+A orientação inicial usa uma tabela curta com **Filial**, **Erro / pendência**, **Possível causa** e **O que investigar**. O modelo recebe um formato estruturado exclusivo dessa tela; o chat comum mantém seu formato. O servidor valida até seis linhas e até 140 palavras no conjunto, com limites por célula. O pedido ao modelo é de até 100 palavras e situações iguais devem ser agrupadas, sem enumerar todas as filiais sem execução. Sem evidência da causa, deve usar “A confirmar”. Não há prosa introdutória ou repetição da tabela na interface.
+
 Ao abrir a tela inicial autenticada, o componente `OrientacaoInicial` solicita `POST /assistente/inicio` sequencialmente para cada competência ativa exibida. O servidor revalida usuário, sessão, perfil e origem, e verifica filas de processamento, criação e geolocalização, incluindo itens pendentes ou pausados. Com fila, não chama o modelo; se uma fila começar durante a geração, descarta a análise. A página continua utilizável durante a leitura e em falhas do provedor.
 
 Sem fila, o agente consulta os serviços existentes e organiza prioridades por filial: erros, evidências, verificações e próximos passos. As causas não confirmadas devem continuar identificadas como hipóteses. Não recalcula benefícios, não altera dados, não inicia filas e não gera relatórios automaticamente. A orientação mostra competência, fonte e horário, com links para a operação. As demais competências ficam em detalhes expansíveis.
