@@ -273,34 +273,35 @@ export class AssistenteConsultas {
       consultadoEm,
     };
     if (intent === 'financeiro') {
-      if (filtros.matricula)
-        throw new BadRequestException('O serviço financeiro não filtra matrícula. Use a visão SQL financeiro com o parâmetro de matrícula do servidor.');
-      const relatorio = await this.dash.getFinanceiroTimeline({
-        startCompetencia: periodo.competencia,
-        endCompetencia: periodo.competencia,
-        filialIds: filiais.map(f=>f.filial_id),
+      const report = await this.relatorios.financialStages(filtros.periodoId, filiais.map(f=>f.filial_id), filtros.matricula);
+      const rows: Cell[][] = report.results.map(v => {
+        const run = report.runs.find(r=>r.execucao_id===v.execucao_id)!;
+        const saved = lerSnapshotFormula(v.formula_snapshot);
+        const formula = saved ?? v.formula;
+        const amount = (x: {toString():string}|null) => numeroParaRelatorio(x?.toString() ?? null);
+        const currentSent = v.status === 'ENVIADO_RM' && v.enviado_revisao === v.revisao;
+        return [filiais.find(f=>f.filial_id===run.filial_id)!.nome, v.funcionario_id_rm,
+          v.execucao_funcionario_base.nome_funcionario, formula.nome, saved?.versao ?? null,
+          formula.tipo ?? 'Não identificado', formula.polaridade ?? 'Não identificada',
+          amount(v.valor_calculado), v.ajuste_manual ? amount(v.valor_final) : null,
+          amount(v.valor_final), currentSent ? amount(v.valor_final ?? v.valor_calculado) : null,
+          v.status, v.execucao_funcionario_base.status, v.ajuste_manual ? 'Sim' : 'Não',
+          v.revisao, v.enviado_revisao, currentSent ? 'Envio da revisão atual registrado' : v.enviado_revisao !== null ? 'Há registro de revisão anterior; valor enviado não inferido' : 'Sem envio confirmado da revisão atual',
+          v.execucao_id];
       });
-      const { pago, desconto, saldo, funcionarios } = relatorio.totals;
+      for (const filial of filiais) {
+        const runs = report.runs.filter(r=>r.filial_id===filial.filial_id);
+        if (report.duplicated.includes(filial.filial_id) || !runs.length || !report.results.some(v=>runs.some(r=>r.execucao_id===v.execucao_id)))
+          rows.push([filial.nome,null,null,null,null,null,null,null,null,null,null,
+            report.duplicated.includes(filial.filial_id) ? 'Execuções duplicadas — valores não consolidados' : !runs.length ? 'Sem execução' : report.partial ? 'Sem resultados na base parcial retornada' : 'Sem resultados no recorte',null,null,null,null,null,null]);
+      }
       return {
-        ...base,
-        fonte: 'Relatório financeiro do Vale',
-        texto: funcionarios ? `O relatório financeiro registra ${funcionarios} funcionário(s) no recorte selecionado.` : 'Não há valores com registro de envio no relatório financeiro desta competência. Isso não indica ausência de valores calculados.',
-        detalhes:
-          'Pago, Desconto e Saldo seguem o relatório financeiro existente: valores locais de funcionários com registro de envio e fórmulas do tipo V. Não comprovam pagamento externo nem conciliação com o RM. Uma célula vazia significa ausência de registro elegível, não valor calculado igual a zero.',
-        tabela: tabela(
-          ['Filial','Pago', 'Desconto', 'Saldo', 'Situação'],
-          filiais.map(f=>{
-            const serie=relatorio.series.find(s=>s.filialId===f.filial_id);
-            const pos=serie?.labels.indexOf(periodo.competencia)??-1;
-            return [f.nome,pos>=0?serie!.pago[pos]:null,pos>=0?serie!.desconto[pos]:null,pos>=0?serie!.saldo[pos]:null,pos>=0?'Com registros no relatório financeiro':'Sem registros no relatório financeiro'];
-          }),
-        ),
-        grafico: funcionarios ? [
-          { rotulo: 'Pago', valor: pago, moeda: true },
-          { rotulo: 'Desconto', valor: desconto, moeda: true },
-          { rotulo: 'Saldo', valor: saldo, moeda: true },
-        ] : undefined,
-        links: [{ texto: 'Relatórios', url: '/relatorios' }],
+        ...base, fonte: 'Banco do Vale · resultados persistidos por funcionário e fórmula',
+        texto: report.results.length + ' resultado(s) por funcionário e fórmula no recorte. Calculado, ajustado, final local e envio estão separados.' + (report.duplicated.length ? ' Há filiais com execuções duplicadas; seus valores não foram consolidados.' : ''),
+        detalhes: 'Calculado é o valor persistido, inclusive zero e valores presentes em resultados com erro (consulte o status). Ajustado é o valor final somente onde há marca de ajuste manual; não é uma parcela a somar ao calculado. Final local é o campo persistido, sem preencher ausências. Valor local com envio registrado só aparece com status ENVIADO_RM e revisão enviada igual à revisão atual; não é comprovante do valor recebido ou pago no RM. Revisão anterior não permite inferir o valor enviado. Não some etapas nem misture tipos de fórmula, polaridades ou unidades; para totais monetários filtre Tipo de fórmula V e separe polaridade. Fórmula histórica e versão são usadas quando disponíveis; versão vazia indica falta de snapshot confiável. Não há conciliação RM. Para causas de erro, investigue variáveis, logs e código: esta tabela de valores não prova a causa. Base parcial limita também os indicadores e o Excel.',
+        tabela: { colunas: ['Filial','Matrícula','Funcionário','Fórmula','Versão de cálculo','Tipo de fórmula','Polaridade','Calculado','Ajustado','Final local','Valor local com envio registrado','Status do resultado','Estado do funcionário','Ajuste manual','Revisão local','Revisão com envio registrado','Situação do envio','Execução'], linhas: rows, parcial: report.partial },
+        apresentacao: { titulo: 'Valores por etapa', dimensao: 'Filial', metrica: null },
+        links: [{ texto: 'Processamentos', url: '/processamento' }],
       };
     }
 

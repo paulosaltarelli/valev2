@@ -67,7 +67,7 @@ export function criarModeloVisual() {
     const identificador =
       tecnica ||
       /matricula|chapa|cpf|cnpj|telefone/.test(n) ||
-      n === "execucao";
+      n === "execucao" || /versao|revisao/.test(n);
     const data =
       /data|ultimaexecucao|atualizad|consultadoem/.test(n) ||
       (preenchidos.length > 0 &&
@@ -79,7 +79,7 @@ export function criarModeloVisual() {
     const numero = preenchidos.length > 0 && preenchidos.every(numeric);
     const moeda =
       !quantidade &&
-      /valor|pago|desconto|saldo|financeiro|calculado|ajustado|finallocal|reembolso/.test(
+      /valor|pago|desconto|saldo|financeiro|calculado|ajustado|finallocal|envioregistrado|reembolso/.test(
         n,
       );
     const tipo = data
@@ -234,7 +234,7 @@ export function criarModeloVisual() {
         : "barras";
     const indicadores = (moedas.length ? moedas : metricas)
       .filter((i) => i !== dimensao && colunas[i].agregavel)
-      .slice(0, 3);
+      .slice(0, tabela.colunas.includes("Valor local com envio registrado") ? 4 : 3);
     return {
       titulo:
         sugestao?.titulo?.trim().slice(0, 100) ||
@@ -263,5 +263,14 @@ export function criarModeloVisual() {
               : "Selecione um grupo para passar do resumo ao detalhe.",
     };
   };
-  return { normal, numeric, coluna, formatar, somar, comparar, analisar };
+  const somarCompativel = (rows: CelulaVisual[][], nomes: string[], i: number) => {
+    const tipo = nomes.indexOf("Tipo de fórmula"), polaridade = nomes.indexOf("Polaridade");
+    const values = rows.filter(r=>r[i]!==null);
+    if (tipo >= 0 && polaridade >= 0 && ["Calculado","Ajustado","Final local","Valor local com envio registrado"].includes(nomes[i])) {
+      if (values.some(r=>r[tipo]!=="V" || !["+","-"].includes(String(r[polaridade])))) return null;
+      if (new Set(values.map(r=>r[polaridade])).size > 1) return null;
+    }
+    return somar(rows.map(r=>r[i]));
+  };
+  return { normal, numeric, coluna, formatar, somar, somarCompativel, comparar, analisar };
 }

@@ -1,134 +1,32 @@
 import { AssistenteConsultas } from './assistente-consultas';
-
-const filiais = [
-  { filial_id: 1, nome: 'Filial A' },
-  { filial_id: 2, nome: 'Filial B' },
-];
-const montar = (series: any[], funcionarios = 0) => {
-  const prisma = {
-    periodo: {
-      findUnique: jest.fn().mockResolvedValue({ competencia: '10/2026' }),
-    },
-    filial: { findMany: jest.fn().mockResolvedValue(filiais) },
-  };
-  const dash = {
-    getFinanceiroTimeline: jest
-      .fn()
-      .mockResolvedValue({
-        series,
-        totals: { pago: 0, desconto: 0, saldo: 0, funcionarios },
-      }),
-  };
-  return {
-    service: new AssistenteConsultas(
-      prisma as any,
-      {} as any,
-      dash as any,
-      {} as any,
-    ),
-    prisma,
-    dash,
-  };
+import { OperationalReportsService } from '../dash/operational-reports.service';
+const result = (overrides = {}) => ({execucao_id:10,funcionario_id_rm:'001',status:'PROCESSADO',valor_calculado:'0.00',valor_final:'0.00',ajuste_manual:false,revisao:2,enviado_revisao:null,formula_snapshot:null,formula:{nome:'Benefício',versao:3,tipo:'V',polaridade:'+'},execucao_funcionario_base:{nome_funcionario:'Pessoa fictícia',status:'PROCESSADO'},...overrides});
+const setup = (results:any[]=[]) => {
+ const prisma={periodo:{findUnique:jest.fn().mockResolvedValue({competencia:'10/2026'})},filial:{findMany:jest.fn().mockResolvedValue([{filial_id:1,nome:'A'},{filial_id:2,nome:'B'}])}};
+ const reports={financialStages:jest.fn().mockResolvedValue({runs:[{execucao_id:10,filial_id:1}],duplicated:[],results,partial:false})};
+ return {prisma,service:new AssistenteConsultas(prisma as any,{} as any,{} as any,reports as any),reports};
 };
-it('consulta todas as filiais autorizadas sem escolher apenas a primeira', async () => {
-  const { service, dash } = montar(
-    [
-      {
-        filialId: 1,
-        labels: ['10/2026'],
-        pago: [0],
-        desconto: [10],
-        saldo: [-10],
-      },
-      {
-        filialId: 2,
-        labels: ['10/2026'],
-        pago: [250],
-        desconto: [0],
-        saldo: [250],
-      },
-    ],
-    2,
-  );
-  const r = await service.consultar(
-    'financeiro',
-    {
-      pergunta: 'quero um dash financeiro dos valores pagos',
-      periodoId: 13,
-      todasFiliais: true,
-    },
-    'operator',
-  );
-  expect(dash.getFinanceiroTimeline).toHaveBeenCalledTimes(1);
-  expect(dash.getFinanceiroTimeline).toHaveBeenCalledWith({
-    startCompetencia: '10/2026',
-    endCompetencia: '10/2026',
-    filialIds: [1, 2],
-  });
-  expect(r.filial).toBe('Todas as filiais ativas');
-  expect(r.tabela?.linhas.map((l) => l.slice(0, 4))).toEqual([
-    ['Filial A', 0, 10, -10],
-    ['Filial B', 250, 0, 250],
-  ]);
+it('inclui calculado sem envio, distingue zero, ajuste, revisão anterior e envio atual',async()=>{
+ const {service,reports}=setup([result(),result({valor_calculado:'100',valor_final:'120',ajuste_manual:true}),result({valor_calculado:null,valor_final:null,status:'ERRO'}),result({status:'ENVIADO_RM',enviado_revisao:1,valor_final:'50'}),result({status:'ENVIADO_RM',enviado_revisao:2,valor_final:'60'})]);
+ const r=await service.consultar('financeiro',{pergunta:'dashboard',periodoId:13},'operator');
+ expect(reports.financialStages).toHaveBeenCalledWith(13,[1,2],undefined);
+ const rows=r.tabela!.linhas;
+ expect(rows[0].slice(7,11)).toEqual([0,null,0,null]);
+ expect(rows[1].slice(7,11)).toEqual([100,120,120,null]);
+ expect(rows[2].slice(7,11)).toEqual([null,null,null,null]);
+ expect(rows[3][10]).toBeNull();expect(rows[4][10]).toBe(60);
+ expect(rows[5][11]).toBe('Sem execução');
+ expect(rows.every(r=>r.length===18)).toBe(true);
 });
-it('distingue ausência de registro financeiro e zero registrado', async () => {
-  const { service } = montar(
-    [
-      {
-        filialId: 1,
-        labels: ['10/2026'],
-        pago: [0],
-        desconto: [0],
-        saldo: [0],
-      },
-    ],
-    1,
-  );
-  const r = await service.consultar(
-    'financeiro',
-    { pergunta: 'valores pagos', periodoId: 13 },
-    'operator',
-  );
-  expect(r.tabela?.linhas[0].slice(1, 4)).toEqual([0, 0, 0]);
-  expect(r.tabela?.linhas[1].slice(1, 4)).toEqual([null, null, null]);
+it('preserva matrícula e escopo da filial, e marca truncamento',async()=>{
+ const {service,reports,prisma}=setup([]);prisma.filial.findMany.mockResolvedValueOnce([{filial_id:1,nome:'A'}]);reports.financialStages.mockResolvedValueOnce({runs:[],duplicated:[1],results:[],partial:true});
+ const r=await service.consultar('financeiro',{pergunta:'dashboard',periodoId:13,filialId:1,matricula:'001'},'operator');
+ expect(reports.financialStages).toHaveBeenCalledWith(13,[1],'001');
+ expect(r.tabela!.parcial).toBe(true);expect(r.tabela!.linhas[0][11]).toContain('duplicadas');
 });
-it('preserva filial selecionada e não ignora um filtro de matrícula', async () => {
-  const { service, prisma, dash } = montar([]);
-  prisma.filial.findMany.mockResolvedValueOnce([filiais[1]]);
-  const r = await service.consultar(
-    'financeiro',
-    { pergunta: 'valores pagos', periodoId: 13, filialId: 2 },
-    'operator',
-  );
-  expect(dash.getFinanceiroTimeline.mock.calls[0][0].filialIds).toEqual([2]);
-  expect(r.filial).toBe('Filial B');
-  await expect(
-    service.consultar(
-      'financeiro',
-      {
-        pergunta: 'valores pagos',
-        periodoId: 13,
-        filialId: 2,
-        matricula: '001',
-      },
-      'operator',
-    ),
-  ).rejects.toThrow('matrícula');
-});
-it('não apresenta ausência de envio como valor calculado zero', async () => {
-  const { service } = montar([
-    { filialId: 0, labels: ['10/2026'], pago: [0], desconto: [0], saldo: [0] },
-  ]);
-  const r = await service.consultar(
-    'financeiro',
-    { pergunta: 'valores pagos', periodoId: 13 },
-    'operator',
-  );
-  expect(r.texto).toContain('Não há valores com registro de envio');
-  expect(
-    r.tabela?.linhas.every(
-      (l) => l[1] === null && l[2] === null && l[3] === null,
-    ),
-  ).toBe(true);
-  expect(r.grafico).toBeUndefined();
+it('leitor exclui históricos e duplicidades sem escolher execução silenciosamente',async()=>{
+ const prisma={execucao:{findMany:jest.fn().mockResolvedValue([{execucao_id:10,filial_id:1},{execucao_id:11,filial_id:1},{execucao_id:20,filial_id:2}])},execucao_funcionario:{findMany:jest.fn().mockResolvedValue([])}};
+ const r=await new OperationalReportsService(prisma as any).financialStages(13,[1,2],'001');
+ expect(r.duplicated).toEqual([1]);expect(prisma.execucao.findMany.mock.calls[0][0].where.historica_de_execucao_id).toBeNull();
+ expect(prisma.execucao_funcionario.findMany.mock.calls[0][0].where).toEqual({execucao_id:{in:[20]},funcionario_id_rm:'001'});
 });

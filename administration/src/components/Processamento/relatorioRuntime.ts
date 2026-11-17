@@ -86,9 +86,11 @@ export function iniciarRelatorio(
     container.appendChild(label);
     filtros.push({ el, select: lista, i });
   };
+  const etapasFinanceiras = colunas.includes("Valor local com envio registrado");
   const principais = [
     ...new Set([
       plano.dimensao,
+      ...(etapasFinanceiras ? [colunas.indexOf("Tipo de fórmula"),colunas.indexOf("Polaridade")] : []),
       ...plano.colunas.flatMap((c, i) =>
         /estado|status|situacao|funcionario|formula/.test(normal(c.nome))
           ? [i]
@@ -108,6 +110,12 @@ export function iniciarRelatorio(
     plano.colunas.forEach((c, i) =>
       option(select("dimensao"), String(i), c.titulo),
     );
+  if (etapasFinanceiras) {
+    for (const [nome, padrao] of [["Tipo de fórmula","V"],["Polaridade","+"]]) {
+      const f = filtros.find(f=>f.i===colunas.indexOf(nome));
+      if (f?.select && linhas.some(r=>r[f.i]===padrao)) f.el.value=JSON.stringify(padrao);
+    }
+  }
   select("dimensao").value = String(plano.dimensao);
   option(select("metrica"), "-1", "Contagem de registros");
   plano.colunas.forEach((c, i) => {
@@ -139,14 +147,16 @@ export function iniciarRelatorio(
         label: CelulaVisual;
         values: CelulaVisual[];
         count: number;
+        rows: CelulaVisual[][];
       }
     >();
     rs.forEach((r) => {
       const key = JSON.stringify(r[d]);
       if (!map.has(key))
-        map.set(key, { key, label: r[d], values: [], count: 0 });
+        map.set(key, { key, label: r[d], values: [], count: 0, rows: [] });
       const g = map.get(key)!;
       g.count++;
+      g.rows.push(r);
       if (m >= 0) g.values.push(r[m]);
     });
     return [...map.values()].map((g) => ({
@@ -155,7 +165,7 @@ export function iniciarRelatorio(
         m < 0
           ? String(g.count)
           : plano.colunas[m].agregavel
-            ? somar(g.values)
+            ? visual.somarCompativel(g.rows, colunas, m)
             : g.values.length === 1
               ? g.values[0] === null
                 ? null
@@ -219,13 +229,13 @@ export function iniciarRelatorio(
         "Filiais com registros no recorte",
       );
     plano.indicadores
-      .slice(0, branch >= 0 && plano.perfil === "Diagnóstico" ? 2 : 3)
+      .slice(0, branch >= 0 && plano.perfil === "Diagnóstico" ? 2 : etapasFinanceiras ? 4 : 3)
       .forEach((i) => {
         const c = plano.colunas[i];
         const ausentes = recorte.filter((r) => r[i] === null).length;
         criar(
           c.titulo,
-          somar(recorte.map((r) => r[i])),
+          visual.somarCompativel(recorte, colunas, i),
           c.tipo as "moeda" | "inteiro" | "decimal",
           ausentes
             ? `${ausentes} registro(s) sem valor`

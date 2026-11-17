@@ -21,6 +21,13 @@ try {
     "/src/components/Processamento/relatorioVisual.ts",
   );
   const visual = criarModeloVisual();
+  const etapas={colunas:["Tipo de fórmula","Polaridade","Calculado","Ajustado","Final local","Valor local com envio registrado","Revisão local"],linhas:[["V","+",100,120,120,null,2],["V","+",0,null,0,0,2],["V","-",10,null,10,null,2],["D","+",22,null,22,null,2]]};
+  assert.equal(visual.somarCompativel(etapas.linhas.slice(0,2),etapas.colunas,2),"100");
+  assert.equal(visual.somarCompativel(etapas.linhas.slice(0,3),etapas.colunas,2),null);
+  assert.equal(visual.somarCompativel(etapas.linhas,etapas.colunas,2),null);
+  assert.equal(visual.analisar(etapas).colunas[6].tipo,"identificador");
+  assert.equal(visual.analisar(etapas).indicadores.length,4);
+
   const financeiro = {
     colunas: [
       "FilialId",

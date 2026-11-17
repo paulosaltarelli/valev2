@@ -23,6 +23,28 @@ type ReportExecution = Prisma.execucaoGetPayload<{ select: typeof executionSelec
 export class OperationalReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Read persisted stages; never recalculates benefits or infers remote payment. */
+  async financialStages(periodoId: number, filialIds: number[], matricula?: string) {
+    const runs = await this.prisma.execucao.findMany({
+      where: { periodo_id: periodoId, filial_id: { in: filialIds }, historica_de_execucao_id: null },
+      select: { execucao_id: true, filial_id: true }, take: 2001,
+    });
+    if (runs.length > 2000) throw new BadRequestException('Limite de execuções excedido.');
+    const duplicated = filialIds.filter(id => runs.filter(r => r.filial_id === id).length > 1);
+    const ids = runs.filter(r => !duplicated.includes(r.filial_id)).map(r => r.execucao_id);
+    const results = ids.length ? await this.prisma.execucao_funcionario.findMany({
+      where: { execucao_id: { in: ids }, ...(matricula ? { funcionario_id_rm: matricula } : {}) },
+      select: {
+        execucao_id: true, funcionario_id_rm: true, status: true, valor_calculado: true,
+        valor_final: true, ajuste_manual: true, revisao: true, enviado_revisao: true,
+        formula_snapshot: true,
+        formula: { select: { formula_id:true, nome:true, versao:true, tipo:true, expressao:true, codEvento:true, polaridade:true } },
+        execucao_funcionario_base: { select: { nome_funcionario:true, status:true } },
+      }, orderBy: { execucao_funcionario_id: 'asc' }, take: 2001,
+    }) : [];
+    return { runs, duplicated, results: results.slice(0, 2000), partial: results.length > 2000 };
+  }
+
   async options() {
     const [periodos, filiais] = await Promise.all([
       this.prisma.periodo.findMany({orderBy: [{data_inicio:'desc'},{periodo_id:'desc'}],
