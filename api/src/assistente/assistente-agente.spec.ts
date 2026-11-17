@@ -670,3 +670,11 @@ it('preserva HTML e Excel quando o limite do agente termina após obter a tabela
  (consultarModelo as jest.Mock).mockResolvedValue(passo('ferramenta','consultar_operacao','',{consulta:'financeiro'}));
  const r=await perguntar('gere dashboard financeiro');expect(r.relatorio?.solicitado).toBe(true);expect(r.tabela?.linhas).toEqual([[0]]);
 });
+
+it('mantém o SQL completo apenas no Vale e transmite somente evidências estruturadas',async()=>{
+ investigation.responderGrupo.mockResolvedValue({texto:'Diagnóstico',competencia:'10/2026',tabela:{colunas:['Funcionário','Texto SQL completo (RM)'],linhas:[['PESSOA PRIVADA','SELECT SEGREDO_SQL_LITERAL FROM PFUNC']],parcial:false}});
+ queries.consultar.mockResolvedValue({texto:'Erro',competencia:'10/2026',[contextoConsulta]:{tipo:'funcionarios_com_erro',periodoId:1,competencia:'10/2026',execucaoIds:[3],funcionarioBaseIds:[4],total:1,filial:'Todas',parcial:false,capturadoEm:'agora'}});
+ (consultarModelo as jest.Mock).mockResolvedValueOnce(passo('ferramenta','investigar_grupo')).mockResolvedValueOnce(passo('resposta','nenhuma','Consulte os detalhes.',{},['T1']));
+ const r=await service.responder({pergunta:'gere dashboard de erros com SQL'},'admin','gpt-institucional',{modelo:'teste',chave:'teste'},null,1,'1:A',false,'A');
+ expect(r.tabela?.linhas[0][1]).toContain('SEGREDO_SQL_LITERAL');expect(JSON.stringify((consultarModelo as jest.Mock).mock.calls)).not.toContain('SEGREDO_SQL_LITERAL');expect(investigation.responderGrupo.mock.calls[0].at(-1)).toEqual(expect.objectContaining({sessionId:'A',perfil:'admin',incluirTexto:true}));
+});

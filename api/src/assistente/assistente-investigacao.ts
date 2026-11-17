@@ -1,5 +1,6 @@
 import {lerFalhaColeta,formatarFalhaColeta} from './assistente-falha-coleta';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AssistenteSqlRm, fonteSqlRm, type AcessoSqlRm, type LeituraSqlRm } from './assistente-sql-rm';
 import { PrismaService } from '../prisma/prisma.service';
 import { analisarExpressao } from '../helpers/calculator/formula-expression';
 import { lerSnapshotFormula } from '../dash/operational-reports';
@@ -125,6 +126,7 @@ export class AssistenteInvestigacao {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conhecimento: AssistenteConhecimento,
+    @Optional() private readonly sqlRm?: AssistenteSqlRm,
   ) {}
 
   async responderGrupo(
@@ -133,7 +135,9 @@ export class AssistenteInvestigacao {
     credencial: { modelo: string; chave: string },
     contexto?: string | null,
     objetivo?: 'prioridade'|'causas'|'nomes',
+    acessoRm?: AcessoSqlRm,
   ): Promise<ResultadoAssistente> {
+    if(acessoRm)acessoRm={...acessoRm,memo:new Map()};
     const consultadoEm = new Date().toISOString();
     const base = {
       competencia: grupo.competencia,
@@ -232,6 +236,7 @@ export class AssistenteInvestigacao {
             credencial,
             contexto,
             false,
+            acessoRm,
           ),
         ),
       );
@@ -328,6 +333,10 @@ export class AssistenteInvestigacao {
           'Interpretação para o usuário',
           'Ponto de falha da coleta',
           'Vínculos registrados na execução',
+          'Consulta SQL RM',
+          'Texto SQL completo (RM)',
+          'Fonte da definição SQL',
+          'Possíveis causas e verificações na SQL',
         ],
         linhas: casos.map((c) => [
           c.pessoa.funcionario_id_rm,
@@ -356,6 +365,10 @@ export class AssistenteInvestigacao {
           interpretarParaUsuario(c.dados[fatosInternos],catalogos.get(c.referencia)??[]),
           formatarFalhaColeta(c.dados[fatosInternos]?.falhaColeta),
           Array.isArray(c.dados[fatosInternos]?.regrasDaExecucao)?(c.dados[fatosInternos]?.regrasDaExecucao as string[]).join(', '):'Vínculos históricos não disponíveis.',
+          (c.dados[fatosInternos]?.sqlRm as LeituraSqlRm|undefined)?.codigo??null,
+          acessoRm?.incluirTexto ? (c.dados[fatosInternos]?.sqlRm as LeituraSqlRm|undefined)?.texto??null : null,
+          fonteSqlRm(c.dados[fatosInternos]?.sqlRm as LeituraSqlRm|undefined),
+          formatarAuditoria((catalogos.get(c.referencia)??[]).filter(a=>a.id.startsWith('sql_rm_'))),
         ]),
         parcial,
       },
@@ -369,6 +382,7 @@ export class AssistenteInvestigacao {
     provedor: 'claude' | 'gpt-institucional',
     credencial: { modelo: string; chave: string },
     contexto?: string | null,
+    acessoRm?: AcessoSqlRm,
   ): Promise<ResultadoAssistente> {
     const base = {
       competencia: escopo.competencia,
@@ -457,7 +471,7 @@ export class AssistenteInvestigacao {
         texto:
           'Existem execuções duplicadas nesta filial e competência. Resolva a duplicidade antes de atribuir uma causa ao funcionário; nenhuma execução foi escolhida para diagnóstico.',
       };
-    return this.analisar(pessoa, escopo, meta, provedor, credencial, contexto);
+    return this.analisar(pessoa, escopo, meta, provedor, credencial, contexto, true, acessoRm);
   }
 
   private async analisar(
@@ -468,6 +482,7 @@ export class AssistenteInvestigacao {
     credencial: { modelo: string; chave: string },
     contexto?: string | null,
     sintetizar = true,
+    acessoRm?: AcessoSqlRm,
   ): Promise<ResultadoFatos> {
     const execucao = pessoa.execucao;
     const [resultados, logs, filas, formulasAtivas, filasIndividuais] = await Promise.all([
@@ -552,10 +567,15 @@ export class AssistenteInvestigacao {
     const codigo = this.conhecimento.investigacao();
     const filaColeta=filasIndividuais.find(f=>f.tipo==='VARIAVEIS');
     const falhaColeta=filaColeta?.status==='ERRO'?lerFalhaColeta(filaColeta.last_error,logs.slice(0,100),pessoa.funcionario_id_rm):undefined;
+    const sqlRm=await this.sqlRm?.ler(falhaColeta,acessoRm);
+    const bounds=sqlRm?.estrutura?.limiteChapa;
+    const chapaCompativel=bounds&&/^[\x20-\x7e]*$/.test(pessoa.funcionario_id_rm)?pessoa.funcionario_id_rm.length>=bounds[0]&&pessoa.funcionario_id_rm.length<=bounds[1]:undefined;
     let regrasDaExecucao:string[]|null=null;
     try{const regras=JSON.parse(pessoa.regras_rm??'null');if(Array.isArray(regras)&&regras.length<=100&&regras.every(x=>typeof x==='string'&&x.length<=100&&!/[\r\n<>]/.test(x)))regrasDaExecucao=regras;}catch{}
     const fatos = {
       falhaColeta,
+      sqlRm,
+      chapaCompativel,
       regrasDaExecucao,
       competencia: escopo.competencia,
       statusFuncionario: pessoa.status,
@@ -627,6 +647,10 @@ export class AssistenteInvestigacao {
           'Execução',
           'Fórmula ID',
           'Variáveis com memória',
+          'Consulta SQL RM',
+          'Texto SQL completo (RM)',
+          'Fonte da definição SQL',
+          'Possíveis causas e verificações na SQL',
         ],
         linhas: evidencias.map((r) => [
           r.formula,
@@ -645,6 +669,10 @@ export class AssistenteInvestigacao {
           execucao.execucao_id,
           r.formulaId,
           r.variaveisIdentificadas.map(v=>v.codigo+(v.nome?' — '+v.nome:'')).join(', '),
+          sqlRm?.codigo??null,
+          acessoRm?.incluirTexto ? sqlRm?.texto??null : null,
+          fonteSqlRm(sqlRm),
+          formatarAuditoria(catalogo.filter(a=>a.id.startsWith('sql_rm_'))),
         ]),
         parcial: resultados.length > 100 || logs.length>100 || filasIndividuais.length>100,
       },

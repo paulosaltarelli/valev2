@@ -169,7 +169,7 @@ describe('Assistente do Vale', () => {
     await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',cookie(81,'expirada')).send({pergunta:'Oi'}).expect(401);
     prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'gpt-5.4-mini',gpt_chave:new CryptoService().encryptJson('chave-teste'),contexto:'Contexto do Vale'});
     const r=await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',sessao).send({pergunta:'Oi',provedor:'gpt-institucional'}).expect(201);
-    expect(r.body.texto).toBe('Conversa natural da versão nova');expect(agente.responder).toHaveBeenCalledWith(expect.objectContaining({pergunta:'Oi'}),'operator','gpt-institucional',expect.any(Object),'Contexto do Vale',81,'81:agente-v2');
+    expect(r.body.texto).toBe('Conversa natural da versão nova');expect(agente.responder).toHaveBeenCalledWith(expect.objectContaining({pergunta:'Oi'}),'operator','gpt-institucional',expect.any(Object),'Contexto do Vale',81,'81:agente-v2',false,'agente-v2');
     await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).set('Origin','https://outro.invalid').expect(403);
     await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).expect(201);expect(agente.limpar).toHaveBeenCalledWith('81:agente-v2');
   });

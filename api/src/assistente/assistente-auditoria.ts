@@ -1,3 +1,4 @@
+import type { LeituraSqlRm } from './assistente-sql-rm';
 import {orientacaoColeta,type FalhaColeta} from './assistente-falha-coleta';
 export type ResultadoAuditavel = {
   formulaId:number; formula:string; versaoHistorica:number|null; status:string;
@@ -7,6 +8,7 @@ export type ResultadoAuditavel = {
 export type CategoriaFila = 'HTTP_401'|'HTTP_403'|'HTTP_400'|'HTTP_429'|'TIMEOUT'|'SEM_CONFIRMACAO'|'REGRA_AUSENTE'|'REGRA_DUPLICADA'|'SESSAO_AUSENTE'|'NAO_CLASSIFICADO';
 export type FilaAuditavel={tipo:string;status:string;categoria:CategoriaFila;data:string|null;recusaDuplicidadeHistorica?:boolean};
 export type FatosAuditaveis={
+  sqlRm?:LeituraSqlRm;chapaCompativel?:boolean;
   falhaColeta?:FalhaColeta;regrasDaExecucao?:string[]|null;
   statusFuncionario?:string|null;resultados?:ResultadoAuditavel[];
   logsHistoricos?:{alvo?:string;codigo?:string;variavel?:string;evidencia:string;data:string}[];
@@ -103,6 +105,18 @@ export function criarAuditoria(fatos:FatosAuditaveis|undefined,codigo:TrechoAudi
     if(fonte&&coleta.logIndividualCompativel){motivoIndividual=true;add('orientacao_especifica_coleta','hipotese',orientacaoColeta(coleta),evidencias,'Conferir o vínculo de transporte usado na execução e o retorno da consulta para a mesma coligada, filial, matrícula e regra. Não alterar cadastros nem reprocessar automaticamente.');}
     add('limite_origem_coleta','limitacao','O log confirma o ponto da falha, mas não preserva a resposta completa da consulta para determinar por que a combinação esperada não retornou. O vínculo exibido é o registrado na execução nesta leitura; não comprova o cadastro da tentativa. A coleta interrompe na primeira falha; não se conclui que todas as variáveis ou fórmulas estejam erradas.',evidencias,'Comparar o vínculo registrado na execução com o vínculo atual e o retorno autorizado da consulta no RM.');
   }
+  if(fatos.sqlRm?.status==='DISPONIVEL'){
+    const sql=fatos.sqlRm, e=sql.estrutura;
+    const refs=['banco:fila_individual_coleta','rm:sql:'+sql.hash,...(fonteVariaveis?[ref(fonteVariaveis)]:[])];
+    add('sql_rm_definicao_atual','fato','Foi lido o texto atual da consulta '+sql.codigo+' no RM, sem executar a sentença.',refs,'Conferir a definição e os parâmetros nos detalhes técnicos.');
+    add('sql_rm_limite_historico','limitacao','A definição foi consultada agora. Ela não prova qual SQL executou a tentativa antiga nem preserva o retorno daquela tentativa.',refs,'Conferir a data de alteração da SQL, o histórico de publicação e o retorno da tentativa antes de confirmar a causa.');
+    if(fatos.falhaColeta?.categoria==='REGRA_AUSENTE'&&fatos.falhaColeta.logIndividualCompativel&&fonteVariaveis&&/^ERRO_(VARIAVEIS|WORKER)$/.test(fatos.statusFuncionario??'')){
+      if(e?.vinculoObrigatorio&&e.regraObrigatoria)add('sql_rm_vinculo_regra','hipotese','A consulta atual exige que o vínculo do funcionário e a regra de transporte existam e combinem. Um vínculo ausente ou uma regra diferente pode retirar a combinação do resultado; isso ainda não foi confirmado no cadastro.',refs,'Conferir a regra registrada nesta execução, o vínculo do funcionário e a regra cadastrada para a coligada e filial. Não alterar o cadastro nem reprocessar antes dessa conferência.');
+      if(e?.filtraColigada&&e.filtraFilial)add('sql_rm_lotacao','hipotese','A consulta atual filtra a empresa e a filial do funcionário. Uma mudança de lotação pode fazer a combinação deixar de aparecer no recorte esperado; o histórico disponível não confirma que houve transferência.',refs,'Comparar coligada e filial da execução com a lotação do funcionário no RM e com os parâmetros da tentativa.');
+      if(e?.excluiDemitidos)add('sql_rm_situacao','hipotese','A consulta atual exclui funcionários com situação D no RM. Se essa era a situação na tentativa, o funcionário pode ter ficado fora do resultado. A situação no RM ainda precisa ser verificada.',refs,'Conferir a situação e a data da movimentação no RM. Não concluir desligamento somente pelo erro do Vale.');
+      if(e?.limiteChapa)add('sql_rm_chapa_lote',fatos.chapaCompativel===true?'fato':'limitacao',fatos.chapaCompativel===true?'O tamanho da matrícula armazenada se enquadra no limite aceito pelo texto atual da consulta. Isso não comprova que ela foi enviada no lote da tentativa.':'A consulta limita o tamanho das matrículas do lote; falta confirmar a identificação efetivamente enviada.',refs,'Conferir os parâmetros CHAPAS da tentativa e sua correspondência com o funcionário, preservando zeros à esquerda.');
+    }
+  }else if(fatos.sqlRm)add('sql_rm_indisponivel','limitacao','Não foi possível obter o texto da consulta no RM ('+fatos.sqlRm.status+'). As orientações continuam limitadas aos registros locais.', ['banco:fila_individual_coleta'],'Conferir a permissão e a sessão RM do usuário e o código da consulta. Não presumir como a SQL filtra os dados.');
   if(!motivoIndividual)add('causa_nao_confirmada','limitacao','Não foi identificado motivo individual específico que sustente uma causa atual. Status, filas da execução inteira e logs antigos não bastam para atribuir causa a esta pessoa.',['banco:estado_funcionario'],'Consultar a última falha individual e os registros da tentativa. Não presumir causas que os registros não demonstrem.');
   if(!codigo.length)add('codigo_ausente','limitacao','O código necessário ao confronto não está disponível; nenhuma hipótese de implementação foi confirmada.',['banco:estado_funcionario'],'Disponibilizar a versão do código correspondente à execução.');
   else add('versao_do_aplicativo','limitacao','O código consultado pertence ao pacote disponibilizado pelo servidor. Não comprova, por si só, qual versão do aplicativo executou uma tentativa passada.',codigo.slice(0,1).map(ref),'Correlacionar a tentativa à versão publicada antes de confirmar uma causa de implementação.');
@@ -125,10 +139,10 @@ export function formatarAuditoria(catalogo:AchadoAuditavel[],selecao:string[]=[]
 /** Linguagem de operação; detalhes e fontes continuam na auditoria expansível. */
 export function interpretarParaUsuario(fatos:FatosAuditaveis|undefined,catalogo:AchadoAuditavel[]):string {
   if(!fatos) return 'Não consegui consultar os dados deste funcionário. Tente novamente antes de concluir o motivo do problema.';
-  const rs=fatos.resultados??[], valores=rs.filter(r=>r.calculado!==null).length, estado=fatos.statusFuncionario??'';
+  const rs=fatos.resultados??[], valores=rs.filter(r=>r.calculado!==null&&['PROCESSADO','ENVIADO_RM'].includes(r.status)).length, persistidos=rs.some(r=>r.calculado!==null), estado=fatos.statusFuncionario??'';
   if(estado&&!/ERRO|FALHA/.test(estado))return 'O estado atual deste funcionário já não está marcado como erro. Confira a situação atual e a última tentativa nos detalhes antes de repetir uma operação. Isso, sozinho, não confirma o recebimento no RM.';
   const etapa=estado==='ERRO_RM'?'O registro indica um problema na etapa de envio ao RM. Isso não confirma se o RM recebeu os valores.':/VARIAVEIS/.test(estado)?'O registro indica um problema na busca das informações usadas no cálculo.':/RESULTADO|FORMULA|CALCULO/.test(estado)?'O registro indica um problema na etapa de cálculo.':'Há um problema registrado para este funcionário; os dados consultados não esclarecem a etapa.';
-  const impacto=valores>0?'Há valores já calculados. O erro não significa que todos os valores estejam faltando.':'Não encontrei valores calculados nos resultados consultados. Isso não significa que o valor seja zero.';
+  const impacto=valores>0?'Há valores já calculados. O erro não significa que todos os valores estejam faltando.':persistidos?'Há valores persistidos ainda sem cálculo confirmado, inclusive prévias. Confira o estado de cada resultado; isso não equivale a valor zero.':'Não encontrei valores calculados nos resultados consultados. Isso não significa que o valor seja zero.';
   const hip=catalogo.filter(a=>a.tipo==='hipotese');
   // Categorias reconhecidas pela auditoria individual; nenhuma inferência a partir da fila global.
   const fila=(fatos.filasIndividuais??[]).find(f=>f.status==='ERRO'&&((estado==='ERRO_RM'&&f.tipo==='ENVIAR_RM')||(/VARIAVEIS/.test(estado)&&f.tipo==='VARIAVEIS')||(/RESULTADO/.test(estado)&&f.tipo==='VALORES')));
@@ -150,5 +164,7 @@ export function interpretarParaUsuario(fatos:FatosAuditaveis|undefined,catalogo:
   if(fatos.falhaColeta&&catalogo.some(a=>a.id==='orientacao_especifica_coleta'))orientacao=orientacaoColeta(fatos.falhaColeta)+' A informação exata e os vínculos da execução estão nos detalhes deste funcionário.';
   if(hip.some(a=>a.id.startsWith('hipotese_simbolo_'))) orientacao='Uma informação necessária ao cálculo aparece sem valor e também é citada no erro. Confira se ela foi obtida para este funcionário; ainda falta confirmar por que está ausente.';
   if(catalogo.some(a=>a.id.startsWith('possibilidade_duplicidade_'))) orientacao='O RM informou que um registro já existia em uma tentativa de envio. Pode já haver um lançamento deste funcionário para o mesmo evento e competência. Confira o lançamento no RM antes de reenviar, para evitar duplicidade. A mensagem não identifica qual campo duplicou nem confirma que o problema continue agora.';
+  const verificacoes=[...(hip.some(a=>a.id==='sql_rm_vinculo_regra')?['o vínculo e a regra de transporte']:[]),...(hip.some(a=>a.id==='sql_rm_lotacao')?['a empresa e a filial']:[]),...(hip.some(a=>a.id==='sql_rm_situacao')?['a situação funcional']:[])];
+  if(verificacoes.length)orientacao+=' Pelo texto atual da consulta, confira também '+verificacoes.join(', ')+'. São possibilidades; falta conferir o retorno da tentativa e a versão usada naquela data.';
   return [etapa,rs.length?`${valores} de ${rs.length} resultados consultados têm valor calculado.`:'',impacto,orientacao].filter(Boolean).join(' ');
 }

@@ -1,3 +1,5 @@
+import { RmModule } from '../rm/rm.module';
+import { AssistenteSqlRm } from './assistente-sql-rm';
 import {AssistenteAgente} from './assistente-agente';
 import { AssistenteInicio, perguntaInicial } from './assistente-inicio';
 import {planejarApresentacao} from './assistente-apresentacao';
@@ -402,7 +404,7 @@ export class AssistenteController {
             'O provedor escolhido está desabilitado ou sem credencial.',
           );
         if(usarAgente&&!this.agente)throw new ServiceUnavailableException('A nova conversa ainda não está disponível.');
-        const resultado = usarAgente?await this.agente!.responder(input,usuario.perfil,provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},config.contexto,usuario.id,usuario.chave):await this.avancado.responder(
+        const resultado = usarAgente?await this.agente!.responder(input,usuario.perfil,provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},config.contexto,usuario.id,usuario.chave,false,(req.user as JwtPayload).sessionId):await this.avancado.responder(
           input,
           usuario.perfil,
           provedor,
@@ -525,12 +527,13 @@ export class AssistenteController {
 }
 
 @Module({
-  imports: [ExecucaoModule, DashModule, CryptoModule],
+  imports: [ExecucaoModule, DashModule, CryptoModule, RmModule],
   controllers: [AssistenteController],
   providers: [
     AssistenteAgente,
     AssistenteComparacao,
     AssistenteInvestigacao,
+    AssistenteSqlRm,
     AssistenteSql,
     AssistenteSessoes,
     AssistenteConsultas,

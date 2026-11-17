@@ -69,3 +69,12 @@ it('interpreta chave duplicada como possibilidade histórica, sem afirmar a comp
  expect(interpretarParaUsuario(facts,catalogo)).toContain('Pode já haver um lançamento');
  expect(interpretarParaUsuario(facts,criarAuditoria(facts,[]))).not.toContain('Pode já haver um lançamento');
 });
+
+it('usa filtros da SQL atual como hipóteses, nunca como prova da causa histórica',()=>{
+ const fonte=[{caminho:'api/src/execucao/execucao.service.ts',linha:10,trecho:'ERRO_VARIAVEIS; Erro RM variavel'}];
+ const f:FatosAuditaveis={statusFuncionario:'ERRO_VARIAVEIS',falhaColeta:{codigo:'DESC',consulta:'PVE2.DESC_AFAS',categoria:'REGRA_AUSENTE',registradaEm:'2026-11-17',antesDoWorker:true,logIndividualCompativel:true},sqlRm:{status:'DISPONIVEL',codigo:'PVE2.DESC_AFAS',hash:'abc',estrutura:{vinculoObrigatorio:true,regraObrigatoria:true,filtraColigada:true,filtraFilial:true,excluiDemitidos:true,limiteChapa:[1,20]}},chapaCompativel:true};
+ const c=criarAuditoria(f,fonte),hip=c.filter(a=>a.id.startsWith('sql_rm_')&&a.tipo==='hipotese');expect(hip).toHaveLength(3);expect(hip.every(a=>a.evidencias.includes('rm:sql:abc')&&a.evidencias.some(e=>e.startsWith('codigo:')))).toBe(true);expect(c.find(a=>a.id==='sql_rm_limite_historico')?.tipo).toBe('limitacao');expect(c.find(a=>a.id==='sql_rm_chapa_lote')?.tipo).toBe('fato');
+ expect(criarAuditoria({...f,statusFuncionario:'PROCESSADO'},fonte).filter(a=>a.id.startsWith('sql_rm_')&&a.tipo==='hipotese')).toHaveLength(0);
+ expect(criarAuditoria({...f,falhaColeta:{...f.falhaColeta!,logIndividualCompativel:false}},fonte).filter(a=>a.id.startsWith('sql_rm_')&&a.tipo==='hipotese')).toHaveLength(0);
+ expect(criarAuditoria(f,[]).filter(a=>a.id.startsWith('sql_rm_')&&a.tipo==='hipotese')).toHaveLength(0);
+});

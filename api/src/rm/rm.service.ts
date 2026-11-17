@@ -207,6 +207,37 @@ export class RmService {
       .join(';');
   }
 
+  /** Read one definition; never executes the statement or calls a write endpoint. */
+  async lerDefinicaoSql(codigo: string, sessionId: string) {
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/.test(codigo))
+      throw new Error('Código de consulta inválido.');
+    const coligada = codigo.startsWith('PVE2.') ? process.env.RM_PVE2_COLIGADA ?? '1' : process.env.RM_COLIGADA_GLOBAL;
+    const sistema = process.env.RM_COD_SISTEMA;
+    if (!coligada || !/^\d{1,6}$/.test(coligada) || !sistema || !/^[A-Za-z0-9]$/.test(sistema) || !process.env.RM_API_URL)
+      return { status: 'CONFIGURACAO_AUSENTE' as const };
+    const key = coligada + '$_$' + sistema + '$_$' + codigo;
+    try {
+      const authorization = await this.getBasicAuthHeaderFromSession(sessionId);
+      const response = await this.http.get(joinUrl(process.env.RM_API_URL, 'GlbConsSqlData/' + encodeURIComponent(key)), {
+        timeout: 12000, maxContentLength: 1024 * 1024,
+        headers: { Authorization: authorization, Accept: 'application/json' },
+      });
+      const body=response.data;
+      if (extractRmApplicationError(body)) return {status:'RM_RECUSOU' as const};
+      const record=Array.isArray(body?.data) ? body.data.length===1 ? body.data[0] : null : body?.data;
+      if (!record) return {status:'NAO_ENCONTRADA' as const};
+      if (String(record.CODCOLIGADA)!==String(Number(coligada)) || record.APLICACAO!==sistema || record.CODSENTENCA!==codigo || typeof record.SENTENCA!=='string' || !record.SENTENCA.trim())
+        return {status:'REGISTRO_INCOMPATIVEL' as const};
+      if(record.SENTENCA.length>100000)return {status:'TEXTO_EXCEDE_LIMITE' as const};
+      return {status:'DISPONIVEL' as const,codigo,coligada:Number(coligada),sistema,texto:record.SENTENCA as string,
+        alteradaEm:typeof record.DTULTALTERACAO==='string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(record.DTULTALTERACAO) ? record.DTULTALTERACAO : null,
+        consultadaEm:new Date().toISOString()};
+    } catch (error) {
+      const status=axios.isAxiosError(error)?error.response?.status:undefined;
+      return {status:status===401||status===403?'ACESSO_NEGADO' as const:status===404?'NAO_ENCONTRADA' as const:'INDISPONIVEL' as const};
+    }
+  }
+
   async realizaConsultaSql(
     codSentenca: string,
     params: Record<string, string | number | boolean | null | undefined>,
