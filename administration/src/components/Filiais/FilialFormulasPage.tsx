@@ -23,7 +23,6 @@ import { VariavelApi } from "../../utils/api/variavelApi";
 import { FunctionsHelper } from "../../utils/functionsHelper";
 import { useBlockUi } from "../../app/providers/blockUiContext";
 import { Tooltip } from "../Tooltip";
-import { Limited } from "../utils/Limited";
 import { Popover } from "../Popover";
 
 // o react-hooks/rules-of-hooks confunde esse método com um Hook por ser `.use`
@@ -219,11 +218,11 @@ export function FilialFormulasPage() {
       />
       {!!formulas.length && <VisualSummary items={[
 {label:"Fórmulas",value:formulas.length,icon:"tabler:list"},
-{label:"Ativas",value:formulas.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Ativas",value:formulas.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"info"},
 {label:"Inativas",value:formulas.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
 ]} />}
 
-      <div className="card card-body ve-table-list">
+      <div className="card card-body ve-table-list ve-formula-list">
       <DataTable
         className="table striped-table mb-0"
         options={{
@@ -317,16 +316,12 @@ export function FilialFormulasPage() {
           codEvento: (data: string) => (
             <span>{data}</span>
           ),
-          nome: (data: string) => (
-            <Limited
-              limit={10}
-              tooltip={true}
-            >
-              {data}
-            </Limited>
-          ),
+          nome: (data: string, type: string, row: Formula) => type === "display" ? <div className="ve-rule-name"><strong>{data}</strong>
+            <small className="ve-rule-mobile-meta">{row.ativa ? "Ativa" : "Inativa"} · {row.tipo === "V" ? "Valor" : "Dias"} · Evento {row.codEvento || "—"}</small>
+            <details className="ve-rule-details"><summary>Expressão e vigência</summary><div><code>{row.expressao}</code><small>Versão {row.versao} · {row.polaridade === "+" ? "Acréscimo" : "Desconto"}</small><small>{FunctionsHelper.formatDateOnlyPtBr(row.data_inicio_vigencia)} → {row.data_fim_vigencia ? FunctionsHelper.formatDateOnlyPtBr(row.data_fim_vigencia) : "Sem término"}</small></div></details>
+          </div> : data,
           polaridade: (data: string) => (
-            <Badge bg={data == '+' ? 'success' : 'danger'}>{data}</Badge>
+            <Badge bg={data == '+' ? 'primary' : 'secondary'}>{data}</Badge>
           ),
         }}
       >
@@ -347,7 +342,7 @@ export function FilialFormulasPage() {
       </DataTable>
       </div>
 
-      <Modal className="ve-editor-modal"
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showEditFormulaModal}
         onHide={() => setShowEditFormulaModal(false)}
       >
@@ -358,7 +353,7 @@ export function FilialFormulasPage() {
           <details className="ve-indicator-details mb-3">
           <summary>Inserir variável na expressão</summary>
 
-          <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
+          <div className="d-flex align-items-center flex-wrap gap-2 mb-3 ve-variable-picker">
             {variaveis.map((variavel) => (
               <Button
                 key={variavel.variavel_id}
@@ -369,9 +364,7 @@ export function FilialFormulasPage() {
                   handleAddVariavelCodigoToEditFormula(variavel.codigo)
                 }
               >
-                {variavel.nome.length > 10
-                  ? variavel.nome.substring(0, 15) + "..."
-                  : variavel.nome}
+                {variavel.nome}
               </Button>
             ))}
           </div>
@@ -582,7 +575,7 @@ export function FilialFormulasPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal className="ve-editor-modal"
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showInsertFormulaModal}
         onHide={() => {
           setShowInsertFormulaModal(false);
@@ -597,7 +590,7 @@ export function FilialFormulasPage() {
           <details className="ve-indicator-details mb-3">
           <summary>Inserir variável na expressão</summary>
 
-          <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
+          <div className="d-flex align-items-center flex-wrap gap-2 mb-3 ve-variable-picker">
             {variaveis.map((variavel) => (
               <Button
                 key={variavel.variavel_id}
@@ -606,9 +599,7 @@ export function FilialFormulasPage() {
                 tooltip={variavel.codigo}
                 onClick={() => handleAddVariavelCodigo(variavel.codigo)}
               >
-                {variavel.nome.length > 10
-                  ? variavel.nome.substring(0, 15) + "..."
-                  : variavel.nome}
+                {variavel.nome}
               </Button>
             ))}
           </div>

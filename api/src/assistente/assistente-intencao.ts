@@ -87,6 +87,7 @@ export async function consultarModelo(
   instructions: string,
   pergunta: string,
   limite: number,
+  formato?: { nome: string; schema: Record<string, unknown> },
 ): Promise<string> {
   const { chave, modelo } = credencial;
   const gpt = provedor === 'gpt-institucional';
@@ -98,7 +99,9 @@ export async function consultarModelo(
       {
         method: 'POST',
         redirect: 'error',
-        signal: AbortSignal.timeout(limite > 32 ? 25000 : 8000),
+        signal: AbortSignal.timeout(
+          gpt && formato ? 45000 : limite > 32 ? 25000 : 8000,
+        ),
         headers: gpt
           ? {
               'Content-Type': 'application/json',
@@ -117,6 +120,18 @@ export async function consultarModelo(
                 input: pergunta,
                 store: false,
                 max_output_tokens: limite,
+                ...(formato
+                  ? {
+                      text: {
+                        format: {
+                          type: 'json_schema',
+                          name: formato.nome,
+                          schema: formato.schema,
+                          strict: true,
+                        },
+                      },
+                    }
+                  : {}),
               }
             : {
                 model: modelo,
@@ -150,12 +165,16 @@ export async function consultarModelo(
     if (!response.ok) throw new Error('Resposta inválida do provedor');
     type TextPart = { type: string; text?: string };
     const body = (await response.json()) as {
-      output?: { type: string; content?: TextPart[] }[];
+      output?: { type: string; phase?: string | null; content?: TextPart[] }[];
       content?: TextPart[];
     };
     const parts = gpt
       ? body.output
-          ?.filter((part) => part.type === 'message')
+          ?.filter(
+            (part) =>
+              part.type === 'message' &&
+              (!formato || !part.phase || part.phase === 'final_answer'),
+          )
           .flatMap((part) => part.content ?? [])
       : body.content;
     const answer = parts

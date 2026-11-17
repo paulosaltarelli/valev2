@@ -295,6 +295,7 @@ export class ExecucaoService {
         filial: true,
       },
       where: {
+        historica_de_execucao_id:null,
         periodo: {
           ativo: true,
         },
@@ -312,6 +313,7 @@ export class ExecucaoService {
           filial: true,
         },
         where: {
+          historica_de_execucao_id:null,
           periodo: {
             ativo: true,
           },
@@ -319,7 +321,7 @@ export class ExecucaoService {
       });
 
     const execucoes = await this.prisma.execucao.findMany({
-      where: { filial_id: filialId, periodo: { ativo: true } },
+      where: { historica_de_execucao_id:null, filial_id: filialId, periodo: { ativo: true } },
       include: {
         periodo: true,
         formula: true,
@@ -421,6 +423,15 @@ export class ExecucaoService {
         if (claimed && !await tx.execucao_create_queue.findFirst({
           where: claimed, select: { queue_id: true },
         })) throw new Error('A solicitação de criação já foi concluída ou perdeu o bloqueio.');
+        const existing = await tx.execucao.findMany({where:{...scope,historica_de_execucao_id:null},select:{execucao_id:true},take:2});
+        if(existing.length>1) throw new Error('Há execuções duplicadas sem referência principal. Consulte a administração.');
+        if(existing.length===1){
+          if(claimed){
+            const updated=await tx.execucao_create_queue.updateMany({where:claimed,data:{status:'CONCLUIDO',lock_owner:null,locked_at:null,updated_at:new Date()}});
+            if(updated.count!==1)throw new Error('A solicitação de criação perdeu o bloqueio.');
+          }
+          return {status:true,message:'Execução existente preservada; nenhuma etapa foi reenfileirada.',data:{execucaoId:existing[0].execucao_id,alreadyExists:true}};
+        }
         if (!claim && await tx.execucao_create_queue.findFirst({
           where: { ...scope, status: { in: ['PENDENTE', 'PROCESSANDO'] } },
           select: { queue_id: true },
@@ -1816,6 +1827,7 @@ export class ExecucaoService {
         const queued = await this.prisma.$transaction(async (tx) => {
           await this.lockCreation(tx, filialId, periodoId);
           const scope = { filial_id: filialId, periodo_id: periodoId };
+          if(await tx.execucao.findFirst({where:{...scope,historica_de_execucao_id:null},select:{execucao_id:true}}))return false;
           if (await tx.execucao_create_queue.findFirst({
             where: { ...scope, status: { in: ['PENDENTE', 'PROCESSANDO'] } },
             select: { queue_id: true },

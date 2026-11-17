@@ -1,3 +1,6 @@
+import {AssistenteAgente} from './assistente-agente';
+import { AssistenteInicio, perguntaInicial } from './assistente-inicio';
+import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
   Body,
@@ -10,6 +13,7 @@ import {
   Injectable,
   Module,
   NotFoundException,
+  Optional,
   Post,
   Put,
   Req,
@@ -30,6 +34,10 @@ import { CryptoService } from '../security/crypto.service';
 import { AssistenteConsultas } from './assistente-consultas';
 import {
   AssistenteConfiguracaoDto,
+  AssistenteApresentacaoDto,
+  AssistenteAgenteDto,
+  AssistenteInicioDto,
+  AssistenteErrosFilialDto,
   AssistenteDto,
   AssistenteTesteDto,
 } from './assistente.dto';
@@ -37,8 +45,17 @@ import { selecionarConsulta } from './assistente-intencao';
 import { AssistenteAvancado } from './assistente-avancado';
 import { AssistenteConhecimento } from './assistente-conhecimento';
 import { promptSugerido } from './assistente-prompt';
+import { AssistenteSql } from './assistente-sql';
+import { AssistenteInvestigacao } from './assistente-investigacao';
+import { AssistenteComparacao } from './assistente-comparacao';
+import {
+  contextoConsulta,
+  respostaParaModelo,
+  type ResultadoAssistente,
+  type TurnoAssistente,
+} from './assistente-tipos';
 
-type Turno = { pergunta: string; resposta: string; em: string };
+type Turno = TurnoAssistente & { em: string };
 const ttl = 30 * 60_000;
 
 @Injectable()
@@ -57,6 +74,8 @@ export class AssistenteSessoes {
     const sessao = this.historico.get(chave);
     return sessao && sessao.expira > Date.now() ? sessao.turnos : [];
   }
+
+  limpar(chave:string){this.historico.delete(chave)}
 
   gravar(chave: string, turno: Turno) {
     if (!this.historico.has(chave) && this.historico.size >= 500) {
@@ -103,6 +122,7 @@ export class AssistenteSessoes {
 @Controller('assistente')
 @UseGuards(JwtAuthGuard)
 export class AssistenteController {
+  private readonly inicio = new AssistenteInicio();
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessoes: AssistenteSessoes,
@@ -110,6 +130,7 @@ export class AssistenteController {
     private readonly relatorios: OperationalReportsService,
     private readonly crypto: CryptoService,
     private readonly avancado: AssistenteAvancado,
+    @Optional() private readonly agente?:AssistenteAgente,
   ) {}
 
   private async autorizar(req: Request, apenasAdmin = false) {
@@ -172,7 +193,9 @@ export class AssistenteController {
           ),
         },
       ],
-      historico: this.sessoes.ler(usuario.chave),
+      historico: this.sessoes
+        .ler(usuario.chave)
+        .map(({ pergunta, resposta, em }) => ({ pergunta, resposta, em })),
     };
   }
 
@@ -337,6 +360,7 @@ export class AssistenteController {
     @Req() req: Request,
     @Body() input: AssistenteDto,
     usarPlanejador = false,
+    usarAgente = false,
   ) {
     const usuario = await this.autorizar(req);
     this.validarOrigem(req);
@@ -363,6 +387,7 @@ export class AssistenteController {
           'O login pessoal do ChatGPT aguarda liberação da OpenAI.',
         );
       }
+      if(usarAgente&&provedor==='local')throw new BadRequestException('Configure e selecione um provedor de IA para iniciar a conversa.');
       const gpt = provedor === 'gpt-institucional';
       const habilitado = gpt
         ? config?.gpt_institucional_ativo
@@ -371,22 +396,26 @@ export class AssistenteController {
         provedor !== 'local' && habilitado
           ? this.lerChave(gpt ? config?.gpt_chave : config?.claude_chave)
           : undefined;
-      if (usarPlanejador && provedor !== 'local' && !input.consulta) {
+      if (usarPlanejador && provedor !== 'local' && (!input.consulta||usarAgente)) {
         if (!config || !chave)
           throw new BadRequestException(
             'O provedor escolhido está desabilitado ou sem credencial.',
           );
-        const resultado = await this.avancado.responder(
+        if(usarAgente&&!this.agente)throw new ServiceUnavailableException('A nova conversa ainda não está disponível.');
+        const resultado = usarAgente?await this.agente!.responder(input,usuario.perfil,provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},config.contexto,usuario.id,usuario.chave):await this.avancado.responder(
           input,
           usuario.perfil,
           provedor,
           { modelo: gpt ? config.gpt_modelo : config.claude_modelo, chave },
           config.contexto,
           this.sessoes.ler(usuario.chave),
+          usuario.id,
         );
         this.sessoes.gravar(usuario.chave, {
           pergunta: input.pergunta,
           resposta: resultado.texto.slice(0, 4000),
+          respostaModelo: resultado[respostaParaModelo],
+          contexto: resultado[contextoConsulta],
           em: new Date().toISOString(),
         });
         return resultado;
@@ -407,7 +436,7 @@ export class AssistenteController {
             'Remova a matrícula para consultar indicadores do conjunto de funcionários.',
         };
       }
-      const resultado = await this.consultas.consultar(
+      const resultado: ResultadoAssistente = await this.consultas.consultar(
         intent,
         input,
         usuario.perfil,
@@ -415,11 +444,78 @@ export class AssistenteController {
       this.sessoes.gravar(usuario.chave, {
         pergunta: input.pergunta,
         resposta: resultado.texto,
+        respostaModelo: resultado[respostaParaModelo],
+        contexto: resultado[contextoConsulta],
         em: new Date().toISOString(),
       });
       return resultado;
     });
   }
+
+  @Post('apresentacao')
+  @Header('Cache-Control','no-store')
+  async planejarRelatorio(@Req() req:Request,@Body() input:AssistenteApresentacaoDto){
+    const usuario=await this.autorizar(req);this.validarOrigem(req);
+    return this.sessoes.consultar(usuario.id,async()=>{
+      if(input.numericas.some(c=>!input.colunas.includes(c)))throw new BadRequestException('Colunas de apresentação inválidas.');
+      const config=await this.prisma.assistente_configuracao.findUnique({where:{id:1}});
+      const gpt=input.provedor==='gpt-institucional';
+      if(!config||(gpt?!config.gpt_institucional_ativo:!config.claude_ativo))throw new ForbiddenException('Provedor desabilitado.');
+      const chave=this.lerChave(gpt?config.gpt_chave:config.claude_chave);
+      if(!chave)throw new BadRequestException('Provedor sem credencial.');
+      const r=await planejarApresentacao({texto:'Plano visual',tabela:{colunas:input.colunas,linhas:[],parcial:input.parcial}},'Gere relatório. Objetivo: '+input.objetivo,input.provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},input);
+      return r.apresentacao?.composicao;
+    });
+  }
+
+  @Post('inicio')
+  @Header('Cache-Control', 'no-store')
+  async orientarInicio(@Req() req: Request, @Body() input: AssistenteInicioDto) {
+    const usuario = await this.autorizar(req);
+    this.validarOrigem(req);
+    const config = await this.prisma.assistente_configuracao.findUnique({ where: { id: 1 } });
+    const provedor = config?.gpt_institucional_ativo && config.gpt_chave ? 'gpt-institucional' : config?.claude_ativo && config.claude_chave ? 'claude' : undefined;
+    if (!config || !provedor || !this.agente) return { estado: 'indisponivel' };
+    const chave = this.lerChave(provedor === 'gpt-institucional' ? config.gpt_chave : config.claude_chave);
+    if (!chave) return { estado: 'indisponivel' };
+    const filaAtiva = async () => {
+      const filas = await Promise.all([
+        this.prisma.execucao_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+        this.prisma.execucao_create_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+        this.prisma.geo_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+      ]);
+      return filas.some(n => n > 0);
+    };
+    const isolada = `${usuario.chave}:inicio:${usuario.perfil}:${input.periodoId ?? 'ativa'}`;
+    return this.inicio.consultar(isolada, filaAtiva, () => this.sessoes.consultar(usuario.id, async () => {
+      try {
+        return await this.agente!.responder({ pergunta: perguntaInicial, periodoId: input.periodoId, todasFiliais: true }, usuario.perfil, provedor, { modelo: provedor === 'gpt-institucional' ? config.gpt_modelo : config.claude_modelo, chave }, config.contexto, usuario.id, isolada, true);
+      } finally { this.agente!.limpar(isolada); }
+    }));
+  }
+
+  @Post('inicio/erros')
+  @Header('Cache-Control','no-store')
+  async detalharErrosInicio(@Req() req:Request,@Body() input:AssistenteErrosFilialDto) {
+    const u=await this.autorizar(req);this.validarOrigem(req);
+    if(!this.agente)throw new ServiceUnavailableException('Investigação indisponível.');
+    return this.sessoes.consultar(u.id,async()=>{
+      const config=await this.prisma.assistente_configuracao.findUnique({where:{id:1}});
+      const provedor=config?.gpt_institucional_ativo&&config.gpt_chave?'gpt-institucional':config?.claude_ativo&&config.claude_chave?'claude':undefined;
+      if(!config||!provedor)throw new ServiceUnavailableException('Configure um provedor para investigar os casos.');
+      const chave=this.lerChave(provedor==='gpt-institucional'?config.gpt_chave:config.claude_chave);
+      if(!chave)throw new ServiceUnavailableException('Provedor indisponível.');
+      return this.agente!.investigarErrosFilial(input,u.perfil,provedor,{modelo:provedor==='gpt-institucional'?config.gpt_modelo:config.claude_modelo,chave},config.contexto);
+    });
+  }
+
+  @Post('v2/conversar')
+  @Header('Cache-Control','no-store')
+  async conversarV2(@Req() req:Request,@Body() input:AssistenteAgenteDto){return this.consultar(req,{...input,consulta:undefined},true,true)}
+
+  @Post('v2/nova-conversa')
+  @Header('Cache-Control','no-store')
+  async novaConversaV2(@Req() req:Request){const u=await this.autorizar(req);this.validarOrigem(req);this.agente?.limpar(u.chave);this.sessoes.limpar(u.chave);return {texto:'Nova conversa iniciada.'}}
 
   @Post('conversar')
   @Header('Cache-Control', 'no-store')
@@ -432,6 +528,10 @@ export class AssistenteController {
   imports: [ExecucaoModule, DashModule, CryptoModule],
   controllers: [AssistenteController],
   providers: [
+    AssistenteAgente,
+    AssistenteComparacao,
+    AssistenteInvestigacao,
+    AssistenteSql,
     AssistenteSessoes,
     AssistenteConsultas,
     AssistenteConhecimento,

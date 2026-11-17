@@ -54,6 +54,7 @@ export function VariacaoPage() {
   return <div className="op-page">
     <PageHeading area="Análise" title="Variação entre competências" description="Compare os valores calculados de cada funcionário e fórmula entre dois períodos."
       actions={<button className="btn btn-primary" disabled={!rows.length || query.loading || !!query.error || exporting} onClick={()=>void download()}>{exporting?'Gerando Excel…':'Exportar Excel'}</button>}/>
+    <Link className="d-inline-block mb-3" to={`/relatorios?${params}`}>← Evolução financeira</Link>
     <AnalysisNav/>
     <ReportFilters summary={`${current?.competencia ?? "—"} × ${previous?.competencia ?? "—"} · ${branch?.nome ?? "Selecione a filial"}`}>
       <section className="op-context mb-3" aria-label="Períodos e filial da comparação">

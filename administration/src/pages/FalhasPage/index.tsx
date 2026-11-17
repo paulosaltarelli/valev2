@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { QueryNotice, useOperationQuery } from "../../components/Processamento/OperationCommon";
 import { PageHeading } from "../../shared/components/PageHeading";
-import { AnalysisNav } from "../../shared/components/AnalysisNav";
+
 import { http } from "../../shared/lib/http";
 
 type FailureReport = {
@@ -38,9 +38,9 @@ export function FalhasPage() {
 
   return (
     <div className="op-page">
-      <PageHeading area="Análise" title="Falhas por causa"
+      <PageHeading area="Processamentos" title="Erros por causa"
         description="Veja as falhas que exigem ação e abra a execução afetada." />
-      <AnalysisNav />
+      <Link className="d-inline-block mb-3" to={`/processamento?periodo=${current?.periodo ?? periodo}`}>← Voltar a Processamentos</Link>
       <ReportFilters summary={(current?.periodos.find(p => p.periodo_id === current.periodo)?.competencia ?? "Carregando…") + " · " + (stage || "Todas as etapas")}>
       <section className="op-context mb-3" aria-label="Filtros das falhas">
         <label>

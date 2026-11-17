@@ -625,7 +625,7 @@ export class GeoService {
             funcionario_id_rm: v.chapa,
             codcoligada: v.codcoligada,
             codfilial: v.codfilial,
-            execucao: { status: { not: 'FINALIZADA' } },
+            execucao: { historica_de_execucao_id:null, status: { not: 'FINALIZADA' } },
           },
           data: { km: kmDb },
         });

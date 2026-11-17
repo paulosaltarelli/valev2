@@ -156,13 +156,13 @@ export function FilialPage() {
       />
       {!!filiais.length && <VisualSummary items={[
 {label:"Filiais",value:filiais.length,icon:"tabler:list"},
-{label:"Ativas",value:filiais.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Ativas",value:filiais.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"info"},
 {label:"Inativas",value:filiais.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
 ]} />}
 
       <div className="card">
         <div className="card-body">
-          <div className="ve-table-list">
+          <div className="ve-table-list ve-branch-list">
             <DataTable
               className="table striped-table mb-0"
               options={{
@@ -173,6 +173,9 @@ export function FilialPage() {
                   topStart: null,
                 },
                 columnDefs: [
+                  {targets: 0, responsivePriority: 1},
+                  {targets: -1, responsivePriority: 2},
+                  {targets: [1,2,3], responsivePriority: 100},
                   {
                     targets: ["_all"],
                     className: "text-center",
@@ -183,7 +186,7 @@ export function FilialPage() {
               columns={columns}
               slots={{
                 nome: (nome: string, type: string, row: Filial) => type === "display" ? (
-                  <div><span>{nome}</span><div className="ve-row-links">
+                  <div><span>{nome}</span><details className="ve-mobile-row-details"><summary>Dados RM</summary><small>Filial: {row.codfilial} · Coligada: {row.codcoligada}<br/>Consulta: {row.sql_codigo_rm || "—"}</small></details><div className="ve-row-links">
                     <button type="button" onClick={() => handleVariaveisFilial(row.filial_id)} aria-label={`Variáveis de ${nome}`}><Icon icon="hugeicons:variable" width={16} />Variáveis</button>
                     <button type="button" onClick={() => handleFormulasFilial(row.filial_id)} aria-label={`Fórmulas de ${nome}`}><Icon icon="hugeicons:function-square" width={16} />Fórmulas</button>
                   </div></div>

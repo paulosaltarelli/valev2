@@ -17,12 +17,13 @@ type Options = {
   }[];
 };
 
-type Formula = { formula_id: number; nome: string; versao: number; tipo: string | null };
+type Formula = { formula_id: number; nome: string; versao: number; tipo: string | null; ativa?: boolean };
 type Employee = {
   id: number;
   nome: string | null;
   matricula: string;
   erroGeral: string | null;
+  calculoCompleto?: boolean;
   resultados: Record<number, { valor: string | null; erro: string | null } | undefined>;
 };
 type Report = { filial: string; competencia: string; formulas: Formula[]; funcionarios: Employee[] };
@@ -78,8 +79,8 @@ export function ExtratoProcessamentoPage() {
   const baseEmployees = report?.funcionarios.filter((employee) =>
     employee.nome?.toLocaleLowerCase("pt-BR").includes(term) || employee.matricula.toLocaleLowerCase("pt-BR").includes(term),
   ) ?? [];
-  const hasError=(e:Employee)=>!!e.erroGeral || Object.values(e.resultados).some(c=>!!c?.erro);
-  const isComplete=(e:Employee)=>!!report?.formulas.length && !hasError(e) && report.formulas.every(f=>e.resultados[f.formula_id]?.valor!=null);
+  const hasError=(e:Employee)=>!!e.erroGeral || Object.entries(e.resultados).some(([id,c])=>!!c?.erro && report?.formulas.some(f=>f.formula_id===Number(id) && f.ativa !== false));
+  const isComplete=(e:Employee)=>e.calculoCompleto === true;
   const employees=baseEmployees.filter(e=>focus==='erros'?hasError(e):focus==='pendentes'?!isComplete(e):focus==='calculados'?isComplete(e):true);
   const employeeLink=(e:Employee)=>`/processamento/${executionId}?${new URLSearchParams({busca:e.matricula,retorno:`/extrato-processamento?${new URLSearchParams({periodo:String(periodo ?? options?.periodo ?? ''),filial:String(branchId ?? ''),execucao:String(executionId ?? ''),busca:search,foco:focus})}`})}`;
   const pages = Math.max(1, Math.ceil(employees.length / pageSize));
@@ -89,7 +90,7 @@ export function ExtratoProcessamentoPage() {
     const sameName = all.filter((other) => other.nome === formula.nome);
     const version = sameName.length > 1 ? ` · v${formula.versao}` : "";
     const id = sameName.filter((other) => other.versao === formula.versao).length > 1 ? ` · #${formula.formula_id}` : "";
-    return { ...formula, label: formula.nome + version + id };
+    return { ...formula, label: formula.nome + version + id + (formula.ativa === false ? " · Histórica" : "") };
   }) ?? [];
 
   async function exportExcel() {

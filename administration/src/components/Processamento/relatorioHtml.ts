@@ -1,153 +1,117 @@
-type Relatorio = {
+import { criarWorkbook } from "./assistenteExcel";
+import { criarModeloVisual, type SugestaoVisual } from "./relatorioVisual";
+import { iniciarRelatorio } from "./relatorioRuntime";
+
+export type RelatorioVale = {
   texto: string;
   detalhes?: string;
   competencia?: string;
   filial?: string;
+  matricula?: string;
   fonte?: string;
   consultadoEm?: string;
+  apresentacao?: SugestaoVisual;
   tabela?: {
     colunas: string[];
     linhas: (string | number | null)[][];
     parcial: boolean;
   };
-  grafico?: { rotulo: string; valor: number; moeda?: boolean }[];
 };
-
-export function escaparHtml(valor: unknown) {
-  return String(valor ?? "—").replace(
+export function escaparHtml(v: unknown) {
+  return String(v ?? "—").replace(
     /[&<>"']/g,
-    (char) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      })[char]!,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
   );
 }
+export function filtrosRelatorio(
+  r: RelatorioVale,
+): [string, string | undefined][] {
+  return [
+    ["Competência", r.competencia],
+    ["Filial", r.filial],
+    ["Matrícula", r.matricula],
+    ["Origem", r.fonte],
+    ["Consultado em", r.consultadoEm],
+    ["Resumo", r.texto],
+    ["Observações", r.detalhes],
+  ];
+}
 
-export function criarRelatorioHtml(relatorio: Relatorio) {
-  const tabela = relatorio.tabela;
-  if (!tabela) throw new Error("O resultado não possui tabela.");
-  const e = escaparHtml;
-  const grafico =
-    relatorio.grafico
-      ?.filter((item) => Number.isFinite(item.valor))
-      .slice(0, 30) ?? [];
-  const maior = Math.max(1, ...grafico.map((item) => Math.abs(item.valor)));
-  return `<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none';">
-<title>Relatório Vale IA</title>
-<style>
-:root{font:15px system-ui,sans-serif;color:#163047;background:#f2f5f8}
-*{box-sizing:border-box}body{margin:0}main{max-width:1440px;margin:auto;padding:32px}
-header,section{background:white;border:1px solid #dae3eb;border-radius:14px;padding:24px;margin-bottom:20px}
-h1{font-size:24px;margin:8px 0 20px}h2{font-size:18px;margin:0 0 16px}.marca{font-weight:700;color:#16627f;letter-spacing:.12em}
-.meta,.cards{display:flex;gap:14px;flex-wrap:wrap}.meta span,.card{border:1px solid #dbe5ec;border-radius:8px;padding:12px}
-.meta span{flex:1;min-width:180px}.card strong{display:block;font-size:24px}
-small{display:block;color:#526679}button,input,select{font:inherit;padding:10px;border:1px solid #c2d0dc;border-radius:7px;background:white;color:inherit}
-button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #208bc2}
-.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:16px 0}.toolbar input{flex:1;min-width:220px}
-.scroll{overflow:auto;max-height:65vh}table{border-collapse:collapse;width:100%;font-size:13px}
-td,th{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid #e0e7ed;white-space:nowrap}
-th{position:sticky;top:0;background:#eaf2f7}th button{border:0;background:transparent;font-weight:700;padding:0}
-tbody tr:nth-child(even){background:#f6f9fc}.grafico{display:grid;gap:14px}.barra{height:12px;border-radius:6px;background:#157896;margin:6px 0}
-.negativo{background:#a35e36}.detalhes{white-space:pre-wrap;line-height:1.6;color:#43586a}.aviso{padding:12px;background:#fff2ce}
-footer{font-size:12px;color:#526679;line-height:1.6}
-@media(max-width:600px){main{padding:12px}header,section{padding:16px}}
-@media print{.toolbar,button{display:none!important}.scroll{max-height:none;overflow:visible}main{padding:0}header,section{break-inside:avoid}th{position:static}body{background:white}}
+export function criarRelatorioHtml(
+  r: RelatorioVale,
+  recursos: { excelRuntime: string; logo: string; excelBase64: string },
+) {
+  if (!r.tabela) throw Error("O resultado não possui tabela.");
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(recursos.logo))
+    throw Error("Logo oficial indisponível.");
+  if (/<\/script/i.test(recursos.excelRuntime))
+    throw Error("Biblioteca de exportação inválida.");
+  const e = escaparHtml,
+    plano = criarModeloVisual().analisar(r.tabela, r.apresentacao);
+  const json = JSON.stringify({
+    tabela: r.tabela,
+    filtros: filtrosRelatorio(r),
+    plano,
+    layout: r.apresentacao?.composicao?.layout ?? (plano.perfil==="Diagnóstico"?"analitico":r.tabela.linhas.length<3?"editorial":"executivo"),
+  })
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+  const data = r.consultadoEm
+    ? new Date(r.consultadoEm).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+      })
+    : "Não informada";
+  let html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none';">
+<title>${e(plano.titulo)} · Vale IA</title><style>
+:root{font:14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif;color:#22364a;background:#f1f5f9;--navy:#123958;--blue:#087eaa;--teal:#18a89b;--line:#dfe7ef;--muted:#60758a}*{box-sizing:border-box}body{margin:0}button,input,select,a{font:inherit}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,svg [role=button]:focus-visible{outline:3px solid #e1aa47;outline-offset:3px}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}[hidden]{display:none!important}main{max-width:1600px;margin:auto;padding:28px}.masthead{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:22px}.brand{display:flex;align-items:center;gap:14px}.brand img{width:78px;height:42px;object-fit:contain}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-weight:700;font-size:10px;color:var(--blue)}.brand strong{display:block;color:var(--navy);font-size:17px}.snapshot{font-size:12px;color:var(--muted);text-align:right}header{background:var(--navy);color:white;border-radius:16px;padding:20px 26px;margin-bottom:20px;border-bottom:4px solid var(--teal)}header .eyebrow{color:#83d4e4}h1{font-size:clamp(23px,3vw,30px);line-height:1.2;margin:8px 0 14px;font-weight:650;letter-spacing:-.025em}.lead{margin:0;color:#d2e4ee;max-width:900px}.context{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.context span{padding:6px 11px;border:1px solid #61829966;border-radius:7px;color:#eaf7fb;font-size:12px}.context b{font-weight:600;color:white}.actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0}.exports,.view-switch{display:flex;gap:8px;flex-wrap:wrap}.btn,button:not(.bar):not(.legend button):not(th button){border:1px solid #c9d7e3;border-radius:8px;background:white;color:var(--navy);padding:9px 13px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:550;font-size:12px}.btn.primary{background:var(--blue);border-color:var(--blue);color:white}.view-switch{background:#e4edf4;padding:4px;border-radius:10px}.view-switch button{border-color:transparent!important;background:transparent!important;color:var(--muted)!important}.view-switch button[aria-pressed=true]{background:white!important;box-shadow:0 2px 5px #173c5314;color:var(--navy)!important}.status{font-size:12px;color:var(--muted)}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:20px}.kpi{background:white;border:1px solid var(--line);border-radius:12px;padding:19px 20px;box-shadow:0 3px 12px #1d405105;border-top:3px solid #d8e7ef;min-width:0}.kpi:first-child{border-top-color:var(--blue)}.kpi span{font-size:12px;font-weight:550;color:var(--muted);display:block}.kpi strong{display:block;font-size:clamp(20px,2vw,28px);line-height:1.25;color:var(--navy);font-variant-numeric:tabular-nums;margin:8px 0;overflow-wrap:anywhere}.kpi small{font-size:11px;color:var(--muted)}.panel{background:white;border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:20px;min-width:0;box-shadow:0 3px 12px #1d405105}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}.panel h2{font-size:16px;font-weight:650;color:var(--navy);margin:0}.hint{font-size:12px;color:var(--muted);margin:5px 0 12px}.filter-top{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.filter-top input{flex:1;min-width:180px}.filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.filters label span,.control label>span{font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px}.filters select,.filters input,input[type=search],.control select{font:inherit;background:#fbfdff;border:1px solid #cfdce7;border-radius:7px;color:#29445b;padding:9px 11px;width:100%;min-width:0}.filters select{white-space:nowrap;text-overflow:ellipsis}.more-filters{border-top:1px solid #edf2f6;margin-top:16px;padding-top:12px}.more-filters summary{font-size:12px;color:var(--blue);cursor:pointer;margin-bottom:12px}.selection{display:flex;align-items:center;gap:12px;padding:7px 12px;border-radius:8px;background:#e8f5f9;color:#126b87;margin:12px 0;font-size:12px}.selection button{padding:3px 8px!important}.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:20px}.layout .panel{margin-bottom:0}.control{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}.control label{flex:1;min-width:130px}.control select{padding:7px 9px;font-size:12px}.chart{min-height:230px;max-height:520px;overflow:auto;padding-right:3px}.bar{border:0;border-bottom:1px solid #eef3f7;background:transparent;color:inherit;display:grid;grid-template-columns:minmax(130px,1fr) minmax(70px,1.2fr) minmax(90px,auto);align-items:center;gap:12px;width:100%;text-align:left;padding:11px 5px;font:inherit}.bar>span:first-child{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar strong{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.bar[aria-pressed=true],.legend button[aria-pressed=true]{background:#e8f6fa;border-radius:7px}.bar-track{height:10px;background:#edf3f8;border-radius:6px;overflow:hidden}.bar-fill{height:100%;display:block;background:linear-gradient(90deg,#087eaa,#26a5bd);border-radius:6px}.bar-fill.negativo{background:#bd7058}.chart svg{width:100%;height:auto;min-height:240px}.axis{font-size:10px;fill:#60758a}.composition{display:flex;align-items:center;gap:16px;min-height:260px}.donut{width:48%;max-width:225px;flex-shrink:0}.donut-label{font-size:15px;font-weight:650;fill:#163d56}.legend{display:grid;gap:10px;flex:1;min-width:0}.legend button{background:transparent;border:0;display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:8px;text-align:left;align-items:center;font:inherit;font-size:11px;color:#39546c;padding:6px}.legend i{width:8px;height:8px;border-radius:3px}.legend span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.legend strong{font-variant-numeric:tabular-nums;color:var(--navy)}svg [role=button]{cursor:pointer}.empty{padding:24px;color:var(--muted);font-size:13px;text-align:center}.insight{background:#edf7fa;color:#28566b;border-left:3px solid var(--blue);padding:12px 16px;border-radius:5px;font-size:12px;margin:18px 0}.notice{padding:14px 18px;border:1px solid #efd999;background:#fff8e4;color:#795812;border-radius:10px;margin:16px 0}.table-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted);margin-bottom:16px}.table-toolbar select{border:1px solid #c9d7e3;border-radius:5px;background:white;padding:5px;color:var(--navy)}.scroll{overflow:auto;max-height:65vh;border:1px solid #e1e9f0;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:12px 14px;border-bottom:1px solid #e7eef4;vertical-align:top;text-align:left}th{position:sticky;top:0;background:#f0f5f9;z-index:1;white-space:nowrap}th button{background:transparent;border:0;font:inherit;color:#294b66;font-weight:650;cursor:pointer;white-space:nowrap}td{min-width:110px;max-width:460px;overflow-wrap:anywhere}td.moeda,td.inteiro,td.decimal{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}td.data,td.identificador{white-space:nowrap}td.texto{min-width:190px}td details{min-width:230px}td details summary{cursor:pointer;color:#2a6581}td details p{white-space:pre-wrap;line-height:1.7;max-width:600px}tbody tr:nth-child(even){background:#fbfdff}tbody tr:hover{background:#eef7fb}.pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:15px;color:var(--muted);font-size:12px}.sources{font-size:12px;color:var(--muted);margin-top:20px}.sources summary{cursor:pointer;color:#436a83}.sources pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7}.sources dl{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px}.sources dt{font-weight:650}.sources dd{margin:0;overflow-wrap:anywhere}footer{display:flex;justify-content:space-between;gap:20px;margin-top:20px;font-size:11px;color:var(--muted);border-top:1px solid #dae4ed;padding:16px 2px}
+.filter-line{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,2fr) auto;gap:14px;align-items:end}.filters-panel{padding-top:16px;padding-bottom:16px}.filters-panel .more-filters{margin-top:12px;padding-top:10px}.filters-panel .more-filters summary{margin-bottom:0}.filters-panel .more-filters[open] summary{margin-bottom:12px}@media(max-width:1100px){.layout{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.composition{min-height:200px}.donut{width:35%}}@media(max-width:650px){main{padding:12px}.filter-line{grid-template-columns:1fr}.masthead{margin:8px 0 14px}.snapshot{display:none}header{padding:20px}.actions{align-items:flex-start}.panel{padding:16px}.filters{grid-template-columns:1fr}.kpis{gap:10px}.kpi{padding:15px}.kpi strong{font-size:21px}.bar{grid-template-columns:minmax(100px,1.1fr) minmax(40px,.6fr) minmax(90px,auto);gap:8px}.composition{gap:10px}.donut{width:40%}.legend button{font-size:10px}.context span{font-size:11px}.sources dl{grid-template-columns:1fr}.sources dd{margin-bottom:8px}footer{display:block}.control label{min-width:100px}}@media print{button,input,select,.actions,.filters,.filter-top,.more-filters,.selection,.control{display:none!important}body{background:white}main{padding:0;max-width:none}.panel,header,.kpi{box-shadow:none;break-inside:avoid}.scroll,.chart{max-height:none;overflow:visible}th{position:static}header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.layout{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.bar{grid-template-columns:2fr 2fr 1fr}footer{display:block}}
+.casos-funcionarios{display:grid;gap:10px;margin-bottom:20px}.casos-funcionarios>details{border:1px solid var(--line);border-radius:8px;padding:14px}.casos-funcionarios summary{cursor:pointer;color:var(--navy)}.casos-funcionarios summary strong,.casos-funcionarios summary span{display:block}.casos-funcionarios summary span{font-size:12px;color:var(--muted);margin-top:5px}.casos-funcionarios dl{display:grid;grid-template-columns:minmax(130px,1fr) minmax(0,4fr);gap:12px}.casos-funcionarios dt{font-weight:600}.casos-funcionarios dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}@media(max-width:650px){.casos-funcionarios dl{grid-template-columns:1fr}}
+ .composicao-livre{display:grid;gap:20px;align-items:start}.composicao-livre .panel{margin-bottom:0}.composicao-livre.executivo{grid-template-columns:repeat(2,minmax(0,1fr))}.relatorio-bloco{min-width:0}.bloco-resumo,.bloco-indicadores,.bloco-detalhe{grid-column:1/-1}.composicao-livre.editorial{max-width:1120px;margin:auto}.resumo-relatorio{white-space:pre-wrap;line-height:1.8}@media(max-width:900px){.composicao-livre.executivo{grid-template-columns:1fr}}
+
+/* Relatórios seguem a identidade de Processamentos. */
+:root{color:#243247;background:#f4f6fb;--navy:#243247;--blue:#195db1;--line:#d4ddeb;--muted:#586b85}
+main{max-width:1440px;padding:24px}.masthead{margin-bottom:16px}.brand strong{font-size:15px}.brand img{width:60px;height:34px}
+header{background:transparent;color:var(--navy);border:0;border-radius:0;padding:0;margin-bottom:18px}header .eyebrow{color:var(--muted);letter-spacing:.06em}h1{margin:6px 0 10px;font-size:clamp(22px,3vw,28px)}
+.context{gap:8px 18px;margin-top:10px}.context span{padding:0;border:0;color:var(--muted)}.context b{color:var(--navy)}
+.panel,.kpi{box-shadow:none;border-radius:10px}.panel{padding:18px}.kpis{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:0}.kpi{padding:16px;border-top:1px solid var(--line)}.kpi:first-child{border-top-color:var(--line)}.kpi strong{color:var(--blue);margin:6px 0}.kpi small:empty{display:none}
+.actions{margin:16px 0;gap:12px}.btn,button:not(.bar):not(.legend button):not(th button){font-size:13px;min-height:40px}.view-switch{background:#eaf0f9}.view-switch button[aria-pressed=true]{color:var(--blue)!important;box-shadow:none}
+.panel-head{margin-bottom:12px}.panel h2{font-size:15px}.composicao-livre{gap:16px}.composicao-livre.editorial{max-width:none}.filters-panel{padding:14px 18px}.filters-panel .panel-head{margin-bottom:10px}.filter-line{gap:12px}.filters{gap:10px}.more-filters summary{min-height:28px;display:list-item}.resumo-consulta summary{cursor:pointer;font-weight:600;color:var(--blue)}.resumo-relatorio{margin-bottom:0;line-height:1.6}
+.chart{max-height:none;overflow:visible;min-height:200px}.scroll{max-height:none;overflow-x:auto}.bar-fill{background:var(--blue)}.bar-fill.negativo{background:#b42335}.bar[aria-pressed=true],.legend button[aria-pressed=true]{background:#eaf1ff}.selection{background:#eaf1ff;color:var(--blue)}tbody tr:hover{background:#edf3ff}th{background:#f3f6fa}.sources{margin-top:16px}footer{margin-top:16px}.status:empty{display:none}
+@media(max-width:650px){main{padding:12px}.masthead{margin:0 0 14px}.snapshot{display:block;font-size:10px;max-width:135px}.brand{gap:8px}.brand img{width:42px;height:28px}.brand strong{font-size:12px}.context{gap:6px 12px}.actions{display:grid;grid-template-columns:1fr}.view-switch{width:fit-content}.exports{display:grid;grid-template-columns:1fr 1fr;gap:8px}.exports .primary{grid-column:1/-1}.exports button,.exports .btn{min-height:44px}.panel{padding:14px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.kpi{padding:12px}.kpi strong{font-size:22px}.kpi span{font-size:11px}.filter-line{grid-template-columns:1fr}.filter-line>button{justify-self:end}.filters{grid-template-columns:1fr}.filters input,.filters select,input[type=search],.control select{min-height:44px;font-size:16px}.panel-head{gap:8px;flex-wrap:wrap}.table-toolbar{gap:10px}.table-toolbar label{min-height:36px}.pagination{justify-content:space-between;gap:8px}.pagination button{min-height:44px}.composition{flex-wrap:wrap}.donut{width:42%}.legend{min-width:140px}.sources summary{min-height:30px}.chart{min-height:0}footer span{display:block;margin-top:4px}}
+@media print{.filters-panel,.resumo-consulta:not([open]){display:none!important}header{padding:0;background:white;color:#243247}.context span,.context b{color:#243247}.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style></head><body><main>
-<header><div class="marca">VALE IA · RELATÓRIO</div><h1>${e(relatorio.texto)}</h1>
-<div class="meta"><span><small>Competência</small>${e(relatorio.competencia)}</span>
-<span><small>Filial</small>${e(relatorio.filial ?? "Conforme consulta")}</span>
-<span><small>Origem</small>${e(relatorio.fonte)}</span>
-<span><small>Dados consultados em</small>${e(relatorio.consultadoEm ? new Date(relatorio.consultadoEm).toLocaleString("pt-BR") : "Não informado")}</span></div>
-</header>
-<section aria-label="Resumo"><div class="cards"><div class="card"><small>Linhas no relatório</small><strong>${tabela.linhas.length}</strong></div>
-<div class="card"><small>Colunas</small><strong>${tabela.colunas.length}</strong></div>
-<div class="card"><small>Recorte</small><strong>${tabela.parcial ? "Parcial" : "Completo"}</strong></div></div>
-${tabela.parcial ? '<p class="aviso">Base parcial. Estes dados não representam totais completos.</p>' : ""}
-</section>
-${
-  grafico.length
-    ? `<section><h2>Indicadores da consulta</h2><div class="grafico">${grafico
-        .map(
-          (item) =>
-            `<div><span>${e(item.rotulo)}</span> <strong>${e(item.moeda ? item.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : item.valor.toLocaleString("pt-BR"))}</strong>
-<div class="barra ${item.valor < 0 ? "negativo" : ""}" style="width:${Math.min(100, (Math.abs(item.valor) / maior) * 100)}%"></div></div>`,
-        )
-        .join("")}</div></section>`
-    : ""
-}
-<section><h2>Dados</h2>
-<div class="toolbar"><input id="busca" aria-label="Filtrar linhas do relatório" placeholder="Buscar nesta tabela…">
-<label>Linhas por página <select id="tamanho"><option>25</option><option>50</option><option>100</option><option value="2000">Todas</option></select></label>
-<button id="imprimir" type="button">Imprimir / PDF</button></div>
-<p id="contagem" role="status"></p><div class="scroll"><table>
-<thead><tr>${tabela.colunas.map((coluna) => `<th scope="col"><button type="button">${e(coluna)} ↕</button></th>`).join("")}</tr></thead>
-<tbody>${tabela.linhas.map((linha) => `<tr>${linha.map((valor) => `<td>${e(valor)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
-<div class="toolbar"><button id="anterior" type="button">Anterior</button><span id="pagina"></span><button id="proxima" type="button">Próxima</button></div>
-</section>
-${relatorio.detalhes ? `<section><h2>Escopo e interpretação</h2><div class="detalhes">${e(relatorio.detalhes)}</div></section>` : ""}
-<footer>Snapshot dos registros consultados no Vale Expresso. A busca e a ordenação atuam somente sobre as linhas deste relatório.
-Vazio (—), zero e erro mantêm os significados da consulta de origem. O relatório não atualiza dados operacionais.</footer>
-</main><script>
-(() => {
-  const body = document.querySelector('tbody');
-  const linhas = Array.from(body.rows);
-  const busca = document.getElementById('busca');
-  const tamanho = document.getElementById('tamanho');
-  let pagina = 0, coluna = -1, sentido = 1;
-  const normalizar = valor => valor.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-  function atualizar() {
-    const termo = normalizar(busca.value);
-    const filtradas = linhas.filter(linha => normalizar(linha.textContent).includes(termo));
-    if(coluna >= 0) filtradas.sort((a,b) => {
-      const va = a.cells[coluna].textContent, vb = b.cells[coluna].textContent;
-      const numero = /^-?\\d+(\\.\\d+)?$/;
-      let resultado;
-      if(numero.test(va) && numero.test(vb)) {
-        const fa = (va.split('.')[1] || '').length, fb = (vb.split('.')[1] || '').length;
-        const casas = Math.max(fa, fb);
-        const na = BigInt(va.replace('.', '') + '0'.repeat(casas - fa));
-        const nb = BigInt(vb.replace('.', '') + '0'.repeat(casas - fb));
-        resultado = na < nb ? -1 : na > nb ? 1 : 0;
-      } else resultado = va.localeCompare(vb,'pt-BR',{numeric:true});
-      return sentido * resultado;
-    });
-    const limite = Number(tamanho.value);
-    const total = Math.max(1, Math.ceil(filtradas.length / limite));
-    pagina = Math.max(0, Math.min(pagina, total - 1));
-    linhas.forEach(linha => { linha.hidden = true; });
-    filtradas.forEach((linha,i) => { body.appendChild(linha); linha.hidden = i < pagina * limite || i >= (pagina + 1) * limite; });
-    document.getElementById('contagem').textContent = filtradas.length + ' de ' + linhas.length + ' linhas';
-    document.getElementById('pagina').textContent = 'Página ' + (pagina + 1) + ' de ' + total;
-    document.getElementById('anterior').disabled = pagina === 0;
-    document.getElementById('proxima').disabled = pagina >= total - 1;
-  }
-  busca.addEventListener('input', () => { pagina = 0; atualizar(); });
-  tamanho.addEventListener('change', () => { pagina = 0; atualizar(); });
-  document.querySelectorAll('thead button').forEach((botao,i) => botao.addEventListener('click', () => { sentido = coluna === i ? -sentido : 1; coluna = i; atualizar(); }));
-  document.getElementById('anterior').addEventListener('click', () => { pagina--; atualizar(); });
-  document.getElementById('proxima').addEventListener('click', () => { pagina++; atualizar(); });
-  document.getElementById('imprimir').addEventListener('click', () => window.print());
-  window.addEventListener('beforeprint', () => linhas.forEach(linha => { linha.hidden = !normalizar(linha.textContent).includes(normalizar(busca.value)); }));
-  window.addEventListener('afterprint', atualizar);
-  atualizar();
-})();
-</script></body></html>`;
-}
+<div class="masthead"><div class="brand"><img src="${recursos.logo}" alt="Expresso Nepomuceno"><div><strong>Vale IA · Relatórios</strong></div></div><div class="snapshot">Consulta · ${e(data)}</div></div>
+<header><span class="eyebrow">${e(plano.perfil)}</span><h1>${e(plano.titulo)}</h1><div class="context"><span>Competência <b>${e(r.competencia)}</b></span><span>Filiais <b>${e(r.filial ?? "Conforme consulta")}</b></span><span>${r.tabela.parcial ? "Base parcial" : "Base da consulta"}</span></div></header>
+${r.tabela.parcial ? '<div class="notice"><b>Base parcial.</b> Os indicadores e arquivos representam somente os registros carregados. Não são totais completos.</div>' : ""}
+<div class="actions"><div class="view-switch" aria-label="Nível de leitura"><button id="visao-sintetica" aria-pressed="true">Resumo</button><button id="visao-analitica" aria-pressed="false">Dados</button></div><div class="exports"><a class="btn primary" id="excel-original" download="vale-ia-dados.xlsx" href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${e(recursos.excelBase64)}">↓ Excel da consulta</a><button id="excel-filtrado">Excel do recorte</button><button id="imprimir">Imprimir / PDF</button></div></div>
+<p id="export-status" class="status" role="status"></p><!--bloco:indicadores--><section id="indicadores" class="kpis" aria-label="Indicadores do recorte"></section><!--fim:indicadores-->
+<section class="panel filters-panel"><div class="panel-head"><h2>Filtros</h2><span id="recorte-status" class="status" role="status"></span></div><div class="filter-line"><input id="busca" type="search" aria-label="Buscar nos dados" placeholder="Buscar no relatório…"><div id="filtros-principais" class="filters"></div><button id="limpar">Limpar filtros</button></div><details class="more-filters"><summary>Mais filtros</summary><div id="filtros-adicionais" class="filters"></div></details><div id="selecao" class="selection" hidden><span id="selecao-texto"></span><button id="remover-selecao" aria-label="Remover seleção do gráfico">×</button></div></section>
+<!--bloco:grafico--><section class="panel"><div class="panel-head"><h2>Comparativo</h2></div><div class="control"><label><span>Agrupar por</span><select id="dimensao"></select></label><label><span>Indicador</span><select id="metrica"></select></label><label><span>Visualização</span><select id="tipo-grafico"><option value="barras">Ranking em barras</option><option value="linha">Evolução no tempo</option></select></label></div><div id="grafico" class="chart"></div><p id="grafico-nota" class="hint"></p></section><!--fim:grafico--><!--bloco:composicao--><section class="panel"><div class="panel-head"><h2 id="composicao-titulo">Distribuição</h2></div><div id="composicao" class="composition"></div><p class="hint">Clique em um grupo para filtrar.</p></section><!--fim:composicao-->
 
-export function baixarRelatorioHtml(html: string) {
-  const url = URL.createObjectURL(
-    new Blob([html], { type: "text/html;charset=utf-8" }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "vale-ia-relatorio.html";
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
+<!--bloco:detalhe--><section id="analitico" class="panel" hidden><div class="panel-head"><h2>Registros</h2><span id="contagem" class="status" role="status"></span></div><div id="casos-funcionarios" class="casos-funcionarios" hidden aria-label="Funcionários e evidências"></div><div class="table-toolbar"><label>Linhas por página <select id="tamanho"><option>25</option><option>50</option><option>100</option><option value="2000">Todas</option></select></label><label><input type="checkbox" id="tecnicos"> Mostrar códigos técnicos</label></div><div class="scroll"><table><thead><tr id="cabecalho"></tr></thead><tbody id="corpo"></tbody></table></div><div class="pagination"><button id="anterior">Anterior</button><span id="pagina"></span><button id="proxima">Próxima</button></div></section><!--fim:detalhe-->
+<details class="panel sources"><summary>Sobre esta consulta</summary><dl><dt>Origem</dt><dd>${e(r.fonte)}</dd><dt>Consulta</dt><dd>${e(data)}</dd><dt>Competência</dt><dd>${e(r.competencia)}</dd><dt>Filiais</dt><dd>${e(r.filial)}</dd></dl><h3>Resumo da consulta</h3><pre>${e(r.texto)}</pre><h3>Critérios e limitações</h3><p>Os filtros alteram apenas a visualização da base consultada; não recalculam benefícios.</p><pre>${e(r.detalhes ?? "Conforme a consulta autorizada.")}</pre><p>Vazio é exibido como — e não é zero. Identificadores mantêm zeros à esquerda. O Excel preserva valores com mais de 15 dígitos como texto. Registros não equivalem necessariamente a pessoas únicas.</p><p>Apresentação ${r.apresentacao?.composicao?.origem === "ia" ? "organizada pela IA com componentes validados pelo Vale" : "selecionada automaticamente conforme os tipos e as colunas retornadas"}. Gráficos de composição não são usados com valores negativos ou ausência de total positivo.</p></details>
+<footer><span>Vale Expresso · Vale IA</span><span>Excel da consulta: base original · Excel do recorte: dados filtrados</span></footer>
+</main><script id="dados" type="application/json">${json}</script><script>${recursos.excelRuntime}</script><script>
+const criarModeloVisual=${criarModeloVisual.toString()};
+const criarWorkbook=${criarWorkbook.toString()};
+const iniciarRelatorio=${iniciarRelatorio.toString()};
+iniciarRelatorio(JSON.parse(document.getElementById('dados').textContent),criarModeloVisual(),criarWorkbook);
+</script></body></html>`;
+  const tipos=["resumo","indicadores","grafico","composicao","detalhe"];
+  const proposta=r.apresentacao?.composicao;
+  const valida=proposta && ["executivo","editorial","analitico"].includes(proposta.layout) && Array.isArray(proposta.secoes) && proposta.secoes.length>0 && proposta.secoes.length<=5 && proposta.secoes.every(s=>tipos.includes(s)) && new Set(proposta.secoes).size===proposta.secoes.length;
+  const layout=valida?proposta.layout:plano.perfil==="Diagnóstico"?"analitico":r.tabela.linhas.length<3?"editorial":"executivo";
+  const ordem=valida?[...proposta.secoes]:layout==="analitico"?["resumo","detalhe","grafico"]:layout==="editorial"?["resumo","detalhe"]:["indicadores","grafico","composicao","detalhe"];
+  if(!ordem.includes("detalhe"))ordem.push("detalhe");
+  if(plano.indicadores.length && !ordem.includes("indicadores"))ordem.unshift("indicadores");
+  const blocos:Record<string,string>={resumo:`<details class="panel resumo-consulta"><summary>Resumo da consulta</summary><p class="resumo-relatorio">${e(r.texto)}</p></details>`};
+  html=html.replace(/<!--bloco:(\w+)-->([\s\S]*?)<!--fim:\1-->/g,(_,id,conteudo)=>{blocos[id]=conteudo;return "";});
+  const exibidos=ordem.map(id=>`<div class="relatorio-bloco bloco-${id}">${blocos[id]??""}</div>`).join("");
+  const omitidos=Object.entries(blocos).filter(([id])=>!ordem.includes(id)).map(([,conteudo])=>conteudo).join("");
+  return html.replace('<details class="panel sources">',`<div class="composicao-livre ${layout}" data-origem-composicao="${valida&&proposta.origem==="ia"?"ia":"automatico"}">${exibidos}</div><div hidden aria-hidden="true">${omitidos}</div><details class="panel sources">`);
 }

@@ -200,13 +200,13 @@ export function PeriodoPage() {
       />
       {!!periodos.length && <VisualSummary items={[
 {label:"Competências",value:periodos.length,icon:"tabler:list"},
-{label:"Ativas",value:periodos.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Ativas",value:periodos.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"info"},
 {label:"Inativas",value:periodos.filter(item=>!item.ativo).length,icon:"tabler:circle-pause",tone:"warning"}
 ]} />}
 
       <div className="card">
         <div className="card-body">
-          <div className="ve-table-list">
+          <div className="ve-table-list ve-period-list">
             <DataTable
               className="table striped-table mb-0"
               options={{
@@ -227,6 +227,7 @@ export function PeriodoPage() {
               data={periodos}
               columns={columns}
               slots={{
+                competencia: (value: string, type: string, row: Periodo) => type === "display" ? <div>{value}<span className="ve-mobile-row-details"><span className={`ve-state ${row.ativo ? "ve-state-active" : ""}`}>{row.ativo ? "Ativa" : "Inativa"}</span></span><details className="ve-mobile-row-details"><summary>Datas</summary><small>{FunctionsHelper.formatDateOnlyPtBr(row.data_inicio)} → {FunctionsHelper.formatDateOnlyPtBr(row.data_fim)}</small></details></div> : value,
                 actions: (row: Periodo) => (
                   <div>
                     <Button

@@ -397,6 +397,7 @@ export function FinanceiroTimelineReport() {
             </dl>
 
             {data.totals.funcionarios === 0 && <p className="op-notice" role="status">Sem envios ao RM neste período. <Link to="/extrato-processamento">Consultar valores calculados</Link></p>}
+            <details className="ve-finance-details" open={data.totals.funcionarios > 0}><summary>Detalhamento por competência</summary>
             <div className="row g-3">
               {data.totals.funcionarios > 0 && <><div className="col-12 col-xl-8">
                 <div className="card h-100">
@@ -466,6 +467,7 @@ export function FinanceiroTimelineReport() {
                         ref={timelineTableRef}
                         options={{
                           ...defaultConfig,
+                          responsive: false,
                           // Evita duplicar linhas na 1ª carga (React 18 StrictMode/dev pode montar 2x)
                           // e o `retrieve: true` reaproveitar instância antiga com dados já inseridos.
                           retrieve: false,
@@ -545,7 +547,8 @@ export function FinanceiroTimelineReport() {
               <div className="col-12">
                 <div className="card">
                   <div className="card-body">
-                    <h2 className="h6 m-0 mb-2">Detalhamento — Top eventos</h2>
+                    <h2 className="h6 m-0 mb-2">Eventos</h2>
+                    {!data.extras.topEventos?.length && <p className="op-muted mb-0">Nenhum evento enviado neste período.</p>}
                     <Table
                       responsive
                       striped
@@ -591,6 +594,7 @@ export function FinanceiroTimelineReport() {
                 </div>
               </div>
             </div>
+            </details>
           </>
         )}
       </div>

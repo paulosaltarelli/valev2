@@ -16,6 +16,12 @@ function palavras(texto: string) {
     .trim();
 }
 
+export function respostaTodasFiliais(texto: string) {
+  return /^(?:todas(?: as filiais)?|todas elas|geral)[.!?\s]*$/.test(
+    normalizar(texto).trim(),
+  );
+}
+
 export function contextoDaPergunta(
   pergunta: string,
   opcoes: Opcoes | undefined,
@@ -26,6 +32,7 @@ export function contextoDaPergunta(
   filialId?: number;
   matricula?: string;
   aviso?: string;
+  todasFiliais?: boolean;
 } {
   const texto = normalizar(pergunta);
   const periodos = opcoes?.periodos.filter((periodo) => periodo.ativo) ?? [];
@@ -62,7 +69,8 @@ export function contextoDaPergunta(
         "Encontrei mais de uma filial na pergunta. Qual delas você quer consultar?",
     };
   }
-  const todas = /\btodas (?:as )?filiais\b/.test(texto);
+  const todas =
+    respostaTodasFiliais(pergunta) || /\btodas (?:as )?filiais\b/.test(texto);
   const filial = todas
     ? undefined
     : (correspondencias[0] ??
@@ -72,6 +80,7 @@ export function contextoDaPergunta(
   )?.[1];
   return {
     periodoId: periodo?.periodo_id,
+    ...(todas ? { todasFiliais: true } : {}),
     filialId: filial?.filial_id,
     matricula: matricula && /\d/.test(matricula) ? matricula : undefined,
   };

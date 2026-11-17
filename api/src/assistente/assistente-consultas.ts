@@ -1,13 +1,29 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DashService } from '../dash/dash.service';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { lerSnapshotFormula } from '../dash/operational-reports';
 import { ExecucaoService } from '../execucao/execucao.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssistenteDto, Intent } from './assistente.dto';
+import { contextoConsulta, respostaParaModelo, type ResultadoAssistente } from './assistente-tipos';
 
 type Cell = string | number | null;
 const limite = 2000;
+
+function filtroFuncionariosComErro(execucaoIds: number[]) {
+  return {
+    execucao_id: { in: execucaoIds },
+    OR: [
+      { status: { startsWith: 'ERRO_' } },
+      {
+        execucao_funcionario: {
+          some: { status: 'ERRO', execucao_id: { in: execucaoIds } },
+        },
+      },
+    ],
+  };
+}
 
 function tabela(colunas: string[], dados: Cell[][]) {
   return {
@@ -73,6 +89,129 @@ export class AssistenteConsultas {
     private readonly relatorios: OperationalReportsService,
   ) {}
 
+  private async errosPorFilial(
+    filtros: AssistenteDto,
+    consultadoEm: string,
+  ): Promise<ResultadoAssistente> {
+    const periodo = await this.prisma.periodo.findUnique({
+      where: { periodo_id: filtros.periodoId! },
+      select: { competencia: true },
+    });
+    if (!periodo) throw new BadRequestException('Competência não encontrada.');
+    const runs = await this.prisma.execucao.findMany({
+      where: { historica_de_execucao_id:null,
+        periodo_id: filtros.periodoId!,
+        filial: filtros.filialId
+          ? { filial_id: filtros.filialId }
+          : { ativa: true },
+      },
+      select: {
+        execucao_id: true,
+        filial_id: true,
+        filial: { select: { nome: true } },
+      },
+      take: limite + 1,
+    });
+    if (runs.length > limite)
+      throw new BadRequestException(
+        'O recorte excedeu o limite de execuções. Refine a consulta.',
+      );
+    const ids = runs.map((r) => r.execucao_id);
+    const counts = ids.length
+      ? await this.prisma.execucao_funcionario_base.groupBy({
+          by: ['execucao_id'],
+          where: filtroFuncionariosComErro(ids),
+          _count: true,
+        })
+      : [];
+    const grupos = new Map<number, typeof runs>();
+    for (const run of runs)
+      grupos.set(run.filial_id, [...(grupos.get(run.filial_id) ?? []), run]);
+    let total = 0,
+      duplicadas = 0;
+    const rows: Cell[][] = [];
+    const filiaisComErro: {filialId:number;nome:string}[] = [];
+    for (const filiaisRuns of grupos.values()) {
+      const run = filiaisRuns[0];
+      if (filiaisRuns.length > 1) {
+        filiaisComErro.push({filialId:run.filial_id,nome:run.filial.nome});
+        duplicadas++;
+        rows.push([
+          run.filial.nome,
+          filiaisRuns.map((r) => r.execucao_id).join(', '),
+          null,
+          'Execuções duplicadas — contagem não consolidada',
+        ]);
+        continue;
+      }
+      const quantidade =
+        counts.find((c) => c.execucao_id === run.execucao_id)?._count ?? 0;
+      total += quantidade;
+      if (quantidade) filiaisComErro.push({filialId:run.filial_id,nome:run.filial.nome});
+      if (quantidade)
+        rows.push([
+          run.filial.nome,
+          run.execucao_id,
+          quantidade,
+          'Erro registrado na base ou em resultado por fórmula',
+        ]);
+    }
+    const execucaoIds = [...grupos.values()]
+      .filter((g) => g.length === 1)
+      .map((g) => g[0].execucao_id);
+    const cohort = execucaoIds.length
+      ? await this.prisma.execucao_funcionario_base.findMany({
+          where: filtroFuncionariosComErro(execucaoIds),
+          select: { execucao_funcionario_base_id: true },
+          orderBy: { execucao_funcionario_base_id: 'asc' },
+          take: 101,
+        })
+      : [];
+    const filial = filtros.filialId
+      ? (runs[0]?.filial.nome ?? 'Filial selecionada')
+      : 'Todas as filiais ativas';
+    return {
+      [contextoConsulta]: {
+        tipo: 'funcionarios_com_erro',
+        periodoId: filtros.periodoId!,
+        competencia: periodo.competencia,
+        filialId: filtros.filialId,
+        filial,
+        execucaoIds,
+        funcionarioBaseIds: cohort
+          .slice(0, 100)
+          .map((p) => p.execucao_funcionario_base_id),
+        total,
+        filiaisComErro,
+        parcial: cohort.length > 100 || cohort.length !== total,
+        capturadoEm: consultadoEm,
+      },
+      texto:
+        (total
+          ? `Sim. Há ${total} registro(s) de funcionário com erro em ${rows.filter((r) => r[2] !== null).length} filial(is).`
+          : 'Não há funcionário com erro registrado nas execuções sem duplicidade deste recorte.') +
+        (duplicadas
+          ? ` ${duplicadas} filial(is) têm execuções duplicadas e não foram consolidadas.`
+          : ''),
+      competencia: periodo.competencia,
+      filial,
+      consultadoEm,
+      fonte: 'Banco do Vale · estados atuais de funcionários e resultados',
+      detalhes:
+        'A contagem considera cada registro de funcionário na execução uma vez, mesmo com várias fórmulas em erro. Usa status ERRO_* da base ou resultado em ERRO, sem transformar prévia, ausência de cálculo ou valor zero em erro. Logs históricos e filas antigas não definem esta contagem. Uma mesma pessoa pode ter registros em filiais diferentes. Duplicidades são apresentadas sem escolha silenciosa de execução.',
+      tabela: tabela(
+        [
+          'Filial',
+          'Execução',
+          'Registros de funcionário com erro',
+          'Evidência',
+        ],
+        rows,
+      ),
+      links: [{ texto: 'Processamentos', url: '/processamento' }],
+    };
+  }
+
   async consultar(intent: Intent, filtros: AssistenteDto, perfil: string) {
     const consultadoEm = new Date().toISOString();
     if (intent === 'ajuda') {
@@ -97,7 +236,9 @@ export class AssistenteConsultas {
       };
     if (!filtros.periodoId)
       return { texto: 'Selecione uma competência para consultar os dados.' };
-    if (!filtros.filialId && intent !== 'pendencias')
+    if (intent === 'erros' && !filtros.matricula)
+      return this.errosPorFilial(filtros, consultadoEm);
+    if (!filtros.filialId && !['pendencias','financeiro'].includes(intent))
       return { texto: 'Selecione uma filial para esta consulta.' };
     if (intent === 'formulas' && perfil !== 'admin') {
       return {
@@ -133,33 +274,51 @@ export class AssistenteConsultas {
       consultadoEm,
     };
     if (intent === 'financeiro') {
-      const relatorio = await this.dash.getFinanceiroTimeline({
-        startCompetencia: periodo.competencia,
-        endCompetencia: periodo.competencia,
-        filialIds: [filiais[0].filial_id],
+      const report = await this.relatorios.financialStages(filtros.periodoId, filiais.map(f=>f.filial_id), filtros.matricula);
+      const rows: Cell[][] = report.results.map(v => {
+        const run = report.runs.find(r=>r.execucao_id===v.execucao_id)!;
+        const saved = lerSnapshotFormula(v.formula_snapshot);
+        const formula = saved ?? v.formula;
+        const amount = (x: {toString():string}|null) => numeroParaRelatorio(x?.toString() ?? null);
+        const currentSent = v.status === 'ENVIADO_RM' && v.enviado_revisao === v.revisao;
+        return [filiais.find(f=>f.filial_id===run.filial_id)!.nome, v.funcionario_id_rm,
+          v.execucao_funcionario_base.nome_funcionario, formula.nome, saved?.versao ?? null,
+          formula.tipo ?? 'Não identificado', formula.polaridade ?? 'Não identificada',
+          v.status === 'PREVIA' ? null : amount(v.valor_calculado), v.ajuste_manual ? amount(v.valor_final) : null,
+          amount(v.valor_final), currentSent ? amount(v.valor_final ?? v.valor_calculado) : null,
+          v.status, v.execucao_funcionario_base.status, v.ajuste_manual ? 'Sim' : 'Não',
+          v.revisao, v.enviado_revisao, currentSent ? 'Envio da revisão atual registrado' : v.enviado_revisao !== null ? 'Há registro de revisão anterior; valor enviado não inferido' : 'Sem envio confirmado da revisão atual',
+          v.execucao_id, v.status === 'PREVIA' ? amount(v.valor_calculado) : null, situacaoValor(v.status,v.valor_calculado?.toString()??null)];
       });
-      const { pago, desconto, saldo, funcionarios } = relatorio.totals;
+      for (const filial of filiais) {
+        const runs = report.runs.filter(r=>r.filial_id===filial.filial_id);
+        if (report.duplicated.includes(filial.filial_id) || !runs.length || !report.results.some(v=>runs.some(r=>r.execucao_id===v.execucao_id)))
+          rows.push([filial.nome,null,null,null,null,null,null,null,null,null,null,
+            report.duplicated.includes(filial.filial_id) ? 'Execuções duplicadas — valores não consolidados' : !runs.length ? 'Sem execução' : report.partial ? 'Sem resultados na base parcial retornada' : 'Sem resultados no recorte',null,null,null,null,null,null,null,null]);
+      }
+      const groups = new Map<string,{filial:Cell;tipo:Cell;polaridade:Cell;estado:Cell;registros:number;totais:(Prisma.Decimal|null)[]}>();
+      for (const row of rows) {
+        if (row[1]===null) continue;
+        const key=JSON.stringify([row[0],row[5],row[6],row[19]]);
+        const g=groups.get(key) ?? {filial:row[0],tipo:row[5],polaridade:row[6],estado:row[19],registros:0,totais:[null,null,null,null,null]};
+        g.registros++;
+        [7,8,9,10,18].forEach((c,j)=>{if(row[c]!==null)g.totais[j]=(g.totais[j]??new Prisma.Decimal(0)).plus(String(row[c]));});
+        groups.set(key,g);
+      }
+      const totals=[...groups.values()].map(g=>({...g,totais:g.totais.map(v=>v?.toString()??null)}));
       return {
-        ...base,
-        fonte: 'Relatório financeiro do Vale',
-        texto: `O relatório financeiro registra ${funcionarios} funcionário(s) no recorte selecionado.`,
-        detalhes:
-          'Os indicadores usam os registros de envio do Vale. Os valores representam o relatório local, sem conciliação com o RM.',
-        tabela: tabela(
-          ['Pago', 'Desconto', 'Saldo', 'Funcionários'],
-          [[pago, desconto, saldo, funcionarios]],
-        ),
-        grafico: [
-          { rotulo: 'Pago', valor: pago, moeda: true },
-          { rotulo: 'Desconto', valor: desconto, moeda: true },
-          { rotulo: 'Saldo', valor: saldo, moeda: true },
-        ],
-        links: [{ texto: 'Relatórios', url: '/relatorios' }],
+        [respostaParaModelo]: 'Resultados completos para exportação. Resuma sem enumerar a amostra. Totais por filial, tipo e polaridade, na ordem Calculado, Ajustado (subconjunto), Final local, Valor local com envio registrado e Valor em prévia: '+JSON.stringify(totals)+'. Estes grupos não devem ser somados entre etapas ou polaridades. A tabela completa acompanha HTML e Excel. Base parcial: '+report.partial,
+        ...base, fonte: 'Banco do Vale · resultados persistidos por funcionário e fórmula',
+        texto: report.results.length + ' resultado(s) por funcionário e fórmula no recorte. Calculado, ajustado, final local e envio estão separados.' + (report.duplicated.length ? ' Há filiais com execuções duplicadas; seus valores não foram consolidados.' : ''),
+        detalhes: 'Calculado é o valor persistido fora do estado PREVIA, inclusive zero e valores presentes em resultados com erro (consulte o status). Valores em PREVIA ficam na coluna Valor em prévia: não confirmam cálculo atual nem devem ser misturados ao calculado. Final local em prévia também não confirma cálculo. Ajustado é o valor final somente onde há marca de ajuste manual; não é uma parcela a somar ao calculado. Final local é o campo persistido, sem preencher ausências. Valor local com envio registrado só aparece com status ENVIADO_RM e revisão enviada igual à revisão atual; não é comprovante do valor recebido ou pago no RM. Revisão anterior não permite inferir o valor enviado. Não some etapas nem misture tipos de fórmula, polaridades ou unidades; para totais monetários filtre Tipo de fórmula V e separe polaridade. Fórmula histórica e versão são usadas quando disponíveis; versão vazia indica falta de snapshot confiável. Não há conciliação RM. Para causas de erro, investigue variáveis, logs e código: esta tabela de valores não prova a causa. Base parcial limita também os indicadores e o Excel.',
+        tabela: { colunas: ['Filial','Matrícula','Funcionário','Fórmula','Versão de cálculo','Tipo de fórmula','Polaridade','Calculado','Ajustado','Final local','Valor local com envio registrado','Status do resultado','Estado do funcionário','Ajuste manual','Revisão local','Revisão com envio registrado','Situação do envio','Execução','Valor em prévia','Situação do cálculo'], linhas: rows, parcial: report.partial },
+        apresentacao: { titulo: 'Valores por etapa', dimensao: 'Filial', metrica: null },
+        links: [{ texto: 'Processamentos', url: '/processamento' }],
       };
     }
 
     const runs = await this.prisma.execucao.findMany({
-      where: {
+      where: { historica_de_execucao_id:null,
         periodo_id: filtros.periodoId,
         filial: filtros.filialId
           ? { filial_id: filtros.filialId }
@@ -327,7 +486,7 @@ export class AssistenteConsultas {
     if (intent === 'comparacao') {
       const competenciaAnterior = anterior(periodo.competencia);
       const previousRuns = await this.prisma.execucao.findMany({
-        where: {
+        where: { historica_de_execucao_id:null,
           filial_id: run.filial_id,
           periodo: { competencia: competenciaAnterior },
         },

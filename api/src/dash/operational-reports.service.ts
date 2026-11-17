@@ -4,15 +4,16 @@ import { Prisma } from '@prisma/client';
 import { closingCounts, variationRows } from './operational-reports';
 
 const personSelect = {
-  funcionario_id_rm: true, codcoligada: true, nome_funcionario: true, status: true,
+  funcionario_id_rm: true, codcoligada: true, nome_funcionario: true, status: true, regras_rm: true,
   execucao_funcionario: { select: {
-    status: true, valor_calculado: true, revisao: true, enviado_revisao: true, formula_snapshot: true,
+    status: true, valor_calculado: true, valor_final: true, codigo_regra_rm: true, revisao: true, enviado_revisao: true, formula_snapshot: true,
     formula: { select: { formula_id: true, nome: true, versao: true, tipo: true, expressao: true, codEvento: true, polaridade: true } },
     _count: { select: { memoria_calculo: true } },
   } },
 } as const;
 const executionSelect = {
   execucao_id:true,filial_id:true,controle_fila:true,
+  filial:{select:{formula:{where:{ativa:true},select:{formula_id:true}}}},
   execucao_funcionario_base:{select:personSelect},
   execucao_queue:{where:{status:{in:['PENDENTE','PROCESSANDO']}},select:{status:true,tipo:true}},
 } satisfies Prisma.execucaoSelect;
@@ -21,6 +22,28 @@ type ReportExecution = Prisma.execucaoGetPayload<{ select: typeof executionSelec
 @Injectable()
 export class OperationalReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Read persisted stages; never recalculates benefits or infers remote payment. */
+  async financialStages(periodoId: number, filialIds: number[], matricula?: string) {
+    const runs = await this.prisma.execucao.findMany({
+      where: { periodo_id: periodoId, filial_id: { in: filialIds }, historica_de_execucao_id: null },
+      select: { execucao_id: true, filial_id: true }, take: 2001,
+    });
+    if (runs.length > 2000) throw new BadRequestException('Limite de execuções excedido.');
+    const duplicated = filialIds.filter(id => runs.filter(r => r.filial_id === id).length > 1);
+    const ids = runs.filter(r => !duplicated.includes(r.filial_id)).map(r => r.execucao_id);
+    const results = ids.length ? await this.prisma.execucao_funcionario.findMany({
+      where: { execucao_id: { in: ids }, ...(matricula ? { funcionario_id_rm: matricula } : {}) },
+      select: {
+        execucao_id: true, funcionario_id_rm: true, status: true, valor_calculado: true,
+        valor_final: true, ajuste_manual: true, revisao: true, enviado_revisao: true,
+        formula_snapshot: true,
+        formula: { select: { formula_id:true, nome:true, versao:true, tipo:true, expressao:true, codEvento:true, polaridade:true } },
+        execucao_funcionario_base: { select: { nome_funcionario:true, status:true } },
+      }, orderBy: { execucao_funcionario_id: 'asc' }, take: 2001,
+    }) : [];
+    return { runs, duplicated, results: results.slice(0, 2000), partial: results.length > 2000 };
+  }
 
   async options() {
     const [periodos, filiais] = await Promise.all([
@@ -33,7 +56,7 @@ export class OperationalReportsService {
 
   private async latest(periodoId: number, filialId?: number): Promise<ReportExecution[]> {
     const groups = await this.prisma.execucao.groupBy({by:['filial_id'],
-      where:{periodo_id:periodoId, ...(filialId ? {filial_id:filialId} : {})},_max:{execucao_id:true}});
+      where:{historica_de_execucao_id:null,periodo_id:periodoId, ...(filialId ? {filial_id:filialId} : {})},_max:{execucao_id:true}});
     const ids = groups.flatMap(g=>g._max.execucao_id ? [g._max.execucao_id] : []);
     return ids.length ? this.prisma.execucao.findMany({where:{execucao_id:{in:ids}},
       select:executionSelect}) : [];
@@ -55,7 +78,7 @@ export class OperationalReportsService {
     for (const item of creation) if (!creationByBranch.has(item.filial_id)) creationByBranch.set(item.filial_id,item.status);
     const rows = options.filiais.filter(f=>f.ativa || byBranch.has(f.filial_id)).map(f=>{
       const e = byBranch.get(f.filial_id);
-      const counts = e ? closingCounts(e.execucao_funcionario_base) : null;
+      const counts = e ? closingCounts(e.execucao_funcionario_base, e.filial.formula.map(f=>f.formula_id)) : null;
       const creationStatus = creationByBranch.get(f.filial_id);
       const running = e?.execucao_queue.some(q=>q.status==='PROCESSANDO');
       const pending = e?.execucao_queue.some(q=>q.status==='PENDENTE');
@@ -68,15 +91,24 @@ export class OperationalReportsService {
     return {...options,periodo:periodo.periodo_id,rows,updatedAt:new Date()};
   }
 
-  async variation(periodoId: number, anteriorId: number, filialId: number) {
-    const options = await this.options();
+  private async variationExecutions(periodoId:number,filialId:number){
+    // Variation does not use memory counts. Keep the closing reader unchanged.
+    const { _count: unused, ...resultSelect }=personSelect.execucao_funcionario.select;
+    void unused;
+    const rows=await this.prisma.execucao.findMany({where:{periodo_id:periodoId,filial_id:filialId,historica_de_execucao_id:null},select:{execucao_id:true,execucao_funcionario_base:{select:{...personSelect,execucao_funcionario:{select:resultSelect}}}},take:2});
+    if(rows.length>1)throw new BadRequestException('Execuções duplicadas sem referência principal.');
+    return rows;
+  }
+
+  async variation(periodoId: number, anteriorId: number, filialId: number, maxRows?: number, preparedOptions?: Awaited<ReturnType<OperationalReportsService['options']>>) {
+    const options = preparedOptions ?? await this.options();
     const periodo = options.periodos.find(p=>p.periodo_id===periodoId);
     const anterior = options.periodos.find(p=>p.periodo_id===anteriorId);
     const filial = options.filiais.find(f=>f.filial_id===filialId);
     if (!periodo || !anterior || !filial) throw new NotFoundException('Competência ou filial não encontrada.');
     if (anterior.data_inicio >= periodo.data_inicio) throw new BadRequestException('Selecione uma competência anterior à atual.');
     const [current, previous, configured] = await Promise.all([
-      this.latest(periodoId,filialId),this.latest(anteriorId,filialId),
+      this.variationExecutions(periodoId,filialId),this.variationExecutions(anteriorId,filialId),
       this.prisma.formula.findMany({where:{filial_id:filialId,ativa:true},
         select:{formula_id:true,nome:true,versao:true,tipo:true,expressao:true,codEvento:true,polaridade:true}}),
     ]);
@@ -84,7 +116,7 @@ export class OperationalReportsService {
     return {
       periodo:periodo.competencia,anterior:anterior.competencia,filial:filial.nome,
       execucaoAtual:a?.execucao_id ?? null,execucaoAnterior:b?.execucao_id ?? null,
-      rows:variationRows(a?.execucao_funcionario_base ?? [],b?.execucao_funcionario_base ?? [],!!a,!!b,configured),
+      rows:variationRows(a?.execucao_funcionario_base ?? [],b?.execucao_funcionario_base ?? [],!!a,!!b,configured,maxRows),
       updatedAt:new Date(),
     };
   }

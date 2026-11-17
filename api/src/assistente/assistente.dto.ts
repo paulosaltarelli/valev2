@@ -1,10 +1,13 @@
 import {
   IsIn,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
   IsBoolean,
   IsInt,
   IsOptional,
   IsString,
-  MaxLength,
   Length,
   Matches,
   Max,
@@ -24,6 +27,20 @@ export const intents = [
   'esclarecer',
 ] as const;
 export type Intent = (typeof intents)[number];
+export class AssistenteInicioDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  periodoId?: number;
+}
+export class AssistenteErrosFilialDto {
+  @IsInt()
+  @Min(1)
+  periodoId!: number;
+  @IsInt()
+  @Min(1)
+  filialId!: number;
+}
 export class AssistenteConfiguracaoDto {
   @IsOptional()
   @IsString()
@@ -71,6 +88,10 @@ export class AssistenteTesteDto extends AssistenteConfiguracaoDto {
 const provedores = ['local', 'gpt', 'gpt-institucional', 'claude'] as const;
 
 export class AssistenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
+
   @IsString()
   @Length(1, 500)
   pergunta!: string;
@@ -102,15 +123,48 @@ export class AssistenteDto {
   matricula?: string;
 }
 
-export class FiltroRelatorioDto {
-  @IsString()
-  @Length(1, 120)
-  coluna!: string;
-
-  @IsIn(['igual', 'diferente', 'contem', 'maior', 'menor', 'vazio'])
-  operador!: 'igual' | 'diferente' | 'contem' | 'maior' | 'menor' | 'vazio';
+export class AssistenteAgenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
 
   @IsString()
-  @MaxLength(150)
-  valor!: string;
+  @Length(1, 6000)
+  pergunta!: string;
+
+  @IsOptional()
+  @IsIn(intents.filter((intent) => intent !== 'esclarecer'))
+  consulta?: Intent;
+
+  @IsOptional()
+  @IsIn(provedores)
+  provedor?: (typeof provedores)[number];
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  periodoId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  filialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
+  matricula?: string;
+}
+
+
+export class AssistenteApresentacaoDto {
+ @IsString() @Length(1,500) objetivo!:string;
+ @IsIn(['claude','gpt-institucional']) provedor!:'claude'|'gpt-institucional';
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) colunas!:string[];
+ @IsArray() @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) numericas!:string[];
+ @IsInt() @Min(0) @Max(2000) quantidadeLinhas!:number;
+ @IsBoolean() parcial!:boolean;
 }

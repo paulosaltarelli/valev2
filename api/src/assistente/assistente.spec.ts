@@ -1,3 +1,4 @@
+import {AssistenteAgente} from './assistente-agente';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -27,6 +28,7 @@ describe('Assistente do Vale', () => {
   const consultas = {
     consultar: jest.fn().mockResolvedValue({ texto: 'Resultado verificado' }),
   };
+  const agente={responder:jest.fn().mockResolvedValue({texto:'Conversa natural da versão nova'}),limpar:jest.fn(),investigarErrosFilial:jest.fn().mockResolvedValue({periodoId:13,filialId:2,casos:[]})};
   const avancado = {
     responder: jest
       .fn()
@@ -34,6 +36,9 @@ describe('Assistente do Vale', () => {
     estadoConhecimento: jest.fn().mockReturnValue({ arquivos: 0 }),
   };
   const prisma = {
+    execucao_queue: { count: jest.fn().mockResolvedValue(0) },
+    execucao_create_queue: { count: jest.fn().mockResolvedValue(0) },
+    geo_queue: { count: jest.fn().mockResolvedValue(0) },
     usuario: {
       findUnique: jest
         .fn()
@@ -69,6 +74,7 @@ describe('Assistente do Vale', () => {
         AssistenteSessoes,
         CryptoService,
         { provide: AssistenteAvancado, useValue: avancado },
+        { provide: AssistenteAgente, useValue: agente },
         { provide: PrismaService, useValue: prisma },
         { provide: AssistenteConsultas, useValue: consultas },
         {
@@ -114,6 +120,64 @@ describe('Assistente do Vale', () => {
 
   const cookie = (usuarioId: number, sessionId: string) =>
     `access_token=${jwt.sign({ usuarioId, sessionId, username: 'operador', perfil: 'admin' })}`;
+  it('protege os casos nominais e encaminha o recorte exato com o perfil real', async () => {
+    const route='/assistente/inicio/erros',dados={periodoId:13,filialId:2};
+    await request(app.getHttpServer()).post(route).send(dados).expect(401);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'expirada')).send(dados).expect(401);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).set('Origin','https://outra.invalid').send(dados).expect(403);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send({...dados,filialId:-1}).expect(400);
+    prisma.usuario.findUnique.mockResolvedValueOnce({ativo:false,perfil:'operator'});
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send(dados).expect(403);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send(dados).expect(201).expect('Cache-Control','no-store');
+    expect(agente.investigarErrosFilial).toHaveBeenLastCalledWith(dados,'operator','gpt-institucional',{modelo:'teste',chave:'teste'},undefined);
+  });
+
+  it('protege a orientação inicial e não chama IA enquanto há fila', async () => {
+    await request(app.getHttpServer()).post('/assistente/inicio').send({}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'expirada')).send({}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).set('Origin','https://outra.invalid').send({}).expect(403);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).send({periodoId:-1}).expect(400);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    prisma.execucao_queue.count.mockResolvedValueOnce(1);agente.responder.mockClear();
+    const r=await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).send({periodoId:13}).expect(201);
+    expect(r.body).toEqual({estado:'aguardando_fila'});expect(agente.responder).not.toHaveBeenCalled();
+  });
+
+  it('consulta a orientação com perfil real e contexto isolado, sem gravar conversa', async () => {
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    agente.responder.mockResolvedValueOnce({texto:'Filial A: confira o vínculo antes de tentar novamente.',competencia:'10/2026',agente:{versao:'v2',ferramentas:['investigar_grupo'],sqlExecutado:false}} as any);
+    const r=await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(102,'inicio')).send({periodoId:13}).expect(201);
+    expect(r.body.estado).toBe('pronto');expect(r.body.tabela).toBeUndefined();
+    expect(agente.responder).toHaveBeenLastCalledWith(expect.objectContaining({periodoId:13,todasFiliais:true}),'operator','gpt-institucional',expect.any(Object),undefined,102,'102:inicio:inicio:operator:13',true);
+    const history=await request(app.getHttpServer()).get('/assistente').set('Cookie',cookie(102,'inicio')).expect(200);
+    expect(history.body.historico).toEqual([]);
+  });
+
+  it('protege o planejamento visual e rejeita dados brutos ou campos inesperados',async()=>{
+    const body={objetivo:'Funcionários com erro',provedor:'gpt-institucional',colunas:['Filial','Estado'],numericas:[],quantidadeLinhas:20,parcial:true};
+    await request(app.getHttpServer()).post('/assistente/apresentacao').send(body).expect(401);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(91,'expirada')).send(body).expect(401);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(92,'visual')).set('Origin','https://outra-origem.invalid').send(body).expect(403);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(93,'visual')).send({...body,linhas:[['NOME_PRIVADO']]}).expect(400);
+    await request(app.getHttpServer()).post('/assistente/apresentacao').set('Cookie',cookie(94,'visual')).send(body).expect(403);
+  });
+
+  it('usa o agente novo com a mesma autenticação e isola o reinício de conversa',async()=>{
+    const sessao=cookie(81,'agente-v2');
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').send({pergunta:'Oi'}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',cookie(81,'expirada')).send({pergunta:'Oi'}).expect(401);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'gpt-5.4-mini',gpt_chave:new CryptoService().encryptJson('chave-teste'),contexto:'Contexto do Vale'});
+    const r=await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',sessao).send({pergunta:'Oi',provedor:'gpt-institucional'}).expect(201);
+    expect(r.body.texto).toBe('Conversa natural da versão nova');expect(agente.responder).toHaveBeenCalledWith(expect.objectContaining({pergunta:'Oi'}),'operator','gpt-institucional',expect.any(Object),'Contexto do Vale',81,'81:agente-v2');
+    await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).set('Origin','https://outro.invalid').expect(403);
+    await request(app.getHttpServer()).post('/assistente/v2/nova-conversa').set('Cookie',sessao).expect(201);expect(agente.limpar).toHaveBeenCalledWith('81:agente-v2');
+  });
+
+  it('aceita uma dúvida mais completa no agente novo',async()=>{
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'gpt-5.4-mini',gpt_chave:new CryptoService().encryptJson('chave-teste')});
+    await request(app.getHttpServer()).post('/assistente/v2/conversar').set('Cookie',cookie(83,'duvida-longa')).send({pergunta:'Quero entender o processo. '.repeat(80),provedor:'gpt-institucional'}).expect(201);
+  });
 
   it('restringe configuração, gravação e teste ao perfil atual de administrador', async () => {
     const sessao = cookie(10, 'operador-config');
@@ -240,6 +304,7 @@ describe('Assistente do Vale', () => {
       { modelo: 'gpt-5.4-mini', chave: 'chave-teste' },
       config.contexto,
       expect.any(Array),
+      19,
     );
     await request(app.getHttpServer())
       .post('/assistente/conversar')

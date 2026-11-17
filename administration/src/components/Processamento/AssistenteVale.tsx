@@ -14,19 +14,16 @@ import type { Periodo } from "../../models/PeriodoModel";
 import { Modal } from "../../shared/components/VeModal";
 import "./assistenteVale.css";
 
-import { contextoDaPergunta } from "./contextoDaPergunta";
-import { criarRelatorioHtml, baixarRelatorioHtml } from "./relatorioHtml";
+import { contextoDaPergunta, respostaTodasFiliais } from "./contextoDaPergunta";
+import { prepararPacote, ErroExportacao } from "./relatorioPacote";
+import { gerarExcel } from "./assistenteExcel";
+import { criarModeloVisual } from "./relatorioVisual";
 
 const sugestoes = [
   ["pendencias", "Quais filiais têm pendências?"],
-  ["variaveis", "Quais variáveis já foram calculadas?"],
+  ["financeiro", "Qual filial teve maior desconto nesta competência?"],
+  ["valores", "Gere um dashboard de valores por filial."],
   ["erros", "Por que o valor não foi calculado?"],
-  ["valores", "Mostrar valores por funcionário e fórmula"],
-  ["comparacao", "O que mudou em relação à competência anterior?"],
-  ["financeiro", "Gerar dashboard financeiro"],
-  ["km", "Mostrar KM registrados"],
-  ["formulas", "Ver cadastro atual de fórmulas"],
-  ["ajuda", "Como funciona o Vale Expresso?"],
 ] as const;
 
 type Turno = { pergunta: string; resposta: string; em: string };
@@ -37,9 +34,9 @@ type Mensagem = {
   erro?: string;
 };
 const nomesDosProvedores = {
-  gpt: "ChatGPT pessoal",
-  claude: "Claude institucional",
-  "gpt-institucional": "GPT institucional",
+  gpt: "Minha conta ChatGPT",
+  claude: "Claude · API do Vale",
+  "gpt-institucional": "GPT · API do Vale",
 };
 type Provedor = keyof typeof nomesDosProvedores;
 type Estado = {
@@ -56,6 +53,9 @@ type Contexto = {
   filtro: { periodo_id: number; filial_id: number } | null;
 };
 type Resposta = {
+  auditoria?:{versao:string};
+  relatorio?:{solicitado:boolean};
+  apresentacao?: import("./relatorioVisual").SugestaoVisual;
   texto: string;
   detalhes?: string;
   fonte?: string;
@@ -71,23 +71,6 @@ type Resposta = {
   grafico?: { rotulo: string; valor: number; moeda?: boolean }[];
   links?: { texto: string; url: string }[];
 };
-
-function MarcaAssistente() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
-      <path
-        d="M4.5 7.5h4l6.3 14.2 4.2-9.4h4.1l-6.8 15h-3.2L4.5 7.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M24.5 3.5v8m-4-4h8M7 23.5h2.5m-5 3.5H11"
-        stroke="#FFD675"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function AvatarVale() {
   return (
@@ -188,8 +171,8 @@ export function AssistenteVale() {
   }, []);
 
   useEffect(() => {
-    if (aberto && aba === "conversa") {
-      fimDaConversa.current?.scrollIntoView({ block: "end" });
+    if (aberto && aba === "conversa" && mensagens.length > 0) {
+      const area = fimDaConversa.current?.parentElement; if (area) area.scrollTop = area.scrollHeight;
     }
   }, [aberto, aba, mensagens]);
 
@@ -236,11 +219,18 @@ export function AssistenteVale() {
   };
 
   const fechar = () => setAberto(false);
+  const novaConversa=async()=>{if(ocupado)return;setOcupado(true);setErro("");try{await http.post("/assistente/v2/nova-conversa");setMensagens([]);setPergunta("");perguntaSemFilial.current=null;}catch{setErro("Não foi possível iniciar uma nova conversa. Tente novamente.");}finally{setOcupado(false)}};
+
 
   const enviar = async (texto: string, consulta?: string) => {
     if (!texto.trim() || ocupado || carregandoContexto || !provedor) return;
     setErro("");
     const pedido = texto.trim();
+    const ultima=mensagens.at(-1);
+    if(!consulta && /^(?:sim|pode(?: gerar)?|quero(?: o relatório)?|gere (?:o |um )?relatório)(?:[.!?\s]*)$/i.test(pedido) && ultima?.resposta?.tabela && !ultima.resposta.relatorio?.solicitado){
+      setMensagens(atuais=>atuais.map(m=>m.id===ultima.id?{...m,resposta:{...ultima.resposta!,relatorio:{solicitado:true}}}:m));
+      setPergunta("");return;
+    }
     const exportar =
       /^(?:excel|xlsx|exportar|(?:gere|gerar|baixar)(?: um| uma)? (?:excel|xlsx|planilha))\s*[.!?]?$/i.test(
         pedido,
@@ -253,10 +243,8 @@ export function AssistenteVale() {
       const resposta = [...mensagens]
         .reverse()
         .find((mensagem) => mensagem.resposta)?.resposta;
-      if (!resposta?.tabela || resposta.tabela.parcial) {
-        setErro(
-          "Consulte primeiro um recorte com tabela completa para baixar o Excel.",
-        );
+      if (!resposta?.tabela) {
+        setErro("Consulte primeiro um recorte com tabela para baixar o Excel.");
         return;
       }
       await baixarExcel(resposta);
@@ -266,7 +254,7 @@ export function AssistenteVale() {
     const id = proximoId.current++;
     setPergunta("");
     setMensagens((atuais) => [
-      ...atuais.slice(-7),
+      ...atuais,
       { id, pergunta: pedido, resposta: null },
     ]);
     const pendente = perguntaSemFilial.current;
@@ -279,15 +267,18 @@ export function AssistenteVale() {
     )?.nome;
     const completouPergunta =
       pendente &&
-      nomeFilial &&
-      pedido
-        .replace(/^filial\s+(?:de\s+)?/i, "")
-        .replace(/[.!?]+$/, "")
-        .localeCompare(nomeFilial.replace(/^filial\s+/i, ""), "pt-BR", {
-          sensitivity: "base",
-        }) === 0;
+      (respostaTodasFiliais(pedido) ||
+        (nomeFilial &&
+          pedido
+            .replace(/^filial\s+(?:de\s+)?/i, "")
+            .replace(/[.!?]+$/, "")
+            .localeCompare(nomeFilial.replace(/^filial\s+/i, ""), "pt-BR", {
+              sensitivity: "base",
+            }) === 0));
     const textoConsulta = completouPergunta
-      ? pendente.texto + " · " + pedido
+      ? pendente.texto +
+        " · " +
+        (respostaTodasFiliais(pedido) ? "todas as filiais" : pedido)
       : pedido;
     const consultaEfetiva = completouPergunta ? pendente.consulta : consulta;
     const { aviso, ...filtros } = contextoDaPergunta(
@@ -310,9 +301,9 @@ export function AssistenteVale() {
     setOcupado(true);
     try {
       const { data } = await http.post<Resposta>(
-        "/assistente/conversar",
+        "/assistente/v2/conversar",
         {
-          pergunta: textoConsulta.slice(0, 500),
+          pergunta: textoConsulta.slice(0, 6000),
           consulta: consultaEfetiva,
           provedor,
           ...filtros,
@@ -368,11 +359,10 @@ export function AssistenteVale() {
   };
 
   const baixarExcel = async (resposta: Resposta) => {
-    if (!resposta.tabela || resposta.tabela.parcial || exportando) return;
+    if (!resposta.tabela || exportando) return;
     setExportando(resposta);
     setErro("");
     try {
-      const { gerarExcel } = await import("./assistenteExcel");
       const bytes = await gerarExcel(resposta.tabela, [
         ["Competência", resposta.competencia],
         ["Filial", resposta.filial],
@@ -442,66 +432,27 @@ export function AssistenteVale() {
         scrollable={false}
         size="xl"
         fullscreen="sm-down"
-        className="vale-ia-modal"
+        className="vale-ia-modal vale-ia-portal vale-ia-chat"
         aria-labelledby="assistente-vale-titulo"
       >
         <Modal.Header closeButton>
           <Modal.Title id="assistente-vale-titulo">
-            <span className="vale-ia-marca">
-              <MarcaAssistente />
+            <span className="vale-ia-marca vale-ia-avatar-cabecalho">
+              <AvatarVale />
             </span>
             <span>
-              <small>VALE IA</small>Assistente do Vale
+              Vale IA<small>Seu assistente</small>
             </span>
           </Modal.Title>
+          <div className="vale-ia-chat-tools"><button type="button" disabled={ocupado} onClick={()=>void novaConversa()} aria-label="Nova conversa" title="Nova conversa">＋ <span>Nova conversa</span></button><button type="button" aria-label={aba === "conversa" ? "Opções da conversa" : "Voltar à conversa"} aria-pressed={aba === "acessos"} onClick={()=>setAba(aba === "conversa" ? "acessos" : "conversa")}>{aba === "conversa" ? "•••" : "← Voltar"}</button></div>
         </Modal.Header>
         <Modal.Body className="vale-ia-corpo">
-          <nav className="vale-ia-navegacao" aria-label="Áreas do Vale IA">
-            <button
-              type="button"
-              aria-pressed={aba === "conversa"}
-              onClick={() => setAba("conversa")}
-            >
-              Conversa
-            </button>
-            <button
-              type="button"
-              aria-pressed={aba === "acessos"}
-              onClick={() => setAba("acessos")}
-            >
-              Contexto e acessos
-            </button>
-          </nav>
           <div className="vale-ia-paineis">
-            <aside
-              className="vale-ia-lateral"
-              aria-label="Contas do Vale IA"
-              hidden={aba === "acessos"}
-            >
-              <div className="vale-ia-identidade">
-                <AvatarVale />
-                <strong>Vale IA</strong>
-                <p>Seu assistente para entender a operação.</p>
-              </div>
-              <ContasVale provedores={provedores} />
-            </aside>
             <section
               className="vale-ia-painel"
               aria-label="Conversa"
               hidden={aba !== "conversa"}
             >
-              <div className="vale-ia-contexto">
-                <div>
-                  <strong>Converse sobre o Vale</strong>
-                  <small>Consultas com o contexto da sua tela</small>
-                </div>
-                {contexto && (
-                  <span>
-                    {periodoAtivo ?? "Sem competência ativa"}
-                    {filialAtiva && " · " + filialAtiva}
-                  </span>
-                )}
-              </div>
               <div
                 className="vale-ia-conversa"
                 role="log"
@@ -510,8 +461,7 @@ export function AssistenteVale() {
               >
                 {!mensagens.length && (
                   <div className="vale-ia-boas-vindas">
-                    <h2>Como posso ajudar?</h2>
-                    <p>Digite sua pergunta ou experimente um dos exemplos.</p>
+                    <h2>Olá! Como posso ajudar?</h2><p>Podemos conversar sobre o sistema e seus dados.</p>
                     <fieldset
                       disabled={ocupado || carregandoContexto || !provedor}
                     >
@@ -525,7 +475,7 @@ export function AssistenteVale() {
                             type="button"
                             variant="outline-secondary"
                             size="sm"
-                            onClick={() => void enviar(texto, id)}
+                            onClick={() => void enviar(texto)}
                           >
                             {texto}
                           </Button>
@@ -544,17 +494,12 @@ export function AssistenteVale() {
                       <div className="vale-ia-balao vale-ia-resposta">
                         <strong className="vale-ia-autor">Vale IA</strong>
                         {resposta ? (
-                          <MensagemVale
-                            resposta={resposta}
-                            fechar={fechar}
-                            baixar={() => void baixarExcel(resposta)}
-                            exportando={exportando}
-                          />
+                          <MensagemVale resposta={resposta} fechar={fechar} objetivo={texto} provedor={provedor} />
                         ) : falha ? (
                           <p className="mb-0">{falha}</p>
                         ) : (
                           <p role="status" className="mb-0">
-                            Consultando o Vale…
+                            <span className="vale-ia-digitando" aria-hidden="true">•••</span><span className="visually-hidden">Preparando resposta…</span>
                           </p>
                         )}
                       </div>
@@ -576,7 +521,7 @@ export function AssistenteVale() {
                 <Form.Control
                   as="textarea"
                   rows={2}
-                  maxLength={500}
+                  maxLength={6000}
                   value={pergunta}
                   onChange={(e) => setPergunta(e.target.value)}
                   onKeyDown={atalhosDeTeclado}
@@ -592,7 +537,7 @@ export function AssistenteVale() {
                     !provedor
                   }
                 >
-                  Enviar
+                  <span aria-hidden="true">↑</span><span className="visually-hidden">Enviar mensagem</span>
                 </Button>
               </Form>
             </section>
@@ -601,7 +546,37 @@ export function AssistenteVale() {
               aria-label="Contexto e acessos"
               hidden={aba !== "acessos"}
             >
-              <h2>Contexto e acessos</h2>
+              <h2>Opções da conversa</h2><div className="vale-ia-conexao-atual">                <Form.Label htmlFor="vale-ia-provedor">
+                  Conversar com
+                </Form.Label>
+                <Form.Select
+                  id="vale-ia-provedor"
+                  value={provedor ?? ""}
+                  disabled={
+                    ocupado || carregandoContexto || !provedores?.length
+                  }
+                  onChange={(event) => {
+                    const escolhido = provedores?.find(
+                      ({ id, disponivel }) =>
+                        disponivel && id === event.target.value,
+                    );
+                    if (escolhido) setPreferencia(escolhido.id);
+                  }}
+                >
+                  {!provedor && (
+                    <option value="">Conecte uma conta para conversar</option>
+                  )}
+                  {provedores?.length === 0 && (
+                    <option value="local">Consultas do Vale</option>
+                  )}
+                  {provedores?.map(({ id, disponivel }) => (
+                    <option key={id} value={id} disabled={!disponivel}>
+                      {nomesDosProvedores[id]}
+                      {!disponivel && " · aguardando liberação"}
+                    </option>
+                  ))}
+                </Form.Select>
+</div>
               <dl>
                 <dt>Competência</dt>
                 <dd>{periodoAtivo ?? "Sem competência ativa"}</dd>
@@ -613,36 +588,6 @@ export function AssistenteVale() {
                 também pode citar uma filial na sua mensagem.
               </p>
               <ContasVale provedores={provedores} />
-              {provedores && provedores.length > 1 && (
-                <Form.Group controlId="vale-ia-provedor" className="mt-3">
-                  <Form.Label>Provedor da conversa</Form.Label>
-                  <Form.Select
-                    value={provedor ?? ""}
-                    disabled={ocupado}
-                    onChange={(event) => {
-                      const escolhido = provedores.find(
-                        ({ id, disponivel }) =>
-                          disponivel && id === event.target.value,
-                      );
-                      if (escolhido) setPreferencia(escolhido.id);
-                    }}
-                  >
-                    {!provedor && (
-                      <option value="">Nenhum provedor disponível</option>
-                    )}
-                    {provedores.map(({ id, disponivel }) => (
-                      <option key={id} value={id} disabled={!disponivel}>
-                        {nomesDosProvedores[id]}
-                        {!disponivel && " (indisponível)"}
-                      </option>
-                    ))}
-                  </Form.Select>
-                  <Form.Text>
-                    O texto da pergunta é enviado ao provedor escolhido para
-                    interpretar a consulta.
-                  </Form.Text>
-                </Form.Group>
-              )}
             </section>
           </div>
         </Modal.Body>
@@ -655,19 +600,32 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
   if (!provedores) return null;
   return (
     <div className="vale-ia-contas">
-      <h3>Provedores</h3>
-      {provedores.map(({ id, disponivel }) => (
-        <div key={id}>
-          <strong>{nomesDosProvedores[id]}</strong>
-          <span>
-            {disponivel
-              ? "Disponível"
-              : id === "gpt"
-                ? "Aguardando liberação da OpenAI"
-                : "Aguardando configuração institucional"}
-          </span>
-        </div>
-      ))}
+      <h3>Suas conexões</h3>
+      <div className="vale-ia-conta-pessoal">
+        <strong>Minha conta ChatGPT</strong>
+        <p>Converse usando sua própria conta, com autorização na OpenAI.</p>
+        <Button type="button" variant="outline-primary" disabled>
+          Entrar com ChatGPT
+        </Button>
+        <span>Aguardando liberação da OpenAI para o Vale.</span>
+      </div>
+      {provedores
+        .filter(({ id }) => id !== "gpt")
+        .map(({ id, disponivel }) => (
+          <div key={id}>
+            <strong>{nomesDosProvedores[id]}</strong>
+            <span>
+              {disponivel
+                ? "Disponível"
+                : id === "gpt"
+                  ? "Aguardando liberação da OpenAI"
+                  : "Aguardando configuração institucional"}
+            </span>
+            <small>
+              Conexão de API configurada pela administração do Vale.
+            </small>
+          </div>
+        ))}
       {provedores.length === 0 && (
         <p>Consultas do Vale disponíveis nesta sessão.</p>
       )}
@@ -678,23 +636,86 @@ function ContasVale({ provedores }: { provedores?: Estado["provedores"] }) {
 function MensagemVale({
   resposta,
   fechar,
-  baixar,
-  exportando,
+  objetivo,
+  provedor,
 }: {
+  objetivo:string;
+  provedor?:Provedor|"local";
   resposta: Resposta;
   fechar: () => void;
-  baixar: () => void;
-  exportando?: Resposta;
 }) {
   const [mostrarTodas, setMostrarTodas] = useState(false);
   const [dashboard, setDashboard] = useState<string>();
+  const [arquivos, setArquivos] = useState<{
+    html: string;
+    urlHtml: string;
+    urlExcel: string;
+    urlPacote: string;
+  }>();
+  const [falhaArquivos, setFalhaArquivos] = useState<string>();
+  const [tentativa, setTentativa] = useState(0);
+  const [relatorioSolicitado,setRelatorioSolicitado]=useState(false);
+  const visual = criarModeloVisual();
+  const colunasVisuais = resposta.tabela?.colunas.map((nome, i) =>
+    visual.coluna(
+      nome,
+      resposta.tabela!.linhas.map((r) => r[i]),
+    ),
+  );
+  useEffect(() => {
+    if (!resposta.tabela || !(resposta.relatorio?.solicitado || relatorioSolicitado)) return;
+    let cancelado = false;
+    const urls: string[] = [];
+    setArquivos(undefined);
+    setFalhaArquivos(undefined);
+    // O gerador é carregado com a página: uma publicação posterior não pode
+    // quebrar esta conversa ao remover um chunk ainda não solicitado.
+    const preparar = async () => {
+      let dados=resposta;
+      if(provedor && provedor!=="local" && resposta.apresentacao?.composicao?.origem!=="ia") {
+        const visual=criarModeloVisual();
+        const numericas=resposta.tabela!.colunas.filter((c,i)=>{const meta=visual.coluna(c,resposta.tabela!.linhas.map(r=>r[i]));return !meta.tecnica&&["inteiro","decimal","moeda"].includes(meta.tipo)});
+        const {data}=await http.post<NonNullable<import("./relatorioVisual").SugestaoVisual["composicao"]>>("/assistente/apresentacao",{objetivo:objetivo.slice(0,500),provedor,colunas:resposta.tabela!.colunas,numericas,quantidadeLinhas:resposta.tabela!.linhas.length,parcial:resposta.tabela!.parcial},{timeout:40000});
+        dados={...resposta,apresentacao:{...resposta.apresentacao,composicao:data}};
+      }
+      return prepararPacote(dados);
+    };
+    void preparar()
+      .then((pacote) => {
+        if (cancelado) return;
+        const urlHtml = URL.createObjectURL(
+          new Blob([pacote.html], { type: "text/html;charset=utf-8" }),
+        );
+        const urlExcel = URL.createObjectURL(pacote.excel);
+        const urlPacote = URL.createObjectURL(pacote.pacote);
+        urls.push(urlHtml, urlExcel, urlPacote);
+        setArquivos({ html: pacote.html, urlHtml, urlExcel, urlPacote });
+      })
+      .catch((erro: unknown) => {
+        if (!cancelado)
+          setFalhaArquivos(
+            erro instanceof ErroExportacao
+              ? erro.message
+              : "Não foi possível preparar os arquivos. Tente novamente.",
+          );
+      });
+    return () => {
+      cancelado = true;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [resposta, tentativa, relatorioSolicitado, objetivo, provedor]);
   const moeda = (valor: number) =>
     valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   return (
     <>
-      <p className="fw-semibold mb-2">{resposta.texto}</p>
+      <p
+        className="vale-ia-texto-resposta mb-2"
+        style={{ whiteSpace: "pre-wrap" }}
+      >
+        {resposta.texto.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => part.startsWith("**") ? <strong key={i}>{part.slice(2,-2)}</strong> : part.startsWith("`") ? <code key={i}>{part.slice(1,-1)}</code> : part)}
+      </p>
       {resposta.fonte && (
-        <p className="small text-body-secondary">
+        <details className="vale-ia-fonte"><summary>Fonte e contexto</summary><p className="small text-body-secondary">
           {[
             resposta.competencia,
             resposta.filial,
@@ -705,12 +726,12 @@ function MensagemVale({
           ]
             .filter(Boolean)
             .join(" · ")}
-        </p>
+        </p></details>
       )}
       {resposta.detalhes && (
         <details className="mb-2">
           <summary>Como interpretar</summary>
-          <p>{resposta.detalhes}</p>
+          <p style={{ whiteSpace: "pre-wrap" }}>{resposta.detalhes}</p>
         </details>
       )}
       {resposta.grafico && (
@@ -739,40 +760,77 @@ function MensagemVale({
       )}
       {resposta.tabela && (
         <>
-          <Button
-            size="sm"
-            variant="outline-secondary"
-            className="me-2"
-            onClick={() => setDashboard(criarRelatorioHtml(resposta))}
-          >
-            Abrir relatório HTML
-          </Button>
+          {!(resposta.relatorio?.solicitado || relatorioSolicitado) ? (
+            <div className="mb-2">{!resposta.auditoria && resposta.tabela.linhas.length>1 && <span>Se quiser explorar esses dados, posso organizar um relatório interativo. </span>}<Button size="sm" variant="outline-primary" onClick={()=>setRelatorioSolicitado(true)}>Gerar relatório + Excel</Button></div>
+          ) : arquivos ? (
+            <div
+              className="d-flex gap-2 flex-wrap mb-2"
+              aria-label="Arquivos gerados da consulta"
+            >
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                onClick={() => setDashboard(arquivos.html)}
+              >
+                Abrir HTML interativo
+              </Button>
+              <a
+                className="btn btn-sm btn-outline-primary"
+                href={arquivos.urlExcel}
+                download="vale-ia-dados.xlsx"
+              >
+                Baixar Excel{resposta.tabela.parcial ? " parcial" : ""}
+              </a>
+              <a
+                className="btn btn-sm btn-primary"
+                href={arquivos.urlPacote}
+                download="vale-ia-html-e-excel.zip"
+              >
+                Baixar HTML + Excel
+              </a>
+            </div>
+          ) : falhaArquivos ? (
+            <div role="alert">
+              {falhaArquivos}{" "}
+              <Button
+                size="sm"
+                variant="link"
+                onClick={() => setTentativa((n) => n + 1)}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <p role="status">
+              Preparando HTML interativo e Excel com os mesmos dados…
+            </p>
+          )}
           {resposta.tabela.parcial && (
             <p className="text-warning-emphasis">
               A base da consulta está parcial. Confira os detalhes e refine os
               filtros para exportar o conjunto completo.
             </p>
           )}
-          {!resposta.tabela.parcial && (
-            <Button
-              size="sm"
-              variant="outline-primary"
-              disabled={Boolean(exportando)}
-              onClick={baixar}
-            >
-              {exportando === resposta ? "Gerando…" : "Baixar Excel"}
-            </Button>
-          )}
           <details className="mt-2">
             <summary>
               Ver tabela ({resposta.tabela.linhas.length} linhas)
             </summary>
-            <Table responsive size="sm" striped>
+            <Table
+              responsive
+              size="sm"
+              striped
+              className="vale-ia-tabela-formatada"
+            >
               <thead>
                 <tr>
                   {resposta.tabela.colunas.map((c) => (
-                    <th key={c} scope="col">
-                      {c}
+                    <th
+                      key={c}
+                      scope="col"
+                      title={c}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {colunasVisuais?.find((v) => v.nome === c)?.titulo ?? c}
                     </th>
                   ))}
                 </tr>
@@ -783,7 +841,26 @@ function MensagemVale({
                   .map((linha, i) => (
                     <tr key={i}>
                       {linha.map((valor, j) => (
-                        <td key={j}>{valor ?? "—"}</td>
+                        <td
+                          key={j}
+                          title={
+                            valor === null ? "Sem informação" : String(valor)
+                          }
+                          style={{
+                            whiteSpace:
+                              colunasVisuais?.[j].tipo === "texto"
+                                ? "normal"
+                                : "nowrap",
+                            textAlign: ["moeda", "decimal", "inteiro"].includes(
+                              colunasVisuais?.[j].tipo ?? "",
+                            )
+                              ? "right"
+                              : "left",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {visual.formatar(valor, colunasVisuais?.[j].tipo)}
+                        </td>
                       ))}
                     </tr>
                   ))}
@@ -815,15 +892,30 @@ function MensagemVale({
             <iframe
               title="Dashboard da consulta"
               srcDoc={dashboard}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-downloads"
               style={{ width: "100%", height: "70vh", border: 0 }}
             />
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button onClick={() => dashboard && baixarRelatorioHtml(dashboard)}>
-            Baixar HTML
-          </Button>
+          {arquivos && (
+            <>
+              <a
+                className="btn btn-outline-primary"
+                href={arquivos.urlHtml}
+                download="vale-ia-relatorio.html"
+              >
+                Baixar HTML
+              </a>
+              <a
+                className="btn btn-primary"
+                href={arquivos.urlPacote}
+                download="vale-ia-html-e-excel.zip"
+              >
+                Baixar HTML + Excel
+              </a>
+            </>
+          )}
         </Modal.Footer>
       </Modal>
       <div className="d-flex gap-3 mt-2">

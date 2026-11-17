@@ -1,5 +1,41 @@
 export type Celula = string | number | null;
+// Metadados somente do servidor: símbolos não são serializados na resposta HTTP.
+export const contextoConsulta = Symbol('contexto-consulta-assistente');
+export const respostaParaModelo = Symbol('resposta-para-modelo');
+export type ContextoErros = {
+  tipo: 'funcionarios_com_erro';
+  periodoId: number;
+  competencia: string;
+  filialId?: number;
+  filial: string;
+  execucaoIds: number[];
+  funcionarioBaseIds: number[];
+  total: number;
+  filiaisComErro?: {filialId:number;nome:string}[];
+  parcial: boolean;
+  capturadoEm: string;
+};
+export type TurnoAssistente = {
+  pergunta: string;
+  resposta: string;
+  em?: string;
+  contexto?: ContextoErros;
+  respostaModelo?: string;
+};
 export type ResultadoAssistente = {
+  orientacao?: { filial: string; erro: string; possivelCausa: string; investigar: string; filialId?: number | null; periodoId?: number }[];
+  agente?:{versao:"v2";ferramentas:string[];sqlExecutado:boolean};
+  relatorio?:{solicitado:boolean};
+  auditoria?:{versao:string;casos:{referencia:string;selecaoModeloValidada:boolean;achados:{id:string;tipo:string;evidencias:string[]}[]}[]};
+  apresentacao?: {
+    composicao?:{layout:"executivo"|"editorial"|"analitico";secoes:("resumo"|"indicadores"|"grafico"|"composicao"|"detalhe")[];origem:"ia"|"automatico"};
+    titulo?: string;
+    grafico?: 'barras' | 'linha';
+    dimensao?: string;
+    metrica?: string | null;
+  };
+  [contextoConsulta]?: ContextoErros;
+  [respostaParaModelo]?: string;
   texto: string;
   detalhes?: string;
   competencia?: string;

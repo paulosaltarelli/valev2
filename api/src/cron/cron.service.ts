@@ -91,7 +91,7 @@ export class CronService {
     const runnable = Prisma.sql`
       q.status = 'PENDENTE'
       AND (q.next_run_at IS NULL OR q.next_run_at <= SYSDATETIME())
-      AND EXISTS (SELECT 1 FROM dbo.execucao e WHERE e.execucao_id = q.execucao_id AND e.controle_fila IS NULL)
+      AND EXISTS (SELECT 1 FROM dbo.execucao e WHERE e.execucao_id = q.execucao_id AND e.historica_de_execucao_id IS NULL AND e.controle_fila IS NULL)
       AND NOT EXISTS (
         SELECT 1 FROM dbo.execucao_queue anterior
         WHERE anterior.execucao_id = q.execucao_id

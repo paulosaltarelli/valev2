@@ -32,7 +32,7 @@ function PeriodOverview({ summary, branches, creation, onRefresh, disabled }: { 
   const [drill, setDrill] = useState<Drill | null>(null);
   const total = rows.reduce((a,r) => a+r.total,0);
   const sent = rows.reduce((a,r) => a+r.rm,0);
-  const errors = rows.reduce((a,r) => a+r.errors,0);
+  const errors = rows.reduce((a,r) => a+(r.errorPeople ?? r.errors),0);
   const variableTotal = rows.reduce((a,r) => a+r.progresso.variaveisPrevistas,0);
   const variables = rows.reduce((a,r) => a+r.progresso.variaveisCalculadas,0);
   const formulaTotal = rows.reduce((a,r) => a+r.progresso.formulasPrevistas,0);
@@ -54,17 +54,22 @@ function PeriodOverview({ summary, branches, creation, onRefresh, disabled }: { 
   const variablePending = scope.data?.pending?.VARIAVEIS;
   const formulaPending = scope.data?.pending?.VALORES;
   const eligible = scope.data?.send?.eligible;
-  const queueText = processing ? `${n(processing)} em execução · ${n(queued)} na fila` : queued || preparing.length ? `${n(queued)} etapas na fila${preparing.length ? ` · ${preparing.length} filiais em preparação` : ""}` : stopped.length ? `${stopped.length} filas pausadas ou canceladas` : incomplete || errors || creationErrors.length ? "Fila parada com pendências" : "Sem tarefas na fila";
+  const queueText = processing ? `${n(processing)} em execução · ${n(queued)} na fila` : queued || preparing.length ? `${n(queued)} etapas na fila${preparing.length ? ` · ${preparing.length} filiais em preparação` : ""}` : stopped.length ? `${stopped.length} filas pausadas ou canceladas` : incomplete || errors || creationErrors.length ? "Sem tarefas em execução · pendências a processar" : "Sem tarefas na fila";
   const tile = (heading: string, text: string) => <><span><strong>{heading}</strong><small>{text}</small></span><span aria-hidden="true">↗</span></>;
+  if (!all.length && !periodCreation.length) return <article className="vo-period vo-period-empty" aria-label={`Competência ${period.competencia}`}>
+    <div><h3>{period.competencia}</h3><span className="ve-status-pill ve-status-info">Não iniciado</span><small className="op-muted">{branchCount(missing.length)} sem execução</small></div>
+    <Link to={`${base}&acao=nova`} className="btn btn-outline-primary btn-sm">Iniciar processamento</Link>
+  </article>;
   return <article className="vo-period" aria-label={`Competência ${period.competencia}`}>
-    <header className="vo-period-head"><div><h3>{period.competencia}</h3><span className={`ve-status-pill ve-status-${finished ? "success" : errors || creationErrors.length ? "danger" : "info"}`}>{finished ? "Enviado ao RM" : errors || creationErrors.length ? "Exige ação" : processing || queued || preparing.length ? "Em andamento" : !rows.length ? "Não iniciado" : incomplete ? "Cálculo pendente" : "Conferir envio"}</span></div><div className="vo-period-tools"><RetryErrors periodoId={period.periodo_id} competencia={period.competencia} disabled={disabled} onNotice={setNotice} onDone={() => { scope.refresh(); onRefresh(); }}/><Link to={base} className="btn btn-outline-primary btn-sm">Abrir competência</Link></div></header>
+    <header className="vo-period-head"><div><h3>{period.competencia}</h3><span className={`ve-status-pill ve-status-${finished ? "success" : errors || creationErrors.length ? "danger" : "info"}`}>{finished ? "Enviado ao RM" : errors || creationErrors.length ? "Exige ação" : processing || queued || preparing.length ? "Em andamento" : !rows.length ? "Não iniciado" : incomplete ? "Cálculo pendente" : "Conferir envio"}</span></div><div className="vo-period-tools"><RetryErrors executionIds={rows.map(r => r.id)} periodoId={period.periodo_id} competencia={period.competencia} disabled={disabled} onNotice={setNotice} onDone={() => { scope.refresh(); onRefresh(); }}/><Link to={base} className="btn btn-outline-primary btn-sm">Abrir competência</Link></div></header>
     {notice && <div className="op-notice mt-3" role="status">{notice}<button type="button" className="op-dismiss" aria-label="Dispensar aviso" onClick={() => setNotice("")}>×</button></div>}
-    <div className="vo-meters">
+    {rows.length > 0 && <div className="vo-meters">
       {([{label:"Variáveis",value:variables,total:variableTotal,kind:"variables"},{label:"Fórmulas",value:formulas,total:formulaTotal,kind:"formulas"},{label:"Enviados ao RM",value:sent,total,kind:"sent"}] as const).map(m => <button key={m.kind} type="button" className={`vo-meter ${m.kind === "sent" && total > 0 && sent === total ? "vo-sent" : ""}`} onClick={() => setDrill(m.kind)} aria-label={`${m.label}: ${n(m.value)} de ${n(m.total)}. Ver detalhes`}><span className="vo-ring" aria-hidden="true"><svg viewBox="0 0 64 64"><circle className="vo-ring-track" cx="32" cy="32" r="27"/><circle className="vo-ring-value" cx="32" cy="32" r="27" pathLength="100" strokeDasharray={`${m.total ? Math.max(0,Math.min(100,m.value*100/m.total)) : 0} 100`}/></svg><strong>{percent(m.value,m.total)}</strong></span><span className="vo-meter-caption"><span>{m.label}</span><small>{n(m.value)} / {n(m.total)}</small></span></button>)}
-    </div>
+    </div>}
     {scope.loading && <p className="op-muted" role="status">Consultando ações disponíveis…</p>}
+    {errors > 0 && <Link className="d-inline-block mt-3" to={`/falhas-por-causa?periodo=${period.periodo_id}`}>Ver erros por causa ↗</Link>}
     <div className="vo-actions" aria-label={`Ações prioritárias de ${period.competencia}`}>
-      {errors > 0 && <PendingPeople rows={rows} count={errors} returnTo="/dashboard" triggerClassName="vo-action vo-danger" trigger={tile(`${n(errors)} funcionários com erro`,`${branchCount(rows.filter(r => r.errors > 0).length)} · ver erro e corrigir`)}/>}
+      {errors > 0 && <PendingPeople onlyErrors rows={rows} count={errors} returnTo="/dashboard" triggerClassName="vo-action vo-danger" trigger={tile(`${n(errors)} funcionários com erro`,`${branchCount(rows.filter(r => (r.errorPeople ?? r.errors) > 0).length)} · ver erro e corrigir`)}/>}
       {creationErrors.length > 0 && <Link className="vo-action vo-danger" to={`${base}&acao=falhas`}>{tile("Falha na criação",`${branchCount(creationErrors.length)} · consultar causa`)}</Link>}
       {stopped.length > 0 && <button type="button" className="vo-action vo-warning" onClick={() => setDrill("queue")}>{tile("Filas interrompidas",`${stopped.length} filiais · verificar antes de retomar`)}</button>}
       {variablePending && variablePending.elegiveis > 0 && <button type="button" className="vo-action" onClick={() => setDrill("variables")}>{tile("Variáveis pendentes",`${n(variablePending.elegiveis)} funcionários disponíveis para processar`)}</button>}

@@ -460,3 +460,65 @@
  .ve-editor-modal .modal-footer>.btn{flex:1;min-height:44px}
  .ve-branch-meter{max-width:none;width:100%}
 }
+
+/* Relatórios e cadastros: controles compactos com ações acessíveis. */
+.ve-finance-details{border:1px solid var(--op-line);border-radius:10px;background:var(--op-surface)}
+.ve-finance-details>summary{padding:14px 16px;font-weight:600;color:var(--op-blue);cursor:pointer}
+.ve-finance-details[open]>.row{margin:0;padding:0 12px 12px}
+.ve-page .dt-length{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.ve-page .dt-search{display:flex;align-items:center;gap:8px}
+.ve-page .dt-search input{margin-left:0;min-width:0}
+.ve-page .ve-branch-list .table>tbody>tr>td:first-child{white-space:normal;overflow-wrap:anywhere;text-align:left!important;min-width:160px}
+.ve-page .ve-branch-list .table>tbody>tr>td:last-child>div{display:flex;gap:6px;justify-content:center}
+.ve-page .ve-branch-list .dtr-details{width:100%;font-size:13px}
+.ve-page .ve-branch-list .dtr-details>li{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0}
+@media(max-width:700px){
+ .ve-page .dt-search{flex-direction:column;align-items:stretch;gap:4px;width:100%}
+ .ve-page .dt-search input{width:100%!important;min-height:44px;font-size:16px}
+ .ve-page .ve-branch-list .table>tbody>tr>td:first-child{min-width:0;padding-left:26px;max-width:210px}
+ .ve-page .ve-branch-list .ve-icon-action{min-width:36px;min-height:40px;padding:6px}
+ .ve-finance-details>summary{min-height:48px}
+}
+
+.ve-mobile-row-details{display:none}
+.ve-period-list .ve-state-active{color:var(--op-blue);background:var(--op-blue-soft)}
+@media(max-width:700px){
+ .ve-mobile-row-details{display:block;margin-top:6px;font-size:12px;color:var(--op-muted)}
+ details.ve-mobile-row-details>summary{cursor:pointer;color:var(--op-blue);padding:6px 0}
+ .ve-page :is(.ve-branch-list,.ve-period-list) table.table{width:100%!important;min-width:0!important;table-layout:fixed}
+ .ve-page :is(.ve-branch-list,.ve-period-list) table.table> :is(thead,tbody)>tr>:is(:nth-child(2),:nth-child(3),:nth-child(4)){display:none}
+ .ve-page :is(.ve-branch-list,.ve-period-list) table.table> :is(thead,tbody)>tr>:first-child{width:68%!important;min-width:0!important;max-width:none;padding-left:10px;white-space:normal;overflow-wrap:anywhere;text-align:left!important}
+ .ve-page :is(.ve-branch-list,.ve-period-list) table.table> :is(thead,tbody)>tr>:last-child{width:32%!important;min-width:0;padding:6px}
+ .ve-page :is(.ve-branch-list,.ve-period-list) table.table>tbody>tr>:last-child>div{display:flex;flex-wrap:wrap;justify-content:center;gap:4px}
+ .ve-page :is(.ve-branch-list,.ve-period-list) .ve-icon-action{min-width:36px;min-height:44px;padding:6px}
+ .ve-page :is(.ve-branch-list,.ve-period-list) colgroup{display:none}
+}
+
+/* Regras: identificação e ações em primeiro plano; configuração sob demanda. */
+.ve-rule-name{text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}
+.ve-rule-name>strong{font-weight:600}.ve-rule-name small{display:block;color:var(--op-muted);font-size:12px;margin-top:5px}
+.ve-rule-details{margin-top:6px;text-align:left}.ve-rule-details summary{font-size:12px;color:var(--op-blue);cursor:pointer;padding:5px 0}
+.ve-rule-details>div{padding:8px;border-left:2px solid var(--op-line);margin-top:4px}
+.ve-rule-details code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;color:var(--op-text)}
+.ve-rule-mobile-meta{display:none!important}
+.ve-page :is(.ve-formula-list,.ve-variable-list) table{width:100%!important;min-width:0!important;table-layout:fixed}
+.ve-page :is(.ve-formula-list,.ve-variable-list) colgroup{display:none}
+.ve-page .ve-formula-list table> :is(thead,tbody)>tr>:is(:nth-child(2),:nth-child(3),:nth-child(5),:nth-child(6),:nth-child(7)){display:none}
+.ve-page .ve-variable-list table> :is(thead,tbody)>tr>:is(:nth-child(2),:nth-child(3),:nth-child(5)){display:none}
+.ve-page :is(.ve-formula-list,.ve-variable-list) table> :is(thead,tbody)>tr>:first-child{width:40%!important;white-space:normal;text-align:left!important}
+.ve-page :is(.ve-formula-list,.ve-variable-list) table> :is(thead,tbody)>tr>:last-child{width:100px!important}
+.ve-page :is(.ve-formula-list,.ve-variable-list) table>tbody>tr>:last-child>div{display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
+.ve-formula-list .ve-state-active{color:var(--op-blue);background:var(--op-blue-soft)}
+.ve-rule-editor .modal-dialog{max-width:760px}
+.ve-rule-editor .form-label{display:flex;align-items:center;gap:6px;text-align:left}
+.ve-rule-editor .ve-variable-picker .btn{white-space:normal;text-align:left;font-size:12px;min-height:36px;padding:6px 8px!important}
+.ve-rule-editor textarea{line-height:1.6;min-height:128px!important}
+@media(max-width:700px){
+ .ve-rule-mobile-meta{display:block!important}
+ .ve-page :is(.ve-formula-list,.ve-variable-list) table> :is(thead,tbody)>tr>:not(:first-child):not(:last-child){display:none}
+ .ve-page :is(.ve-formula-list,.ve-variable-list) table> :is(thead,tbody)>tr>:first-child{width:70%!important;max-width:none;min-width:0;padding:10px}
+ .ve-page :is(.ve-formula-list,.ve-variable-list) table> :is(thead,tbody)>tr>:last-child{width:30%!important;padding:6px}
+ .ve-page :is(.ve-formula-list,.ve-variable-list) .ve-icon-action{min-height:44px;min-width:36px;padding:6px}
+ .ve-rule-editor .modal-dialog{max-width:none;margin:8px}
+ .ve-rule-editor .ve-variable-picker .btn{min-height:44px}
+}

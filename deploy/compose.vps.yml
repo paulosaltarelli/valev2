@@ -1,0 +1,52 @@
+name: valeexpresso
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    env_file: /opt/valeexpresso/secrets/db.env
+    volumes:
+      - sql_data:/var/opt/mssql
+      - /opt/valeexpresso/backups:/var/opt/mssql/backup
+    mem_limit: 3g
+    cpus: 0.75
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" -b -o /dev/null']
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  api:
+    build:
+      context: ../api
+    env_file: /opt/valeexpresso/secrets/api.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 768m
+    cpu_shares: 512
+    restart: unless-stopped
+    logging: *logging
+  web:
+    build:
+      context: ..
+      dockerfile: nginx/Dockerfile
+      args:
+        VITE_API_URL: /api
+    ports:
+      - '127.0.0.1:8081:80'
+    depends_on:
+      - api
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+    logging: *logging
+volumes:
+  sql_data:

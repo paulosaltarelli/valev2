@@ -1,3 +1,4 @@
+import { reportCompletion } from './report-completion';
 import { Prisma } from '@prisma/client';
 
 export type ReportFormula = {
@@ -5,6 +6,7 @@ export type ReportFormula = {
   expressao: string; codEvento: string | null; polaridade: string | null;
 };
 export type ReportResult = {
+  formula_id?: number; codigo_regra_rm?: string; valor_final?: unknown;
   formula: ReportFormula; formula_snapshot: string | null;
   status: string; valor_calculado: { toString(): string } | null;
   revisao: number; enviado_revisao: number | null;
@@ -12,19 +14,21 @@ export type ReportResult = {
 };
 export type ReportPerson = {
   funcionario_id_rm: string; codcoligada: number; nome_funcionario: string | null;
-  status: string | null; execucao_funcionario: ReportResult[];
+  regras_rm?: string | null; status: string | null; execucao_funcionario: ReportResult[];
 };
-export const hasCalculatedValue = (r: ReportResult) =>
+type VariationResult = Omit<ReportResult,'_count'>;
+export type VariationPerson = Omit<ReportPerson,'execucao_funcionario'> & {execucao_funcionario:VariationResult[]};
+export const hasCalculatedValue = (r: Pick<ReportResult,'status'|'valor_calculado'>) =>
   ['PROCESSADO', 'ENVIADO_RM'].includes(r.status) && r.valor_calculado !== null;
 
-export function closingCounts(people: ReportPerson[]) {
+export function closingCounts(people: ReportPerson[], formulaIds?: number[]) {
   const counts = { total: people.length, completos: 0, parciais: 0, semCalculo: 0,
     comErro: 0, aguardandoEnvio: 0, enviados: 0 };
   for (const person of people) {
-    const results = person.execucao_funcionario;
-    const complete = ['RESULTADOS_PROCESSADOS','ENVIADO_RM','ERRO_RM'].includes(person.status ?? '') &&
-      results.length > 0 && results.every(hasCalculatedValue);
-    const sent = complete && results.every(r => r.status === 'ENVIADO_RM' && r.enviado_revisao === r.revisao);
+    const ids = formulaIds ?? [...new Set(person.execucao_funcionario.map(r => r.formula.formula_id))];
+    const state = reportCompletion(person, ids, person.execucao_funcionario.map(r => ({...r, formula_id:r.formula.formula_id, valor_final:r.valor_final === undefined ? r.valor_calculado : r.valor_final})));
+    const results = person.execucao_funcionario.filter(r => ids.includes(r.formula.formula_id));
+    const { complete, sent } = state;
     if (complete) counts.completos++;
     else if (results.some(r => hasCalculatedValue(r) || r._count.memoria_calculo > 0)) counts.parciais++;
     else counts.semCalculo++;
@@ -44,23 +48,31 @@ export function lerSnapshotFormula(snapshot: string | null): ReportFormula | nul
   } catch { /* Invalid legacy snapshots are explicitly non-comparable. */ }
   return null;
 }
-function savedFormula(result: ReportResult): { formula: ReportFormula; verified: boolean } {
+function savedFormula(result: Pick<ReportResult,'formula'|'formula_snapshot'>): { formula: ReportFormula; verified: boolean } {
   const snapshot = lerSnapshotFormula(result.formula_snapshot);
   return snapshot
     ? { formula: { ...result.formula, ...snapshot }, verified: true }
     : { formula: result.formula, verified: false };
 }
 const formulaKey = (f: ReportFormula) => JSON.stringify([f.nome.trim().toLocaleLowerCase('pt-BR'), f.codEvento?.trim() ?? '', f.tipo?.trim() ?? '', f.polaridade?.trim() ?? '']);
-const personKey = (p: ReportPerson) => JSON.stringify([p.codcoligada, p.funcionario_id_rm.trim()]);
+const personKey = (p: Pick<ReportPerson,'codcoligada'|'funcionario_id_rm'>) => JSON.stringify([p.codcoligada, p.funcionario_id_rm.trim()]);
 export type VariationRow = {
   key: string; nome: string; matricula: string; formula: string; tipo: string | null;
   anterior: string | null; atual: string | null; diferenca: string | null;
   percentual: string | null; situacao: string; observacao: string;
+  versaoAtual: number | null; versaoAnterior: number | null;
+  classificacaoMonetariaAtual: boolean; classificacaoMonetariaAnterior: boolean;
+  polaridadeAtual: string | null; polaridadeAnterior: string | null;
+  tipoAtualHistorico: string | null; tipoAnteriorHistorico: string | null;
 };
 
+export class VariationLimitError extends Error {
+  constructor() { super('O limite de registros da comparação histórica foi atingido.'); }
+}
+
 /** Compare persisted calculated values, never final overrides or absent values as zero. */
-export function variationRows(current: ReportPerson[], previous: ReportPerson[],
-  currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = []): VariationRow[] {
+export function variationRows(current: VariationPerson[], previous: VariationPerson[],
+  currentExists: boolean, previousExists: boolean, configuredCurrent: ReportFormula[] = [], maxRows = Number.POSITIVE_INFINITY): VariationRow[] {
   const now = new Map(current.map(p => [personKey(p), p]));
   const before = new Map(previous.map(p => [personKey(p), p]));
   const duplicates = new Set<string>();
@@ -72,7 +84,7 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
       seen.add(key);
     }
   }
-  const knownFormulas = (people: ReportPerson[], configured: ReportFormula[] = []) => {
+  const knownFormulas = (people: VariationPerson[], configured: ReportFormula[] = []) => {
     const formulas = new Map(configured.map(f => [formulaKey(f), f]));
     for (const person of people) for (const result of person.execucao_funcionario) {
       const formula = savedFormula(result).formula;
@@ -84,15 +96,15 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
   const rows: VariationRow[] = [];
   for (const key of new Set([...now.keys(), ...before.keys()])) {
     const person = now.get(key), oldPerson = before.get(key);
-    const group = (p: ReportPerson | undefined, expected: Map<string, ReportFormula>) => {
-      const groups = new Map<string, ReportResult[]>();
+    const group = (p: VariationPerson | undefined, expected: Map<string, ReportFormula>) => {
+      const groups = new Map<string, VariationResult[]>();
       for (const r of p?.execucao_funcionario ?? []) {
         const fkey = formulaKey(savedFormula(r).formula);
         groups.set(fkey, [...(groups.get(fkey) ?? []), r]);
       }
       if (p) for (const [key, formula] of expected) if (!groups.has(key)) groups.set(key, [{
         formula, formula_snapshot: null, status: 'PREVIA', valor_calculado: null,
-        revisao: 0, enviado_revisao: null, _count: { memoria_calculo: 0 },
+        revisao: 0, enviado_revisao: null,
       }]);
       return groups;
     };
@@ -103,6 +115,8 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
       const currentResults = a.get(fkey) ?? [], previousResults = b.get(fkey) ?? [];
       const r = currentResults[0], old = previousResults[0];
       const formula = r ? savedFormula(r).formula : old ? savedFormula(old).formula : null;
+      const snapshotAtual=r?lerSnapshotFormula(r.formula_snapshot):null;
+      const snapshotAnterior=old?lerSnapshotFormula(old.formula_snapshot):null;
       const row: VariationRow = {
         key: JSON.stringify([key,fkey]), nome: person?.nome_funcionario ?? oldPerson?.nome_funcionario ?? 'Nome indisponível',
         matricula: person?.funcionario_id_rm ?? oldPerson!.funcionario_id_rm,
@@ -110,6 +124,12 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
         atual: r && hasCalculatedValue(r) ? r.valor_calculado!.toString() : null,
         anterior: old && hasCalculatedValue(old) ? old.valor_calculado!.toString() : null,
         diferenca: null, percentual: null, situacao: '', observacao: '',
+        versaoAtual:snapshotAtual?.versao??null,versaoAnterior:snapshotAnterior?.versao??null,
+        classificacaoMonetariaAtual:snapshotAtual?.tipo==='V'&&['+','-'].includes(snapshotAtual.polaridade??''),
+        classificacaoMonetariaAnterior:snapshotAnterior?.tipo==='V'&&['+','-'].includes(snapshotAnterior.polaridade??''),
+        polaridadeAtual:snapshotAtual?.polaridade??null,polaridadeAnterior:snapshotAnterior?.polaridade??null,
+        tipoAtualHistorico:typeof snapshotAtual?.tipo==='string'?snapshotAtual.tipo:null,
+        tipoAnteriorHistorico:typeof snapshotAnterior?.tipo==='string'?snapshotAnterior.tipo:null,
       };
       if (duplicates.has(key)) {
         row.atual = row.anterior = null;
@@ -148,6 +168,7 @@ export function variationRows(current: ReportPerson[], previous: ReportPerson[],
           if (previousValue.isZero()) row.observacao = 'Valor anterior igual a zero; a diferença absoluta continua disponível.';
         }
       }
+      if(rows.length>=maxRows)throw new VariationLimitError();
       rows.push(row);
     }
   }

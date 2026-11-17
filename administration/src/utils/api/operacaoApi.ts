@@ -25,6 +25,7 @@ export type OperationRow = {
   rm: number;
   conferidos: number;
   errors: number;
+  errorPeople?: number;
   processing: number;
   pending: number;
   controleFila?: "PAUSADA" | "CANCELADA" | null;

@@ -1,3 +1,5 @@
+import { currentExecutionIds } from "../../components/Processamento/pending-actions";
+import { OperationReportTools } from "../../components/Processamento/OperationReportTools";
 import { PendingPeople } from "../../components/Processamento/PendingPeople";
 import { RetryErrors } from "../../components/Processamento/RetryErrors";
 import { PageHeading } from "../../shared/components/PageHeading";
@@ -42,6 +44,8 @@ export function ProcessamentoPage() {
   const periodo = params.get("periodo") ?? "";
   const filial = params.get("filial") ?? "";
   const situation = params.get("situacao");
+  const focus = params.get("foco") ?? "";
+  const branchTerm = (params.get("busca") ?? "").trim().toLocaleLowerCase("pt-BR");
   const filter = situation === "conferencia" ? "envio" : situation ?? "todas";
   const history = params.get("visao") === "historico";
   const fetcher = useCallback(() => OperacaoApi.summary(periodo), [periodo]);
@@ -95,7 +99,7 @@ export function ProcessamentoPage() {
   useEffect(() => {
     setSelected([]);
     setSelecting(false);
-  }, [periodo, filial, filter, history]);
+  }, [periodo, filial, filter, history, focus, branchTerm]);
   const change = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
@@ -118,6 +122,8 @@ export function ProcessamentoPage() {
       (query.data?.rows ?? [])
         .filter((r) => history || r.latest)
         .filter((r) => !filial || r.filialId === Number(filial))
+        .filter(r => r.filial.toLocaleLowerCase("pt-BR").includes(branchTerm))
+        .filter(r => focus === "erro" ? (r.errorPeople ?? r.errors)>0 : focus === "envio" ? r.valores>r.rm : focus === "enviados" ? r.total>0 && r.rm===r.total : true)
         .filter(
           (r) =>
             filter === "todas" ||
@@ -128,8 +134,10 @@ export function ProcessamentoPage() {
         .sort(
           (a, b) => a.filial.localeCompare(b.filial, "pt-BR") || b.id - a.id,
         ),
-    [query.data, history, filial, filter],
+    [query.data, history, filial, filter, focus, branchTerm],
   );
+  const selectableIds = currentExecutionIds(rows);
+  const selectedInScope = selected.filter(id => rows.some(row => row.id === id));
   const current = (query.data?.rows ?? []).filter(
     (r) => r.latest && (!filial || r.filialId === Number(filial)),
   );
@@ -267,7 +275,7 @@ export function ProcessamentoPage() {
         description="Acompanhe cada etapa e avance com o contexto da competência."
         actions={(
           <>
-          {query.data?.periodo && <RetryErrors key={query.data.periodo.periodo_id} periodoId={query.data.periodo.periodo_id} competencia={query.data.periodo.competencia}
+          {query.data?.periodo && <RetryErrors executionIds={currentExecutionIds(query.data.rows)} key={query.data.periodo.periodo_id} periodoId={query.data.periodo.periodo_id} competencia={query.data.periodo.competencia}
             disabled={query.loading || Boolean(query.error) || command.busy || saving || queueSaving} onDone={query.refresh} onNotice={setNotice} />}
           <button
             className="btn btn-primary"
@@ -326,6 +334,9 @@ export function ProcessamentoPage() {
           </button>
         </div>
       </section>
+      {!history && query.data?.periodo && <OperationReportTools periodo={String(query.data.periodo.periodo_id)} visibleExecutionIds={rows.map(r=>r.id)} />}
+      {(focus || branchTerm) && <div className="op-toolbar mb-3"><span className="op-muted">Recorte ativo{branchTerm ? ` · ${branchTerm}` : ""}</span><button className="btn btn-link btn-sm" onClick={()=>{const next=new URLSearchParams(params);next.delete('foco');next.delete('busca');setParams(next);}}>Limpar recorte</button></div>}
+
       <QueryNotice {...query} />
       {notice && (
         <div className="op-notice" role="status">
@@ -341,7 +352,7 @@ export function ProcessamentoPage() {
       )}
       {query.data && (
         <>
-          {!history && (
+          {!history && (current.length > 0 || preparing.length > 0 || creationFailures.size > 0) && (
             <section className="op-panel op-stage op-overall-progress mb-3" aria-labelledby="op-overall-heading">
               <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
                 <div>
@@ -387,8 +398,8 @@ export function ProcessamentoPage() {
               </ul>
             </div>
           )}
-          <div
-            className="op-summary"
+          {current.length > 0 && <div
+            className="op-summary op-summary-errors"
             aria-label="Progresso das execuções atuais"
           >
             <StageCount
@@ -410,22 +421,14 @@ export function ProcessamentoPage() {
               value={totals.rm}
               total={totals.total}
             />
-          </div>
-          <div className="op-toolbar">
-            <div className="op-segments" aria-label="Visão">
-              <button
-                aria-pressed={!history}
-                onClick={() => change("visao", "")}
-              >
-                Operação atual
-              </button>
-              <button
-                aria-pressed={history}
-                onClick={() => change("visao", "historico")}
-              >
-                Histórico de execuções
-              </button>
-            </div>
+            <button type="button" className={`op-panel op-stage op-error-card ${focus === "erro" ? "is-selected" : ""}`} aria-pressed={focus === "erro"}
+              onClick={() => { const next = new URLSearchParams(params); next.delete("situacao"); next.delete("visao"); focus === "erro" ? next.delete("foco") : next.set("foco", "erro"); setParams(next); requestAnimationFrame(() => document.getElementById("op-branches")?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>
+              <span>Erros</span><strong>{current.reduce((sum, row) => sum + (row.errorPeople ?? row.errors), 0).toLocaleString("pt-BR")} <small>funcionários</small></strong>
+              <small>Variáveis · Fórmulas · RM</small><span className="op-muted">{focus === "erro" ? "Limpar filtro" : "Ver erros"} ↗</span>
+            </button>
+          </div>}
+          <div className="op-toolbar" id="op-branches">
+            {(history || query.data.rows.some(r=>!r.latest)) && <details><summary>Execuções anteriores</summary><label className="ve-check-filter mt-2"><input type="checkbox" checked={history} onChange={e=>change("visao",e.target.checked?"historico":"")}/> Incluir execuções anteriores da competência</label></details>}
             <label>
               Situação
               <select
@@ -440,30 +443,34 @@ export function ProcessamentoPage() {
                 <option value="enviado">Enviado ao RM</option>
               </select>
             </label>
+            <div className="op-bulk-tools">
+            <button type="button" className="btn btn-outline-primary" disabled={command.busy || Boolean(query.error) || !selectableIds.length}
+              onClick={() => { setSelecting(true); setSelected(selectableIds); }}>Selecionar todas{filter !== "todas" || focus || filial || branchTerm || history ? " exibidas" : " as filiais"}</button>
             <button
               className="btn btn-outline-secondary"
-              disabled={Boolean(query.error) || !rows.length}
+              disabled={command.busy || Boolean(query.error) || !rows.length}
               onClick={() => {
                 setSelecting(!selecting);
                 setSelected([]);
               }}
             >
-              {selecting ? "Encerrar seleção" : "Selecionar filiais"}
-            </button>
+              {selecting ? "Encerrar seleção" : "Escolher filiais"}
+            </button></div>
           </div>
           {selecting && (
             <div className="op-selection" role="status">
               <strong>
-                {selected.length} execuções selecionadas neste recorte
+                {selectedInScope.length} {history ? "execuções" : "filiais"} selecionadas
               </strong>
-              {selected.length > 0 && (
-                <SendScope key={selected.join(",")} executionIds={selected}
+              {selectedInScope.length > 0 && (
+                <SendScope key={selectedInScope.join(",")} executionIds={selectedInScope}
                   disabled={command.busy || Boolean(query.error)}
-                  onSend={() => void command.run({ etapa: "ENVIAR_RM", execucaoIds: selected })}
+                  onSend={() => void command.run({ etapa: "ENVIAR_RM", execucaoIds: selectedInScope })}
                 />
               )}
               <button
                 className="btn btn-outline-secondary"
+                disabled={command.busy}
                 onClick={() => setSelected([])}
               >
                 Limpar seleção
@@ -471,12 +478,7 @@ export function ProcessamentoPage() {
             </div>
           )}
           <p className="op-muted">
-            {rows.length} execuções exibidas · {current.length} filiais no
-            recorte atual
-            {history
-              ? " · cada linha preserva sua execução e seus resultados"
-              : " · execução mais recente de cada filial"}
-            . Variáveis sem duplicação por funcionário; valores por fórmula; RM por funcionário.
+            {rows.length} {history ? "execuções" : "filiais"}{history ? " · incluindo anteriores" : ""}
           </p>
           {rows.length ? (
             <div className="op-table-wrap">
@@ -499,7 +501,7 @@ export function ProcessamentoPage() {
                 <tbody>
                   {rows.map((r) => {
                     const s = situacoes[r.situacao] ?? situacoes.inicio;
-                    const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, retorno: returnTo })}`;
+                    const href = `/processamento/${r.id}?${new URLSearchParams({ aba: s.tab, ...(focus === "erro" ? { filtro: "erros" } : {}), retorno: returnTo })}`;
                     // A fila pode incluir a próxima etapa; só nomeie a etapa se o tipo for único.
                     const singleStage = r.etapas.length === 1 ? r.etapas[0] : null;
                     const stageDone = singleStage === "VARIAVEIS" ? r.progresso.variaveisCalculadas
@@ -522,6 +524,7 @@ export function ProcessamentoPage() {
                               <input
                                 type="checkbox"
                                 aria-label={`Selecionar ${r.filial}, execução ${r.id}`}
+                                disabled={command.busy}
                                 checked={selected.includes(r.id)}
                                 onChange={(e) =>
                                   setSelected((prev) =>
@@ -583,7 +586,7 @@ export function ProcessamentoPage() {
                             className={`btn ${r.situacao === "envio" ? "btn-primary" : "btn-outline-primary"}`}
                             to={href}
                           >
-                            {s.action}
+                            {focus === "erro" ? "Ver erros" : s.action}
                           </Link>
                           {r.controleFila !== "CANCELADA" &&
                             (r.processing + r.pending > 0 || r.controleFila === "PAUSADA") && (

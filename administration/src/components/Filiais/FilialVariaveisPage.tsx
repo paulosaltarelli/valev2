@@ -216,9 +216,9 @@ export function FilialVariaveisPage() {
       {!!variaveis.length && <VisualSummary items={[
 {label:"Variáveis",value:variaveis.length,icon:"tabler:variable"},
 {label:"Consulta RM",value:variaveis.filter(item=>!!item.sql_codigo_rm).length,icon:"tabler:database"},
-{label:"Valor fixo",value:variaveis.filter(item=>!item.sql_codigo_rm && item.valor_fixo != null).length,icon:"tabler:pin",tone:"success"}
+{label:"Valor fixo",value:variaveis.filter(item=>!item.sql_codigo_rm && item.valor_fixo != null).length,icon:"tabler:pin",tone:"info"}
 ]} />}
-      <div className="card card-body ve-table-list">
+      <div className="card card-body ve-table-list ve-variable-list">
       <DataTable
         className="table striped-table mb-0"
         options={{
@@ -252,6 +252,7 @@ export function FilialVariaveisPage() {
           { data: null, name: "actions", orderable: false, searchable: false },
         ]}
         slots={{
+          nome: (value: string, type: string, row: Variavel) => type === "display" ? <div className="ve-rule-name"><strong>{value}</strong><small>{row.codigo} · {row.tipo === "number" ? "Número" : row.tipo === "boolean" ? "Sim/Não" : "Texto"}</small><details className="ve-rule-details"><summary>Origem e configuração</summary><div><small>Consulta RM: {row.sql_codigo_rm || "—"}</small><small>Chapas por chamada: {row.chapas_por_chamada ?? "Sem limite"}</small><small>Valor fixo: {row.valor_fixo ?? "—"}</small></div></details></div> : value,
           actions: (row: Variavel) => (
             <div>
               <Button
@@ -298,7 +299,7 @@ export function FilialVariaveisPage() {
       </DataTable>
       </div>
 
-      <Modal className="ve-editor-modal"
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showEditVariavelModal}
         onHide={() => setShowEditVariavelModal(false)}
       >
@@ -443,7 +444,7 @@ export function FilialVariaveisPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal className="ve-editor-modal"
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showInsertVariavelModal}
         onHide={() => setShowInsertVariavelModal(false)}
       >

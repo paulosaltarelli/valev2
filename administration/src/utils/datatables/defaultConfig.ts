@@ -1,8 +1,9 @@
 export const defaultConfig = {
   language: {
     aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
-    search: "Buscar:",
-    lengthMenu: "Mostrar _MENU_ registros",
+    search: "Buscar",
+    searchPlaceholder: "Digite para filtrar…",
+    lengthMenu: "_MENU_ por página",
     info: "_START_ a _END_ de _TOTAL_ registros",
     infoEmpty: "Nenhum registro",
     infoFiltered: "(de _MAX_ registros)",
@@ -30,8 +31,9 @@ export const processamentoTableConfig = {
   ...defaultConfig,
   language: {
     aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
-    search: "Buscar:",
-    lengthMenu: "Mostrar _MENU_ registros",
+    search: "Buscar",
+    searchPlaceholder: "Digite para filtrar…",
+    lengthMenu: "_MENU_ por página",
     info: "_START_ a _END_ de _TOTAL_ registros",
     infoEmpty: "Nenhum registro",
     infoFiltered: "(de _MAX_ registros)",
