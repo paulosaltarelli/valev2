@@ -11,6 +11,7 @@ export type ContextoErros = {
   execucaoIds: number[];
   funcionarioBaseIds: number[];
   total: number;
+  filiaisComErro?: {filialId:number;nome:string}[];
   parcial: boolean;
   capturadoEm: string;
 };
@@ -22,7 +23,7 @@ export type TurnoAssistente = {
   respostaModelo?: string;
 };
 export type ResultadoAssistente = {
-  orientacao?: { filial: string; erro: string; possivelCausa: string; investigar: string }[];
+  orientacao?: { filial: string; erro: string; possivelCausa: string; investigar: string; filialId?: number | null; periodoId?: number }[];
   agente?:{versao:"v2";ferramentas:string[];sqlExecutado:boolean};
   relatorio?:{solicitado:boolean};
   auditoria?:{versao:string;casos:{referencia:string;selecaoModeloValidada:boolean;achados:{id:string;tipo:string;evidencias:string[]}[]}[]};

@@ -37,6 +37,7 @@ import {
   AssistenteApresentacaoDto,
   AssistenteAgenteDto,
   AssistenteInicioDto,
+  AssistenteErrosFilialDto,
   AssistenteDto,
   AssistenteTesteDto,
 } from './assistente.dto';
@@ -491,6 +492,21 @@ export class AssistenteController {
         return await this.agente!.responder({ pergunta: perguntaInicial, periodoId: input.periodoId, todasFiliais: true }, usuario.perfil, provedor, { modelo: provedor === 'gpt-institucional' ? config.gpt_modelo : config.claude_modelo, chave }, config.contexto, usuario.id, isolada, true);
       } finally { this.agente!.limpar(isolada); }
     }));
+  }
+
+  @Post('inicio/erros')
+  @Header('Cache-Control','no-store')
+  async detalharErrosInicio(@Req() req:Request,@Body() input:AssistenteErrosFilialDto) {
+    const u=await this.autorizar(req);this.validarOrigem(req);
+    if(!this.agente)throw new ServiceUnavailableException('Investigação indisponível.');
+    return this.sessoes.consultar(u.id,async()=>{
+      const config=await this.prisma.assistente_configuracao.findUnique({where:{id:1}});
+      const provedor=config?.gpt_institucional_ativo&&config.gpt_chave?'gpt-institucional':config?.claude_ativo&&config.claude_chave?'claude':undefined;
+      if(!config||!provedor)throw new ServiceUnavailableException('Configure um provedor para investigar os casos.');
+      const chave=this.lerChave(provedor==='gpt-institucional'?config.gpt_chave:config.claude_chave);
+      if(!chave)throw new ServiceUnavailableException('Provedor indisponível.');
+      return this.agente!.investigarErrosFilial(input,u.perfil,provedor,{modelo:provedor==='gpt-institucional'?config.gpt_modelo:config.claude_modelo,chave},config.contexto);
+    });
   }
 
   @Post('v2/conversar')

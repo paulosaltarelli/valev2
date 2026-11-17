@@ -3,7 +3,9 @@ import {
   colunasSqlPessoais,
   validarPasso,
   validarOrientacao,
+  vincularOrientacao,
 } from './assistente-agente';
+import { contextoConsulta } from './assistente-tipos';
 import { consultarModelo } from './assistente-intencao';
 jest.mock('./assistente-intencao', () => ({ consultarModelo: jest.fn() }));
 const args = {
@@ -53,6 +55,141 @@ beforeEach(() => {
       filiais: [{ filial_id: 2, nome: 'Filial A', ativa: true }],
     }),
   } as any);
+});
+it('vincula o clique somente a filiais com erro e usa o nome e período do servidor', () => {
+  const linha = {
+    filial: 'Nome trocado pelo modelo',
+    filialId: 2,
+    erro: 'Erro na coleta',
+    possivelCausa: 'A confirmar',
+    investigar: 'Conferir o retorno.',
+  };
+  expect(
+    vincularOrientacao([linha], new Map([[2, 'Filial A']]), 1)[0],
+  ).toMatchObject({ filial: 'Filial A', filialId: 2, periodoId: 1 });
+  expect(() =>
+    vincularOrientacao(
+      [{ ...linha, filialId: 3 }],
+      new Map([[2, 'Filial A']]),
+      1,
+    ),
+  ).toThrow();
+  expect(() =>
+    vincularOrientacao(
+      [{ ...linha, filialId: null }],
+      new Map([[2, 'Filial A']]),
+      1,
+    ),
+  ).toThrow();
+  expect(
+    vincularOrientacao(
+      [
+        {
+          ...linha,
+          filial: '15 filiais sem execução',
+          filialId: null,
+          erro: 'Sem execução',
+        },
+      ],
+      new Map([[2, 'Filial A']]),
+      1,
+    )[0].filialId,
+  ).toBeNull();
+});
+it('investiga os funcionários da filial e competência exatas sem pedir filtros ao modelo', async () => {
+  const grupo = {
+    tipo: 'funcionarios_com_erro',
+    periodoId: 1,
+    competencia: '10/2026',
+    filialId: 2,
+    filial: 'Filial A',
+    execucaoIds: [10],
+    funcionarioBaseIds: [20],
+    total: 1,
+    parcial: false,
+    capturadoEm: '2026-11-17T12:00:00Z',
+  };
+  queries.consultar.mockResolvedValue({
+    texto: 'Um funcionário com erro.',
+    [contextoConsulta]: grupo,
+  });
+  investigation.responderGrupo.mockResolvedValue({
+    texto: 'Diagnóstico.',
+    consultadoEm: grupo.capturadoEm,
+    tabela: {
+      colunas: [
+        'Funcionário',
+        'Matrícula',
+        'Filial',
+        'Competência',
+        'Execução',
+        'Interpretação para o usuário',
+        'Evidência e orientação',
+      ],
+      linhas: [
+        [
+          'Pessoa Teste',
+          '001',
+          'Filial A',
+          '10/2026',
+          10,
+          'Conferir o vínculo e o retorno da consulta.',
+          'A regra esperada não retornou.',
+        ],
+      ],
+      parcial: false,
+    },
+  });
+  const r = await service.investigarErrosFilial(
+    { periodoId: 1, filialId: 2 },
+    'operator',
+    'gpt-institucional',
+    { modelo: 'teste', chave: 'teste' },
+  );
+  expect(r).toMatchObject({
+    periodoId: 1,
+    filialId: 2,
+    competencia: '10/2026',
+    filial: 'Filial A',
+    total: 1,
+    parcial: false,
+  });
+  expect(r.casos[0]).toMatchObject({
+    nome: 'Pessoa Teste',
+    matricula: '001',
+    execucaoId: 10,
+    orientacao: 'Conferir o vínculo e o retorno da consulta.',
+  });
+  expect(queries.consultar).toHaveBeenCalledWith(
+    'erros',
+    expect.objectContaining({ periodoId: 1, filialId: 2, todasFiliais: false }),
+    'operator',
+  );
+  expect(consultarModelo).not.toHaveBeenCalled();
+  await expect(
+    service.investigarErrosFilial(
+      { periodoId: 99, filialId: 2 },
+      'operator',
+      'gpt-institucional',
+      { modelo: 'teste', chave: 'teste' },
+    ),
+  ).rejects.toThrow('indisponível');
+  investigation.responderGrupo.mockResolvedValue({
+    texto: 'Leitura incorreta.',
+    tabela: {
+      colunas: ['Funcionário', 'Filial', 'Competência', 'Execução'],
+      linhas: [['Outra pessoa', 'Filial B', '09/2026', 11]],
+      parcial: false,
+    },
+  });
+  await expect(
+    service.investigarErrosFilial(
+      { periodoId: 1, filialId: 2 },
+      'operator',
+      'gpt-institucional',
+      { modelo: 'teste', chave: 'teste' },
+    ),
+  ).rejects.toThrow('confirmar');
 });
 it('valida orientação curta e rejeita parágrafos, excesso de linhas e referências pessoais', () => {
   const linha = {

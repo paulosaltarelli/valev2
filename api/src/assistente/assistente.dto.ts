@@ -33,6 +33,14 @@ export class AssistenteInicioDto {
   @Min(1)
   periodoId?: number;
 }
+export class AssistenteErrosFilialDto {
+  @IsInt()
+  @Min(1)
+  periodoId!: number;
+  @IsInt()
+  @Min(1)
+  filialId!: number;
+}
 export class AssistenteConfiguracaoDto {
   @IsOptional()
   @IsString()

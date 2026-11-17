@@ -110,12 +110,13 @@ const esquemaInicial = {
       items: {
         type: 'object',
         properties: {
+          filialId: { type: ['integer', 'null'] },
           filial: { type: 'string' },
           erro: { type: 'string' },
           possivelCausa: { type: 'string' },
           investigar: { type: 'string' },
         },
-        required: ['filial', 'erro', 'possivelCausa', 'investigar'],
+        required: ['filialId', 'filial', 'erro', 'possivelCausa', 'investigar'],
         additionalProperties: false,
       },
     },
@@ -136,6 +137,12 @@ export function validarOrientacao(
     investigar: 180,
   };
   for (const linha of linhas) {
+    if (
+      linha?.filialId !== undefined &&
+      linha.filialId !== null &&
+      (!Number.isSafeInteger(linha.filialId) || linha.filialId <= 0)
+    )
+      throw new BadRequestException('A filial da orientação é inválida.');
     if (
       typeof linha?.filial === 'string' &&
       /\bsem erros?\b/i.test(linha.filial)
@@ -177,11 +184,36 @@ export function validarOrientacao(
     throw new BadRequestException(
       'Resuma a orientação inteira em até 140 palavras e agrupe situações iguais.',
     );
-  return linhas.map((l) =>
-    Object.fromEntries(
+  return linhas.map((l) => ({
+    ...Object.fromEntries(
       Object.keys(limites).map((k) => [k, l[k].trim().replace(/\*\*/g, '')]),
     ),
-  ) as NonNullable<ResultadoAssistente['orientacao']>;
+    ...(l.filialId !== undefined ? { filialId: l.filialId } : {}),
+  })) as NonNullable<ResultadoAssistente['orientacao']>;
+}
+export function vincularOrientacao(
+  linhas: NonNullable<ResultadoAssistente['orientacao']>,
+  filiaisComErro: Map<number, string>,
+  periodoId: number,
+) {
+  return linhas.map((linha) => {
+    if (linha.filialId != null) {
+      const nome = filiaisComErro.get(linha.filialId);
+      if (!nome)
+        throw new BadRequestException(
+          'O vínculo clicável deve usar uma filial presente na consulta de erros. Para grupos sem execução use filialId null.',
+        );
+      return { ...linha, filial: nome, periodoId };
+    }
+    if (
+      filiaisComErro.size &&
+      !/sem execu[cç][aã]o/i.test(linha.filial + ' ' + linha.erro)
+    )
+      throw new BadRequestException(
+        'Informe o filialId da consulta para cada linha de erro, sem agrupar filiais com erro em uma linha sem identificação.',
+      );
+    return { ...linha, filialId: null, periodoId };
+  });
 }
 export function redigirCredenciais(texto: string) {
   return texto
@@ -384,6 +416,82 @@ export class AssistenteAgente {
         : undefined,
     };
   }
+  async investigarErrosFilial(
+    input: { periodoId: number; filialId: number },
+    perfil: string,
+    provedor: 'claude' | 'gpt-institucional',
+    credencial: { modelo: string; chave: string },
+    contexto?: string | null,
+  ) {
+    if (!['admin', 'operator'].includes(perfil)) throw new ForbiddenException();
+    const opcoes = await this.relatorios.options();
+    const periodo = opcoes.periodos.find(
+      (p) => p.periodo_id === input.periodoId && p.ativo,
+    );
+    const filial = opcoes.filiais.find(
+      (f) => f.filial_id === input.filialId && f.ativa,
+    );
+    if (!periodo || !filial)
+      throw new BadRequestException('Competência ou filial indisponível.');
+    const erros = await this.consultas.consultar(
+      'erros',
+      {
+        ...input,
+        pergunta: 'Consultar os funcionários com erro desta filial.',
+        todasFiliais: false,
+      },
+      perfil,
+    );
+    const grupo = erros[contextoConsulta];
+    const r = grupo?.total
+      ? await this.investigacao.responderGrupo(
+          grupo,
+          provedor,
+          credencial,
+          contexto,
+          'causas',
+        )
+      : erros;
+    const colunas = r.tabela?.colunas ?? [];
+    const linhas = colunas.includes('Funcionário') ? r.tabela!.linhas : [];
+    const casos = linhas.map((linha) => {
+      const valor = (nome: string) => linha[colunas.indexOf(nome)];
+      const texto = (nome: string) => String(valor(nome) ?? '');
+      const execucaoId = Number(valor('Execução'));
+      if (
+        texto('Filial') !== filial.nome ||
+        texto('Competência') !== periodo.competencia ||
+        !grupo?.execucaoIds.includes(execucaoId)
+      )
+        throw new BadRequestException(
+          'Não foi possível confirmar a filial e a competência dos casos. Consulte novamente.',
+        );
+      return {
+        nome: texto('Funcionário'),
+        matricula: texto('Matrícula'),
+        execucaoId,
+        orientacao:
+          texto('Interpretação para o usuário') ||
+          'A causa não foi confirmada. Confira as evidências do caso.',
+        evidencias: texto('Evidência e orientação'),
+        variaveis: texto('Variáveis e memórias relacionadas'),
+        formulas: texto('Fórmulas e versões históricas'),
+      };
+    });
+    return {
+      periodoId: input.periodoId,
+      filialId: input.filialId,
+      competencia: periodo.competencia,
+      filial: filial.nome,
+      consultadoEm: r.consultadoEm,
+      fonte: 'Banco do Vale e regras do sistema',
+      total: grupo?.total ?? 0,
+      parcial: !!r.tabela?.parcial || casos.length < (grupo?.total ?? 0),
+      casos,
+      mensagem: casos.length ? undefined : r.texto,
+    };
+  }
+
   async responder(
     input: AssistenteDto,
     perfil: string,
@@ -458,6 +566,8 @@ export class AssistenteAgente {
     let ultimo: ResultadoAssistente | undefined;
     let esquemaLido = false;
     let ajusteAnterior: string | undefined;
+    const periodoInicial = periodoId;
+    const filiaisComErro = new Map<number, string>();
     if (orientacaoInicial) {
       if (!periodoId)
         throw new BadRequestException('Não há competência ativa.');
@@ -479,6 +589,8 @@ export class AssistenteAgente {
         'consultar_operacao',
       );
       const erros = await this.consultas.consultar('erros', filtro, perfil);
+      for (const filialErro of erros[contextoConsulta]?.filiaisComErro ?? [])
+        filiaisComErro.set(filialErro.filialId, filialErro.nome);
       registrar(erros, 'consultar_operacao');
       const grupo = erros[contextoConsulta];
       if (grupo && grupo.total > 0)
@@ -506,6 +618,9 @@ export class AssistenteAgente {
           historico: s.turnos.slice(-6),
           contexto: {
             filasVazias: orientacaoInicial ? true : undefined,
+            filiaisComErro: orientacaoInicial
+              ? [...filiaisComErro].map(([id, nome]) => ({ id, nome }))
+              : undefined,
             periodoId,
             filialId,
             competencia: periodos.find((p) => p.periodo_id === periodoId)
@@ -624,7 +739,11 @@ export class AssistenteAgente {
             .map((e) => e.ferramenta);
           const resposta = this.revelar(s, p.texto);
           const orientacao = orientacaoInicial
-            ? validarOrientacao(p.orientacao)
+            ? vincularOrientacao(
+                validarOrientacao(p.orientacao),
+                filiaisComErro,
+                periodoInicial!,
+              )
             : undefined;
           const perguntaNormal = input.pergunta
             .normalize('NFD')
@@ -705,6 +824,14 @@ export class AssistenteAgente {
       if (evidencias.length >= 4) break;
       const a = p.argumentos;
       try {
+        if (
+          orientacaoInicial &&
+          ((a.periodoId !== null && a.periodoId !== periodoInicial) ||
+            a.escopo === 'definir')
+        )
+          throw new BadRequestException(
+            'Mantenha o recorte da orientação inicial; as filiais com erro já estão nas evidências.',
+          );
         if (a.periodoId !== null) {
           if (!periodos.some((x) => x.periodo_id === a.periodoId))
             throw new BadRequestException('A competência não está disponível.');

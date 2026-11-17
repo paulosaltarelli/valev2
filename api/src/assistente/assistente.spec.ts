@@ -28,7 +28,7 @@ describe('Assistente do Vale', () => {
   const consultas = {
     consultar: jest.fn().mockResolvedValue({ texto: 'Resultado verificado' }),
   };
-  const agente={responder:jest.fn().mockResolvedValue({texto:'Conversa natural da versão nova'}),limpar:jest.fn()};
+  const agente={responder:jest.fn().mockResolvedValue({texto:'Conversa natural da versão nova'}),limpar:jest.fn(),investigarErrosFilial:jest.fn().mockResolvedValue({periodoId:13,filialId:2,casos:[]})};
   const avancado = {
     responder: jest
       .fn()
@@ -120,6 +120,18 @@ describe('Assistente do Vale', () => {
 
   const cookie = (usuarioId: number, sessionId: string) =>
     `access_token=${jwt.sign({ usuarioId, sessionId, username: 'operador', perfil: 'admin' })}`;
+  it('protege os casos nominais e encaminha o recorte exato com o perfil real', async () => {
+    const route='/assistente/inicio/erros',dados={periodoId:13,filialId:2};
+    await request(app.getHttpServer()).post(route).send(dados).expect(401);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'expirada')).send(dados).expect(401);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).set('Origin','https://outra.invalid').send(dados).expect(403);
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send({...dados,filialId:-1}).expect(400);
+    prisma.usuario.findUnique.mockResolvedValueOnce({ativo:false,perfil:'operator'});
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send(dados).expect(403);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    await request(app.getHttpServer()).post(route).set('Cookie',cookie(110,'casos')).send(dados).expect(201).expect('Cache-Control','no-store');
+    expect(agente.investigarErrosFilial).toHaveBeenLastCalledWith(dados,'operator','gpt-institucional',{modelo:'teste',chave:'teste'},undefined);
+  });
 
   it('protege a orientação inicial e não chama IA enquanto há fila', async () => {
     await request(app.getHttpServer()).post('/assistente/inicio').send({}).expect(401);

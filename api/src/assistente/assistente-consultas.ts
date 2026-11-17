@@ -129,9 +129,11 @@ export class AssistenteConsultas {
     let total = 0,
       duplicadas = 0;
     const rows: Cell[][] = [];
+    const filiaisComErro: {filialId:number;nome:string}[] = [];
     for (const filiaisRuns of grupos.values()) {
       const run = filiaisRuns[0];
       if (filiaisRuns.length > 1) {
+        filiaisComErro.push({filialId:run.filial_id,nome:run.filial.nome});
         duplicadas++;
         rows.push([
           run.filial.nome,
@@ -144,6 +146,7 @@ export class AssistenteConsultas {
       const quantidade =
         counts.find((c) => c.execucao_id === run.execucao_id)?._count ?? 0;
       total += quantidade;
+      if (quantidade) filiaisComErro.push({filialId:run.filial_id,nome:run.filial.nome});
       if (quantidade)
         rows.push([
           run.filial.nome,
@@ -178,6 +181,7 @@ export class AssistenteConsultas {
           .slice(0, 100)
           .map((p) => p.execucao_funcionario_base_id),
         total,
+        filiaisComErro,
         parcial: cohort.length > 100 || cohort.length !== total,
         capturadoEm: consultadoEm,
       },
