@@ -22,6 +22,31 @@ it('não chama o modelo quando existe fila, inclusive pendente', async () => {
   ).toEqual({ estado: 'aguardando_fila' });
   expect(gerar).not.toHaveBeenCalled();
 });
+it('recupera uma saída inválida do modelo após o intervalo, sem armazená-la como orientação', async () => {
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(100000);
+  try {
+    const s = new AssistenteInicio();
+    const gerar = jest
+      .fn()
+      .mockResolvedValueOnce({ ...resultado, texto: '.' })
+      .mockResolvedValueOnce(resultado);
+    expect(await s.consultar('u:s:p', async () => false, gerar)).toEqual({
+      estado: 'indisponivel',
+    });
+    clock.mockReturnValue(159999);
+    expect(await s.consultar('u:s:p', async () => false, gerar)).toEqual({
+      estado: 'indisponivel',
+    });
+    expect(gerar).toHaveBeenCalledTimes(1);
+    clock.mockReturnValue(160001);
+    expect((await s.consultar('u:s:p', async () => false, gerar)).estado).toBe(
+      'pronto',
+    );
+    expect(gerar).toHaveBeenCalledTimes(2);
+  } finally {
+    clock.mockRestore();
+  }
+});
 it('omite caminhos técnicos da fonte e recusa uma análise vazia', async () => {
   const s = new AssistenteInicio();
   const r = await s.consultar(
