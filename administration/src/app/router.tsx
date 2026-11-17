@@ -51,6 +51,10 @@ export const router = createBrowserRouter([
     element: <AdminLayout />,
     children: [
       {
+        path: "ajuda/:artigo?",
+        lazy: async () => ({ Component: (await import("../pages/AjudaPage")).AjudaPage }),
+      },
+      {
         path: "acesso-restrito",
         element: (
           <PageHeading

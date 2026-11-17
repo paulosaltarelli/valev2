@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
+import { contextHelp } from "../../utils/contextHelp";
 // import { useAuth } from "../../app/providers/authContext";
 // import { useState } from "react";
 import { ThemeToggleButton } from "../../helper/ThemeToggleButton.tsx";
@@ -11,6 +12,7 @@ import { useAppContext } from "../../contexts/AppContext/useAppContext.ts";
 
 import avatar from "../../assets/images/avatar.png";
 export function Navbar() {
+  const helpPath = contextHelp(useLocation().pathname);
   const navigate = useNavigate();
   const { signOut, isLoading, user } = useAuth();
   const { state, dispatch } = useThemeContext();
@@ -74,6 +76,9 @@ export function Navbar() {
         </div>
         <div className="col-auto">
           <div className="d-flex flex-wrap align-items-center gap-3">
+            <Link to={helpPath} aria-label="Ajuda desta tela" title="Ajuda desta tela" className="d-flex align-items-center justify-content-center rounded-circle" style={{width:40,height:40,color:'var(--text-primary-light)'}}>
+              <Icon icon="mdi:help-circle-outline" width={24} aria-hidden="true" />
+            </Link>
             {/* ThemeToggleButton */}
             <ThemeToggleButton />
             <div className="dropdown">

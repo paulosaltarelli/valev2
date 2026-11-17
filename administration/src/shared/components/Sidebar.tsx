@@ -43,6 +43,17 @@ const navigation = [
       ["/configuracao-ia", "Configuração do Vale IA", "mdi:cog-outline"],
     ],
   },
+  {
+    label: "Ajuda",
+    id: "help",
+    icon: "mdi:book-open-page-variant-outline",
+    links: [
+      ["/ajuda", "Documentação e ajuda", "mdi:book-open-page-variant-outline"],
+      ["/ajuda/primeiros-passos", "Guia operacional", "mdi:clipboard-check-outline"],
+      ["/ajuda/nova-variavel", "Variáveis e fórmulas", "mdi:code-braces"],
+      ["/ajuda/erros-rm", "Problemas e soluções", "mdi:lifebuoy"],
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -88,7 +99,7 @@ export function Sidebar() {
             .flatMap(({ label, links, id, icon }) => {
               const items = links.map(([path, name, linkIcon]) => (
                 <li key={path}>
-                  <NavLink to={path} title={name} aria-label={name} onClick={closeMobileMenu}
+                  <NavLink to={path} end={path === "/ajuda"} title={name} aria-label={name} onClick={closeMobileMenu}
                     className={({ isActive }) => isActive ? "active-page" : ""}>
                     <Icon icon={linkIcon} className="menu-icon" aria-hidden="true" />
                     <span>{name}</span>
