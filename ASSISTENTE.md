@@ -1,5 +1,13 @@
 # Assistente do Vale Expresso
 
+## Orientação automática na Visão geral
+
+Ao abrir a tela inicial autenticada, o componente `OrientacaoInicial` solicita `POST /assistente/inicio` sequencialmente para cada competência ativa exibida. O servidor revalida usuário, sessão, perfil e origem, e verifica filas de processamento, criação e geolocalização, incluindo itens pendentes ou pausados. Com fila, não chama o modelo; se uma fila começar durante a geração, descarta a análise. A página continua utilizável durante a leitura e em falhas do provedor.
+
+Sem fila, o agente consulta os serviços existentes e organiza prioridades por filial: erros, evidências, verificações e próximos passos. As causas não confirmadas devem continuar identificadas como hipóteses. Não recalcula benefícios, não altera dados, não inicia filas e não gera relatórios automaticamente. A orientação mostra competência, fonte e horário, com links para a operação. As demais competências ficam em detalhes expansíveis.
+
+O contexto da orientação é separado e limpo após a geração, sem gravar a conversa do usuário. O cache em memória é isolado por usuário, sessão, perfil e competência, dura até 30 minutos e guarda apenas texto e metadados, sem tabelas. A presença de fila invalida a entrada; falhas aguardam 60 segundos antes de outra tentativa. A tela verifica novamente a cada minuto enquanto visível, e os limites existentes do assistente continuam aplicados. O provedor automático prioriza GPT institucional configurado; usa Claude institucional se apenas ele estiver disponível. Não utiliza login pessoal pendente de liberação.
+
 ## Conversa com ferramentas — versão 2
 
 O chat usa `POST /assistente/v2/conversar`. GPT ou Claude decide se responde normalmente ou consulta uma ferramenta; saudações e dúvidas gerais não passam pelo antigo classificador de frases. A conversa mantém até oito interações por usuário e sessão autenticada, por 30 minutos de inatividade. **Nova conversa** limpa apenas esse contexto e não reinicia os limites de uso. O endpoint anterior permanece disponível para rollback.
