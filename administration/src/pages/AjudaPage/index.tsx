@@ -20,7 +20,7 @@ function HelpFigure({ section }: { section: HelpSection }) {
   return()=>{document.body.style.overflow=previous;window.removeEventListener('keydown',onKey);};
  },[open]);
  if(!section.image)return null;
- const image=<img src={`/ajuda/${section.image}`} alt={section.imageAlt ?? section.title} loading="lazy" decoding="async" width="1280"/>;
+ const image=<img src={`/manual-ajuda/${section.image}`} alt={section.imageAlt ?? section.title} loading="lazy" decoding="async" width="1280"/>;
  return <>
   <figure className="help-figure"><button type="button" ref={trigger} onClick={()=>setOpen(true)} aria-label={`Ampliar captura: ${section.title}`}>{image}<span><Icon icon="mdi:magnify-plus-outline" aria-hidden="true"/> Ampliar captura</span></button><figcaption>{section.imageAlt} Captura da interface oficial em ambiente ilustrativo, com dados fictícios.</figcaption></figure>
   {open && <div className="help-lightbox" role="dialog" aria-modal="true" aria-label={`Captura ampliada: ${section.title}`} onClick={()=>{setOpen(false);trigger.current?.focus();}}><button className="help-lightbox-close" type="button" ref={close} onClick={()=>{setOpen(false);trigger.current?.focus();}}>Fechar captura <span aria-hidden="true">×</span></button>{image}</div>}

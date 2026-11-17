@@ -14,7 +14,7 @@ for(const a of helpArticles){
  assert.ok(categories.some(c=>c.id===a.category));
  for(const id of a.related)assert.ok(ids.has(id),a.id+' related '+id);
  for(const s of a.sections){assert.ok(s.title);if(s.image){
-  const file=path.join(__dirname,'../administration/public/ajuda',s.image);assert.ok(fs.existsSync(file),file);
+  const file=path.join(__dirname,'../administration/public/manual-ajuda',s.image);assert.ok(fs.existsSync(file),file);
   const buffer=fs.readFileSync(file);assert.equal(buffer[0],255);assert.equal(buffer[1],216);assert.ok(s.imageAlt);images.add(s.image);
  }}
 }
