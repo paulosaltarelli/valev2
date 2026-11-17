@@ -51,6 +51,10 @@ export const router = createBrowserRouter([
     element: <AdminLayout />,
     children: [
       {
+        path: "ajuda/formulas-por-filial",
+        lazy: async () => ({ Component: (await import("../pages/AjudaPage/FormulasPorFilialPage")).FormulasPorFilialPage }),
+      },
+      {
         path: "ajuda/:artigo?",
         lazy: async () => ({ Component: (await import("../pages/AjudaPage")).AjudaPage }),
       },

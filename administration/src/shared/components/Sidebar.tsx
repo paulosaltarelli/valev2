@@ -50,7 +50,7 @@ const navigation = [
     links: [
       ["/ajuda", "Documentação e ajuda", "mdi:book-open-page-variant-outline"],
       ["/ajuda/primeiros-passos", "Guia operacional", "mdi:clipboard-check-outline"],
-      ["/ajuda/nova-variavel", "Variáveis e fórmulas", "mdi:code-braces"],
+      ["/ajuda/formulas-por-filial", "Fórmulas por filial · técnica", "mdi:code-braces"],
       ["/ajuda/erros-rm", "Problemas e soluções", "mdi:lifebuoy"],
     ],
   },
