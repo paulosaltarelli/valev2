@@ -1,4 +1,5 @@
 import {AssistenteAgente} from './assistente-agente';
+import { AssistenteInicio, perguntaInicial } from './assistente-inicio';
 import {planejarApresentacao} from './assistente-apresentacao';
 import {
   BadRequestException,
@@ -35,6 +36,7 @@ import {
   AssistenteConfiguracaoDto,
   AssistenteApresentacaoDto,
   AssistenteAgenteDto,
+  AssistenteInicioDto,
   AssistenteDto,
   AssistenteTesteDto,
 } from './assistente.dto';
@@ -119,6 +121,7 @@ export class AssistenteSessoes {
 @Controller('assistente')
 @UseGuards(JwtAuthGuard)
 export class AssistenteController {
+  private readonly inicio = new AssistenteInicio();
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessoes: AssistenteSessoes,
@@ -462,6 +465,32 @@ export class AssistenteController {
       const r=await planejarApresentacao({texto:'Plano visual',tabela:{colunas:input.colunas,linhas:[],parcial:input.parcial}},'Gere relatório. Objetivo: '+input.objetivo,input.provedor,{modelo:gpt?config.gpt_modelo:config.claude_modelo,chave},input);
       return r.apresentacao?.composicao;
     });
+  }
+
+  @Post('inicio')
+  @Header('Cache-Control', 'no-store')
+  async orientarInicio(@Req() req: Request, @Body() input: AssistenteInicioDto) {
+    const usuario = await this.autorizar(req);
+    this.validarOrigem(req);
+    const config = await this.prisma.assistente_configuracao.findUnique({ where: { id: 1 } });
+    const provedor = config?.gpt_institucional_ativo && config.gpt_chave ? 'gpt-institucional' : config?.claude_ativo && config.claude_chave ? 'claude' : undefined;
+    if (!config || !provedor || !this.agente) return { estado: 'indisponivel' };
+    const chave = this.lerChave(provedor === 'gpt-institucional' ? config.gpt_chave : config.claude_chave);
+    if (!chave) return { estado: 'indisponivel' };
+    const filaAtiva = async () => {
+      const filas = await Promise.all([
+        this.prisma.execucao_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+        this.prisma.execucao_create_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+        this.prisma.geo_queue.count({ where: { status: { in: ['PENDENTE', 'PROCESSANDO'] } } }),
+      ]);
+      return filas.some(n => n > 0);
+    };
+    const isolada = `${usuario.chave}:inicio:${usuario.perfil}:${input.periodoId ?? 'ativa'}`;
+    return this.inicio.consultar(isolada, filaAtiva, () => this.sessoes.consultar(usuario.id, async () => {
+      try {
+        return await this.agente!.responder({ pergunta: perguntaInicial, periodoId: input.periodoId, todasFiliais: true }, usuario.perfil, provedor, { modelo: provedor === 'gpt-institucional' ? config.gpt_modelo : config.claude_modelo, chave }, config.contexto, usuario.id, isolada);
+      } finally { this.agente!.limpar(isolada); }
+    }));
   }
 
   @Post('v2/conversar')

@@ -18,6 +18,7 @@ import { FunctionsHelper } from "../../utils/functionsHelper";
 
 import { PageHeading } from "../../shared/components/PageHeading";
 import { OperationalOverview } from "./OperationalOverview";
+import { OrientacaoInicial } from "./OrientacaoInicial";
 
 type PeriodoOption = { label: string; value: number };
 type FilialOption = { label: string; value: number | null };
@@ -718,6 +719,7 @@ export function DashboardPage() {
         title="Visão geral"
         description="Acompanhe as pendências, os indicadores e o andamento das filiais."
       />
+      {summary && <OrientacaoInicial periodos={summary.periodos.filter(p => p.ativo)} />}
       {summary && (
         <OperationalOverview
           activePeriodIds={summary.periodos.filter((p) => p.ativo).map((p) => p.periodoId)}

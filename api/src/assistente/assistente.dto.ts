@@ -27,6 +27,12 @@ export const intents = [
   'esclarecer',
 ] as const;
 export type Intent = (typeof intents)[number];
+export class AssistenteInicioDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  periodoId?: number;
+}
 export class AssistenteConfiguracaoDto {
   @IsOptional()
   @IsString()

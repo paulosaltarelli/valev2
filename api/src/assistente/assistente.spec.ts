@@ -36,6 +36,9 @@ describe('Assistente do Vale', () => {
     estadoConhecimento: jest.fn().mockReturnValue({ arquivos: 0 }),
   };
   const prisma = {
+    execucao_queue: { count: jest.fn().mockResolvedValue(0) },
+    execucao_create_queue: { count: jest.fn().mockResolvedValue(0) },
+    geo_queue: { count: jest.fn().mockResolvedValue(0) },
     usuario: {
       findUnique: jest
         .fn()
@@ -117,6 +120,27 @@ describe('Assistente do Vale', () => {
 
   const cookie = (usuarioId: number, sessionId: string) =>
     `access_token=${jwt.sign({ usuarioId, sessionId, username: 'operador', perfil: 'admin' })}`;
+
+  it('protege a orientação inicial e não chama IA enquanto há fila', async () => {
+    await request(app.getHttpServer()).post('/assistente/inicio').send({}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'expirada')).send({}).expect(401);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).set('Origin','https://outra.invalid').send({}).expect(403);
+    await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).send({periodoId:-1}).expect(400);
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    prisma.execucao_queue.count.mockResolvedValueOnce(1);agente.responder.mockClear();
+    const r=await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(101,'inicio')).send({periodoId:13}).expect(201);
+    expect(r.body).toEqual({estado:'aguardando_fila'});expect(agente.responder).not.toHaveBeenCalled();
+  });
+
+  it('consulta a orientação com perfil real e contexto isolado, sem gravar conversa', async () => {
+    prisma.assistente_configuracao.findUnique.mockResolvedValueOnce({gpt_institucional_ativo:true,gpt_modelo:'teste',gpt_chave:new CryptoService().encryptJson('teste')});
+    agente.responder.mockResolvedValueOnce({texto:'Filial A: confira o vínculo.',competencia:'10/2026',agente:{versao:'v2',ferramentas:['investigar_grupo'],sqlExecutado:false}} as any);
+    const r=await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(102,'inicio')).send({periodoId:13}).expect(201);
+    expect(r.body.estado).toBe('pronto');expect(r.body.tabela).toBeUndefined();
+    expect(agente.responder).toHaveBeenLastCalledWith(expect.objectContaining({periodoId:13,todasFiliais:true}),'operator','gpt-institucional',expect.any(Object),undefined,102,'102:inicio:inicio:operator:13');
+    const history=await request(app.getHttpServer()).get('/assistente').set('Cookie',cookie(102,'inicio')).expect(200);
+    expect(history.body.historico).toEqual([]);
+  });
 
   it('protege o planejamento visual e rejeita dados brutos ou campos inesperados',async()=>{
     const body={objetivo:'Funcionários com erro',provedor:'gpt-institucional',colunas:['Filial','Estado'],numericas:[],quantidadeLinhas:20,parcial:true};
