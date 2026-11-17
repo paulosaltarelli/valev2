@@ -5,6 +5,7 @@ import { http } from '../../shared/lib/http';
 type Orientacao = {
   estado: 'pronto' | 'aguardando_fila' | 'indisponivel';
   texto?: string;
+  orientacao?: { filial: string; erro: string; possivelCausa: string; investigar: string }[];
   competencia?: string;
   fonte?: string;
   consultadoEm?: string;
@@ -46,12 +47,16 @@ export function OrientacaoInicial({ periodos }: { periodos: { periodoId: number;
     <section className="card mb-4" aria-label="Orientação do Vale IA">
       <div className="card-body">
         <h2 className="ve-section-title">Orientação do Vale IA</h2>
-        <p className="text-secondary small">Prioridades por filial, com base nos registros consultados. Confira as orientações antes de agir.</p>
         {prontas.map((p, i) => {
           const a = analises[p.periodoId];
           return <details key={p.periodoId} open={i === 0} className="mb-3">
-            <summary className="fw-semibold">{a.competencia ?? p.competencia} · Erros e próximos passos</summary>
-            <p className="mt-3" style={{ whiteSpace: 'pre-wrap' }}>{a.texto}</p>
+            <summary className="fw-semibold">{a.competencia ?? p.competencia} · Pontos de atenção</summary>
+            {a.orientacao?.length ? <div className="mt-3 overflow-auto">
+              <table className="table table-sm align-middle mb-2" aria-label={`Orientação de ${a.competencia ?? p.competencia}`}>
+                <thead><tr><th scope="col">Filial</th><th scope="col">Erro / pendência</th><th scope="col">Possível causa</th><th scope="col">O que investigar</th></tr></thead>
+                <tbody>{a.orientacao.map((linha, n) => <tr key={n}><th scope="row">{linha.filial}</th><td>{linha.erro}</td><td>{linha.possivelCausa}</td><td>{linha.investigar}</td></tr>)}</tbody>
+              </table>
+            </div> : <p className="mt-3" style={{ whiteSpace: 'pre-wrap' }}>{a.texto}</p>}
             <p className="text-secondary small">{a.fonte ?? 'Banco do Vale'}{a.consultadoEm && ` · Consulta em ${new Date(a.consultadoEm).toLocaleString('pt-BR')}`}</p>
             <div className="d-flex flex-wrap gap-3">
               <Link to={`/processamento?periodo=${p.periodoId}`}>Abrir processamentos</Link>

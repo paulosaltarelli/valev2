@@ -3,6 +3,7 @@ import type { ResultadoAssistente } from './assistente-tipos';
 export type OrientacaoInicial = {
   estado: 'pronto' | 'aguardando_fila' | 'indisponivel';
   texto?: string;
+  orientacao?: ResultadoAssistente['orientacao'];
   competencia?: string;
   fonte?: string;
   consultadoEm?: string;
@@ -53,6 +54,7 @@ export class AssistenteInicio {
         const valor: OrientacaoInicial = {
           estado: 'pronto',
           texto: r.texto.replace(/\*\*/g, ''),
+          orientacao: r.orientacao,
           competencia: r.competencia,
           fonte: r.agente.ferramentas.some((t) =>
             [
@@ -88,5 +90,4 @@ export class AssistenteInicio {
   }
 }
 
-export const perguntaInicial =
-  'Faça uma orientação proativa para a tela inicial, na competência selecionada e em todas as filiais ativas autorizadas. Consulte primeiro pendências e erros; se houver erros, use investigar_grupo para examinar evidências do banco, logs e código. Organize o texto por filial: diga quantos funcionários ou registros precisam de atenção, explique o significado dos erros em linguagem simples, indique o que conferir e o próximo passo mais seguro. Priorize corrigir a coleta antes de sugerir cálculo ou envio. Distinga evidência de hipótese e declare o que falta confirmar. Considere cálculos parciais, fórmulas pendentes e filiais sem execução conforme os dados retornados. Não conclua que ausência de cálculo significa zero ou que todo cálculo foi perdido. Se não houver erros, informe as pendências realmente encontradas; só diga que está tudo em ordem quando as consultas sustentarem isso. Responda com até 220 palavras, com nomes de filiais e passos práticos; preserve as identidades pessoais nesta visão inicial; apresente somente as filiais. Não peça filtros, não ofereça nem gere arquivos, não descreva ações como já realizadas e não execute alterações. Escreva para usuários sem conhecimento técnico: traduza os códigos em uma explicação e uma verificação prática. Evite nomes internos de variáveis e fórmulas, siglas de estados, caminhos de arquivos e termos como snapshots. Por exemplo, explique a ausência do vínculo esperado como algo a conferir no cadastro e no retorno da consulta, sem afirmar que foi excluído. Use texto simples com parágrafos curtos. Esta é uma análise automática de leitura, não uma ordem de processamento.';
+export const perguntaInicial = 'Prepare uma orientação inicial extremamente direta para a competência selecionada, usando exclusivamente as evidências consultadas. Preencha orientacao com no máximo 6 linhas: filial, erro, possivelCausa, investigar. Use frases de até 12 palavras por célula, no máximo 100 palavras no conjunto. Uma linha por filial com erro. Agrupe filiais sem execução em uma única linha, por exemplo “15 filiais sem execução”; não enumere seus nomes nem repita explicações. Para pendências sem erro, use uma linha agrupada. Em possivelCausa, escreva “A confirmar” quando faltar evidência, ou “Não se aplica” para processo não iniciado. Sugira somente a verificação pertinente à etapa da falha, sem presumir exclusão de vínculo ou outra causa não confirmada. Não confunda execução aberta com tarefas em execução: as filas foram verificadas vazias. Evite nomes de funcionários, códigos internos, fórmulas, caminhos de código e explicações genéricas. Não peça filtros, não ofereça arquivos, não inicie nem altere dados. O campo texto deve ser apenas uma frase curta de apresentação, como “Prioridades identificadas nesta competência.”; não escreva parágrafos nem uma tabela Markdown. Para ações de ferramenta, orientacao deve ficar vazio. A tela apresentará as linhas em tabela com competência, fonte e horário.';

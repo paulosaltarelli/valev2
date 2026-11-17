@@ -22,6 +22,7 @@ export type TurnoAssistente = {
   respostaModelo?: string;
 };
 export type ResultadoAssistente = {
+  orientacao?: { filial: string; erro: string; possivelCausa: string; investigar: string }[];
   agente?:{versao:"v2";ferramentas:string[];sqlExecutado:boolean};
   relatorio?:{solicitado:boolean};
   auditoria?:{versao:string;casos:{referencia:string;selecaoModeloValidada:boolean;achados:{id:string;tipo:string;evidencias:string[]}[]}[]};

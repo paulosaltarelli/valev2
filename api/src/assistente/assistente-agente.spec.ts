@@ -2,6 +2,7 @@ import {
   AssistenteAgente,
   colunasSqlPessoais,
   validarPasso,
+  validarOrientacao,
 } from './assistente-agente';
 import { consultarModelo } from './assistente-intencao';
 jest.mock('./assistente-intencao', () => ({ consultarModelo: jest.fn() }));
@@ -53,6 +54,23 @@ beforeEach(() => {
     }),
   } as any);
 });
+it('valida orientação curta e rejeita parágrafos, excesso de linhas e referências pessoais', () => {
+  const linha = {
+    filial: '15 filiais',
+    erro: 'Sem execução',
+    possivelCausa: 'Não se aplica',
+    investigar: 'Confirmar a criação.',
+  };
+  expect(validarOrientacao([linha])).toEqual([linha]);
+  for (const valor of [
+    [],
+    Array(7).fill(linha),
+    [{ ...linha, investigar: 'texto\ntexto' }],
+    [{ ...linha, erro: '[PESSOA_1]' }],
+    [{ ...linha, investigar: 'x'.repeat(181) }],
+  ])
+    expect(() => validarOrientacao(valor)).toThrow();
+});
 const perguntar = (q: string, key = 'u1:s1', perfil = 'operator') =>
   service.responder(
     { pergunta: q },
@@ -85,13 +103,25 @@ it('ancora a orientação inicial em pendências e erros e corrige confusão ent
       passo('resposta', 'nenhuma', 'Há uma execução em andamento.', {}, ['T1']),
     )
     .mockResolvedValueOnce(
-      passo(
-        'resposta',
-        'nenhuma',
-        'A filial A ainda não foi iniciada; confira a criação antes de avançar.',
-        {},
-        ['T1', 'T2'],
-      ),
+      JSON.stringify({
+        ...JSON.parse(
+          passo(
+            'resposta',
+            'nenhuma',
+            'A filial A ainda não foi iniciada; confira a criação antes de avançar.',
+            {},
+            ['T1', 'T2'],
+          ),
+        ),
+        orientacao: [
+          {
+            filial: 'Filial A',
+            erro: 'Sem execução',
+            possivelCausa: 'Não se aplica',
+            investigar: 'Confirmar a criação da execução.',
+          },
+        ],
+      }),
     );
   const r = await service.responder(
     { pergunta: 'Oriente a operação.', periodoId: 1 },
@@ -108,6 +138,7 @@ it('ancora a orientação inicial em pendências e erros e corrige confusão ent
     'erros',
   ]);
   expect(r.texto).toContain('ainda não foi iniciada');
+  expect(r.orientacao).toHaveLength(1);
   const primeiraChamada = JSON.parse(
     (consultarModelo as jest.Mock).mock.calls[0][3],
   );
