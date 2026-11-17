@@ -664,3 +664,9 @@ it('não envia uma credencial colada por engano ao provedor', async () => {
     'SEGREDODETESTE1234567890',
   );
 });
+
+it('preserva HTML e Excel quando o limite do agente termina após obter a tabela',async()=>{
+ queries.consultar.mockResolvedValue({texto:'Valores persistidos',competencia:'10/2026',tabela:{colunas:['Calculado'],linhas:[[0]],parcial:false}});
+ (consultarModelo as jest.Mock).mockResolvedValue(passo('ferramenta','consultar_operacao','',{consulta:'financeiro'}));
+ const r=await perguntar('gere dashboard financeiro');expect(r.relatorio?.solicitado).toBe(true);expect(r.tabela?.linhas).toEqual([[0]]);
+});

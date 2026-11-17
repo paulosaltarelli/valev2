@@ -990,8 +990,9 @@ export class AssistenteAgente {
         ...ultimo,
         texto:
           ultimo.texto +
-          '\nNão consegui concluir a explicação conversacional; os dados e limites da consulta estão preservados.',
-        relatorio: { solicitado: false },
+          '\nA consulta está no detalhe; a interpretação adicional não foi concluída nesta tentativa.',
+        relatorio: { solicitado: !!ultimo.tabela && solicitouRelatorio(input.pergunta) },
+        agente: { versao: 'v2', ferramentas: evidencias.map(e=>e.ferramenta), sqlExecutado: evidencias.some(e=>e.ferramenta==='executar_sql') },
       };
     return {
       texto:

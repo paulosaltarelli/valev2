@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DashService } from '../dash/dash.service';
 import { OperationalReportsService } from '../dash/operational-reports.service';
 import { lerSnapshotFormula } from '../dash/operational-reports';
 import { ExecucaoService } from '../execucao/execucao.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssistenteDto, Intent } from './assistente.dto';
-import { contextoConsulta, type ResultadoAssistente } from './assistente-tipos';
+import { contextoConsulta, respostaParaModelo, type ResultadoAssistente } from './assistente-tipos';
 
 type Cell = string | number | null;
 const limite = 2000;
@@ -295,7 +296,18 @@ export class AssistenteConsultas {
           rows.push([filial.nome,null,null,null,null,null,null,null,null,null,null,
             report.duplicated.includes(filial.filial_id) ? 'Execuções duplicadas — valores não consolidados' : !runs.length ? 'Sem execução' : report.partial ? 'Sem resultados na base parcial retornada' : 'Sem resultados no recorte',null,null,null,null,null,null]);
       }
+      const groups = new Map<string,{filial:Cell;tipo:Cell;polaridade:Cell;registros:number;totais:(Prisma.Decimal|null)[]}>();
+      for (const row of rows) {
+        if (row[1]===null) continue;
+        const key=JSON.stringify([row[0],row[5],row[6]]);
+        const g=groups.get(key) ?? {filial:row[0],tipo:row[5],polaridade:row[6],registros:0,totais:[null,null,null,null]};
+        g.registros++;
+        [7,8,9,10].forEach((c,j)=>{if(row[c]!==null)g.totais[j]=(g.totais[j]??new Prisma.Decimal(0)).plus(String(row[c]));});
+        groups.set(key,g);
+      }
+      const totals=[...groups.values()].map(g=>({...g,totais:g.totais.map(v=>v?.toString()??null)}));
       return {
+        [respostaParaModelo]: 'Resultados completos para exportação. Resuma sem enumerar a amostra. Totais por filial, tipo e polaridade, na ordem Calculado, Ajustado (subconjunto), Final local e Valor local com envio registrado: '+JSON.stringify(totals)+'. Estes grupos não devem ser somados entre etapas ou polaridades. A tabela completa acompanha HTML e Excel. Base parcial: '+report.partial,
         ...base, fonte: 'Banco do Vale · resultados persistidos por funcionário e fórmula',
         texto: report.results.length + ' resultado(s) por funcionário e fórmula no recorte. Calculado, ajustado, final local e envio estão separados.' + (report.duplicated.length ? ' Há filiais com execuções duplicadas; seus valores não foram consolidados.' : ''),
         detalhes: 'Calculado é o valor persistido, inclusive zero e valores presentes em resultados com erro (consulte o status). Ajustado é o valor final somente onde há marca de ajuste manual; não é uma parcela a somar ao calculado. Final local é o campo persistido, sem preencher ausências. Valor local com envio registrado só aparece com status ENVIADO_RM e revisão enviada igual à revisão atual; não é comprovante do valor recebido ou pago no RM. Revisão anterior não permite inferir o valor enviado. Não some etapas nem misture tipos de fórmula, polaridades ou unidades; para totais monetários filtre Tipo de fórmula V e separe polaridade. Fórmula histórica e versão são usadas quando disponíveis; versão vazia indica falta de snapshot confiável. Não há conciliação RM. Para causas de erro, investigue variáveis, logs e código: esta tabela de valores não prova a causa. Base parcial limita também os indicadores e o Excel.',
