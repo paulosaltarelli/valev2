@@ -237,7 +237,11 @@ export function iniciarRelatorio(
           c.titulo,
           visual.somarCompativel(recorte, colunas, i),
           c.tipo as "moeda" | "inteiro" | "decimal",
-          ausentes
+          etapasFinanceiras && recorte.some(r=>r[i]!==null) && visual.somarCompativel(recorte,colunas,i)===null
+            ? "Separe o tipo V, a polaridade e a situação do cálculo nos filtros"
+            : etapasFinanceiras && ["Ajustado","Final local"].includes(c.nome) && recorte.some(r=>r[colunas.indexOf("Situação do cálculo")]==="Sem cálculo confirmado")
+            ? "Inclui prévias; não confirma cálculo atual"
+            : ausentes
             ? `${ausentes} registro(s) sem valor`
             : "Soma dos valores informados",
         );
