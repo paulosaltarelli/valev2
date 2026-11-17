@@ -302,6 +302,7 @@ export class AssistenteAgente {
     contexto: string | null | undefined,
     usuarioId: number,
     chaveSessao: string,
+    orientacaoInicial = false,
   ): Promise<ResultadoAssistente> {
     if (!['admin', 'operator'].includes(perfil)) throw new ForbiddenException();
     const s = this.sessao(chaveSessao, perfil),
@@ -328,6 +329,40 @@ export class AssistenteAgente {
     let ultimo: ResultadoAssistente | undefined;
     let esquemaLido = false;
     let ajusteAnterior: string | undefined;
+    if (orientacaoInicial) {
+      if (!periodoId)
+        throw new BadRequestException('Não há competência ativa.');
+      const filtro = { ...input, periodoId, filialId, todasFiliais: !filialId };
+      const registrar = (
+        resultado: ResultadoAssistente,
+        ferramenta: string,
+      ) => {
+        ultimo = resultado;
+        evidencias.push({
+          id: 'T' + (evidencias.length + 1),
+          ferramenta,
+          dados: this.evidencia(s, resultado),
+        });
+        this.guardarResultado(s, resultado);
+      };
+      registrar(
+        await this.consultas.consultar('pendencias', filtro, perfil),
+        'consultar_operacao',
+      );
+      const erros = await this.consultas.consultar('erros', filtro, perfil);
+      registrar(erros, 'consultar_operacao');
+      const grupo = erros[contextoConsulta];
+      if (grupo && grupo.total > 0)
+        registrar(
+          await this.investigacao.responderGrupo(
+            grupo,
+            provedor,
+            credencial,
+            contexto,
+          ),
+          'investigar_grupo',
+        );
+    }
     for (let turno = 0; turno < 6; turno++) {
       if (turno > 0 && Date.now() - inicio > 45000) break;
       const texto = await consultarModelo(
@@ -341,6 +376,7 @@ export class AssistenteAgente {
           pergunta: this.ocultar(s, input.pergunta),
           historico: s.turnos.slice(-6),
           contexto: {
+            filasVazias: orientacaoInicial ? true : undefined,
             periodoId,
             filialId,
             competencia: periodos.find((p) => p.periodo_id === periodoId)
@@ -401,6 +437,16 @@ export class AssistenteAgente {
                 ),
             )
             .join(' ');
+          if (
+            orientacaoInicial &&
+            (p.texto.trim().length < 30 ||
+              /execu[cç][aã]o em andamento|processamento (?:rodando|em execu[cç][aã]o)|tarefas? em execu[cç][aã]o/i.test(
+                afirmacoes,
+              ))
+          )
+            throw new BadRequestException(
+              'Escreva uma orientação completa com os dados consultados. As filas foram verificadas vazias: execução em aberto não significa tarefas rodando. Explique as pendências e próximos passos sem afirmar processamento ativo.',
+            );
           if (
             /(?:reprocessei|reenviei|exclu[ií]|alterei (?:o|a|os|as) )/i.test(
               afirmacoes,

@@ -74,6 +74,46 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('ancora a orientação inicial em pendências e erros e corrige confusão entre execução aberta e fila', async () => {
+  queries.consultar.mockImplementation(async (intent: string) => ({
+    texto:
+      intent === 'erros' ? 'Não há erros.' : 'Filial A ainda sem execução.',
+    competencia: '10/2026',
+  }));
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'Há uma execução em andamento.', {}, ['T1']),
+    )
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'A filial A ainda não foi iniciada; confira a criação antes de avançar.',
+        {},
+        ['T1', 'T2'],
+      ),
+    );
+  const r = await service.responder(
+    { pergunta: 'Oriente a operação.', periodoId: 1 },
+    'operator',
+    'gpt-institucional',
+    { modelo: 'teste', chave: 'teste' },
+    null,
+    1,
+    'inicio',
+    true,
+  );
+  expect(queries.consultar.mock.calls.map((c) => c[0])).toEqual([
+    'pendencias',
+    'erros',
+  ]);
+  expect(r.texto).toContain('ainda não foi iniciada');
+  const primeiraChamada = JSON.parse(
+    (consultarModelo as jest.Mock).mock.calls[0][3],
+  );
+  expect(primeiraChamada.evidencias).toHaveLength(2);
+  expect(primeiraChamada.contexto.filasVazias).toBe(true);
+});
 it('inclui os nomes no chat quando pedem quem são, em vez de repetir a contagem', async () => {
   queries.consultar.mockResolvedValue({
     texto: 'Há dois funcionários com erro.',

@@ -488,7 +488,7 @@ export class AssistenteController {
     const isolada = `${usuario.chave}:inicio:${usuario.perfil}:${input.periodoId ?? 'ativa'}`;
     return this.inicio.consultar(isolada, filaAtiva, () => this.sessoes.consultar(usuario.id, async () => {
       try {
-        return await this.agente!.responder({ pergunta: perguntaInicial, periodoId: input.periodoId, todasFiliais: true }, usuario.perfil, provedor, { modelo: provedor === 'gpt-institucional' ? config.gpt_modelo : config.claude_modelo, chave }, config.contexto, usuario.id, isolada);
+        return await this.agente!.responder({ pergunta: perguntaInicial, periodoId: input.periodoId, todasFiliais: true }, usuario.perfil, provedor, { modelo: provedor === 'gpt-institucional' ? config.gpt_modelo : config.claude_modelo, chave }, config.contexto, usuario.id, isolada, true);
       } finally { this.agente!.limpar(isolada); }
     }));
   }

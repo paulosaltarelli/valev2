@@ -137,7 +137,7 @@ describe('Assistente do Vale', () => {
     agente.responder.mockResolvedValueOnce({texto:'Filial A: confira o vínculo antes de tentar novamente.',competencia:'10/2026',agente:{versao:'v2',ferramentas:['investigar_grupo'],sqlExecutado:false}} as any);
     const r=await request(app.getHttpServer()).post('/assistente/inicio').set('Cookie',cookie(102,'inicio')).send({periodoId:13}).expect(201);
     expect(r.body.estado).toBe('pronto');expect(r.body.tabela).toBeUndefined();
-    expect(agente.responder).toHaveBeenLastCalledWith(expect.objectContaining({periodoId:13,todasFiliais:true}),'operator','gpt-institucional',expect.any(Object),undefined,102,'102:inicio:inicio:operator:13');
+    expect(agente.responder).toHaveBeenLastCalledWith(expect.objectContaining({periodoId:13,todasFiliais:true}),'operator','gpt-institucional',expect.any(Object),undefined,102,'102:inicio:inicio:operator:13',true);
     const history=await request(app.getHttpServer()).get('/assistente').set('Cookie',cookie(102,'inicio')).expect(200);
     expect(history.body.historico).toEqual([]);
   });
