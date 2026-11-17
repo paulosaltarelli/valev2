@@ -1,5 +1,9 @@
 # Assistente do Vale Expresso
 
+O pedido “quero um dash financeiro dos valores pagos” é reconhecido como relatório. A consulta financeira aceita todas as filiais ativas quando não há filial selecionada, mantendo a competência do contexto. Usa uma única chamada ao `DashService.getFinanceiroTimeline` com a lista completa de filiais e apresenta as séries por filial; não escolhe a primeira silenciosamente. Se houver filial selecionada, preserva esse recorte. Consultas por matrícula precisam usar a visão SQL autorizada, porque o relatório financeiro de origem não tem esse filtro.
+
+As células financeiras ficam vazias quando não existe registro elegível; zero é preservado somente quando retornado pela série de uma filial. “Pago” continua seguindo o relatório financeiro local: funcionário com registro de envio e fórmula do tipo V, usando o valor final local ou calculado conforme o serviço existente. Não confirma pagamento externo, valor efetivamente recebido pelo RM nem conciliação. A ausência de registros financeiros não significa ausência de valores calculados. A consulta de pendências anterior não é reaproveitada como se fosse uma consulta financeira.
+
 ## Orientação automática na Visão geral
 
 Os erros da tabela são botões que abrem os funcionários afetados em uma janela na própria Visão geral. O `filialId` da linha é validado contra os identificadores retornados pela consulta de erros, sem deduzir a filial pelo nome; o período é fixado pelo servidor. Linhas agrupadas sem execução não abrem uma lista fictícia de pessoas.
