@@ -49,7 +49,7 @@ const navigation = [
     icon: "mdi:book-open-page-variant-outline",
     links: [
       ["/ajuda", "Documentação e ajuda", "mdi:book-open-page-variant-outline"],
-      ["/ajuda/primeiros-passos", "Guia operacional", "mdi:clipboard-check-outline"],
+      ["/ajuda/rotina-ilustrada", "Passo a passo com prints", "mdi:clipboard-check-outline"],
       ["/ajuda/formulas-por-filial", "Fórmulas por filial · técnica", "mdi:code-braces"],
       ["/ajuda/erros-rm", "Problemas e soluções", "mdi:lifebuoy"],
     ],
