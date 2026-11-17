@@ -51,7 +51,12 @@ type Sessao = {
   turnos: { pergunta: string; resposta: string }[];
   referencias: Map<string, string>;
   ultimo?: ResultadoAssistente;
-  consultaAnterior?: { resultado: ResultadoAssistente; periodoId?: number; filialId?: number; filiais: number[] };
+  consultaAnterior?: {
+    resultado: ResultadoAssistente;
+    periodoId?: number;
+    filialId?: number;
+    filiais: number[];
+  };
   periodoId?: number;
   filialId?: number;
 };
@@ -130,6 +135,26 @@ export function validarOrientacao(
     possivelCausa: 160,
     investigar: 180,
   };
+  for (const linha of linhas) {
+    if (
+      typeof linha?.filial === 'string' &&
+      /\bsem erros?\b/i.test(linha.filial)
+    )
+      throw new BadRequestException(
+        'Não crie um grupo de filiais com pendências sem erro. Mostre as filiais com erro e agrupe apenas as sem execução.',
+      );
+    if (
+      linha &&
+      Object.values(linha).some(
+        (v) =>
+          typeof v === 'string' &&
+          /\b[A-Z]{3,}_[A-Z0-9_]+\b|\bexecu[cç][aã]o\s+#?\d+/i.test(v),
+      )
+    )
+      throw new BadRequestException(
+        'Traduza códigos de variáveis e estados em linguagem comum e retire números internos de execução.',
+      );
+  }
   for (const linha of linhas)
     for (const [campo, limite] of Object.entries(limites))
       if (
@@ -389,19 +414,44 @@ export class AssistenteAgente {
       filialId = input.todasFiliais
         ? undefined
         : (input.filialId ?? s.filialId);
-    const pedidoAnterior = solicitouRelatorio(input.pergunta) &&
-      /(?:dess[ae]|dest[ae]|ness[ae]|nest[ae]|ess[ae]|est[ae])\s+(?:mesm[ao]\s+)?(?:contagem|consulta|tabela|resultado|dados|levantamento)|(?:consulta|tabela|resultado|dados|levantamento)\s+(?:anterior|acima)|(?:última|ultima)\s+consulta/i.test(input.pergunta);
-    if (pedidoAnterior && !/\b\d{2}\/\d{4}\b|\b(?:atualiz|refa[çc]|reconsult|recalcul)/i.test(input.pergunta)) {
+    const pedidoAnterior =
+      solicitouRelatorio(input.pergunta) &&
+      /(?:dess[ae]|dest[ae]|ness[ae]|nest[ae]|ess[ae]|est[ae])\s+(?:mesm[ao]\s+)?(?:contagem|consulta|tabela|resultado|dados|levantamento)|(?:consulta|tabela|resultado|dados|levantamento)\s+(?:anterior|acima)|(?:última|ultima)\s+consulta/i.test(
+        input.pergunta,
+      );
+    if (
+      pedidoAnterior &&
+      !/\b\d{2}\/\d{4}\b|\b(?:atualiz|refa[çc]|reconsult|recalcul)/i.test(
+        input.pergunta,
+      )
+    ) {
       const anterior = s.consultaAnterior;
-      const mesmoEscopo = anterior && anterior.periodoId === periodoId && anterior.filialId === filialId &&
-        anterior.filiais.length === filiais.length && anterior.filiais.every(id => filiais.some(f => f.filial_id === id));
+      const mesmoEscopo =
+        anterior &&
+        anterior.periodoId === periodoId &&
+        anterior.filialId === filialId &&
+        anterior.filiais.length === filiais.length &&
+        anterior.filiais.every((id) => filiais.some((f) => f.filial_id === id));
       if (mesmoEscopo) {
-        const texto = 'Vou preparar o HTML e o Excel com os mesmos dados da consulta anterior.';
-        s.turnos = [...s.turnos, { pergunta: this.ocultar(s, input.pergunta), resposta: texto }].slice(-8);
-        return { ...anterior.resultado, texto, relatorio: { solicitado: true },
-          agente: { versao: 'v2', ferramentas: [], sqlExecutado: false } };
+        const texto =
+          'Vou preparar o HTML e o Excel com os mesmos dados da consulta anterior.';
+        s.turnos = [
+          ...s.turnos,
+          { pergunta: this.ocultar(s, input.pergunta), resposta: texto },
+        ].slice(-8);
+        return {
+          ...anterior.resultado,
+          texto,
+          relatorio: { solicitado: true },
+          agente: { versao: 'v2', ferramentas: [], sqlExecutado: false },
+        };
       }
-      if (!anterior) return { texto: 'Não tenho mais os dados dessa consulta nesta conversa. Preciso consultar novamente para preparar o relatório.', relatorio: { solicitado: false } };
+      if (!anterior)
+        return {
+          texto:
+            'Não tenho mais os dados dessa consulta nesta conversa. Preciso consultar novamente para preparar o relatório.',
+          relatorio: { solicitado: false },
+        };
     }
     const evidencias: { id: string; ferramenta: string; dados: unknown }[] = [],
       inicio = Date.now();
@@ -752,10 +802,21 @@ export class AssistenteAgente {
           dados = this.evidencia(s, ultimo, origensPessoais);
           this.guardarResultado(s, ultimo);
           // Keep the full result only inside this user/profile session, never in the model prompt.
-          s.consultaAnterior = ultimo.tabela ? {
-            resultado: { ...ultimo, tabela: { ...ultimo.tabela, colunas: [...ultimo.tabela.colunas], linhas: ultimo.tabela.linhas.map(linha => [...linha]) } },
-            periodoId, filialId, filiais: filiais.map(f => f.filial_id),
-          } : undefined;
+          s.consultaAnterior = ultimo.tabela
+            ? {
+                resultado: {
+                  ...ultimo,
+                  tabela: {
+                    ...ultimo.tabela,
+                    colunas: [...ultimo.tabela.colunas],
+                    linhas: ultimo.tabela.linhas.map((linha) => [...linha]),
+                  },
+                },
+                periodoId,
+                filialId,
+                filiais: filiais.map((f) => f.filial_id),
+              }
+            : undefined;
         }
         evidencias.push({
           id: 'T' + (evidencias.length + 1),

@@ -62,6 +62,16 @@ it('valida orientação curta e rejeita parágrafos, excesso de linhas e referê
     investigar: 'Confirmar a criação.',
   };
   expect(validarOrientacao([linha])).toEqual([linha]);
+  expect(() =>
+    validarOrientacao([
+      { ...linha, filial: '1 filial com pendências sem erro' },
+    ]),
+  ).toThrow();
+  expect(() =>
+    validarOrientacao([
+      { ...linha, investigar: 'Conferir a variável DESC_AFAST.' },
+    ]),
+  ).toThrow();
   for (const valor of [
     [],
     Array(7).fill(linha),
