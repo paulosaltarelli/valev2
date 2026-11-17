@@ -239,6 +239,43 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('não encerra um pedido explícito de dash sem obter a tabela necessária para os arquivos', async () => {
+  queries.consultar.mockResolvedValue({
+    texto: 'Não há valores com envio.',
+    competencia: '10/2026',
+    tabela: {
+      colunas: ['Filial', 'Pago'],
+      linhas: [['A', null]],
+      parcial: false,
+    },
+  });
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'Como já expliquei, não há valores financeiros.',
+      ),
+    )
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'financeiro' }),
+    )
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'A consulta confirma ausência de valores com envio; o relatório preserva esse recorte.',
+        {},
+        ['T1'],
+      ),
+    );
+  const r = await perguntar('quero um dash financeiro dos valores pagos');
+  expect(r.tabela?.linhas).toEqual([['A', null]]);
+  expect(r.relatorio?.solicitado).toBe(true);
+  expect((consultarModelo as jest.Mock).mock.calls[1][3]).toContain(
+    'histórico textual não contém a tabela',
+  );
+});
 it('troca de pendências para dash financeiro mantendo competência e sem reutilizar a tabela anterior', async () => {
   queries.consultar.mockImplementation(async (intent: string) => ({
     texto: 'Consulta real.',
