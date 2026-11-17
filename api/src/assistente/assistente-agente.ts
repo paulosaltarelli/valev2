@@ -739,6 +739,9 @@ export class AssistenteAgente {
             .map((e) => e.ferramenta);
           if (
             solicitouRelatorio(input.pergunta) &&
+            !/^(?:obrigad[oa]|valeu|agrade[cç]o|n[aã]o|sem)\b/i.test(
+              input.pergunta.trim(),
+            ) &&
             /\b(?:quero|preciso|gere|gerar|crie|criar|monte|montar|prepare|preparar|fa[cç]a|mostre|mostrar)\b/i.test(
               input.pergunta,
             ) &&

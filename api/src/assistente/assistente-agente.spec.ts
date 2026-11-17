@@ -239,6 +239,14 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('não consulta dados só porque um agradecimento menciona gerar o dash', async () => {
+  (consultarModelo as jest.Mock).mockResolvedValue(
+    passo('resposta', 'nenhuma', 'De nada!'),
+  );
+  const r = await perguntar('Obrigado por gerar o dash financeiro.');
+  expect(r.texto).toBe('De nada!');
+  expect(queries.consultar).not.toHaveBeenCalled();
+});
 it('não encerra um pedido explícito de dash sem obter a tabela necessária para os arquivos', async () => {
   queries.consultar.mockResolvedValue({
     texto: 'Não há valores com envio.',
