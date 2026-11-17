@@ -86,7 +86,7 @@ export function criarModeloVisual() {
       ? "data"
       : identificador
         ? "identificador"
-        : numero && moeda
+        : moeda && (numero || preenchidos.length === 0)
           ? "moeda"
           : numero
             ? quantidade || preenchidos.every((v) => /^-?\d+$/.test(String(v)))
