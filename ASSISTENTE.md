@@ -2,6 +2,10 @@
 
 ## Orientação automática na Visão geral
 
+Os erros da tabela são botões que abrem os funcionários afetados em uma janela na própria Visão geral. O `filialId` da linha é validado contra os identificadores retornados pela consulta de erros, sem deduzir a filial pelo nome; o período é fixado pelo servidor. Linhas agrupadas sem execução não abrem uma lista fictícia de pessoas.
+
+`POST /assistente/inicio/erros` exige sessão, usuário ativo, perfil atual, origem e IDs positivos. A ação reconsulta os erros da filial e competência ativas e usa a investigação existente para orientar cada funcionário. Não reutiliza silenciosamente uma execução duplicada, não muda o recorte, não altera o chat e não escreve dados operacionais. O detalhe mostra nome, matrícula, orientação e evidências expansíveis; mudanças de escopo inválidas são recusadas. Os limites de diagnóstico existentes são preservados: uma lista parcial é identificada com a quantidade exibida e o total, sem afirmar cobertura completa. Dados nominais ficam apenas na resposta autenticada e nos testes privados mantidos na VPS.
+
 A orientação inicial usa uma tabela curta com **Filial**, **Erro / pendência**, **Possível causa** e **O que investigar**. O modelo recebe um formato estruturado exclusivo dessa tela; o chat comum mantém seu formato. O servidor valida até seis linhas e até 140 palavras no conjunto, com limites por célula. O pedido ao modelo é de até 100 palavras e situações iguais devem ser agrupadas, sem enumerar todas as filiais sem execução. Sem evidência da causa, deve usar “A confirmar”. Não há prosa introdutória ou repetição da tabela na interface.
 
 Ao abrir a tela inicial autenticada, o componente `OrientacaoInicial` solicita `POST /assistente/inicio` sequencialmente para cada competência ativa exibida. O servidor revalida usuário, sessão, perfil e origem, e verifica filas de processamento, criação e geolocalização, incluindo itens pendentes ou pausados. Com fila, não chama o modelo; se uma fila começar durante a geração, descarta a análise. A página continua utilizável durante a leitura e em falhas do provedor.
