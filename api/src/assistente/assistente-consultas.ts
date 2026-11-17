@@ -237,7 +237,7 @@ export class AssistenteConsultas {
       return { texto: 'Selecione uma competência para consultar os dados.' };
     if (intent === 'erros' && !filtros.matricula)
       return this.errosPorFilial(filtros, consultadoEm);
-    if (!filtros.filialId && intent !== 'pendencias')
+    if (!filtros.filialId && !['pendencias','financeiro'].includes(intent))
       return { texto: 'Selecione uma filial para esta consulta.' };
     if (intent === 'formulas' && perfil !== 'admin') {
       return {
@@ -273,27 +273,33 @@ export class AssistenteConsultas {
       consultadoEm,
     };
     if (intent === 'financeiro') {
+      if (filtros.matricula)
+        throw new BadRequestException('O serviço financeiro não filtra matrícula. Use a visão SQL financeiro com o parâmetro de matrícula do servidor.');
       const relatorio = await this.dash.getFinanceiroTimeline({
         startCompetencia: periodo.competencia,
         endCompetencia: periodo.competencia,
-        filialIds: [filiais[0].filial_id],
+        filialIds: filiais.map(f=>f.filial_id),
       });
       const { pago, desconto, saldo, funcionarios } = relatorio.totals;
       return {
         ...base,
         fonte: 'Relatório financeiro do Vale',
-        texto: `O relatório financeiro registra ${funcionarios} funcionário(s) no recorte selecionado.`,
+        texto: funcionarios ? `O relatório financeiro registra ${funcionarios} funcionário(s) no recorte selecionado.` : 'Não há valores com registro de envio no relatório financeiro desta competência. Isso não indica ausência de valores calculados.',
         detalhes:
-          'Os indicadores usam os registros de envio do Vale. Os valores representam o relatório local, sem conciliação com o RM.',
+          'Pago, Desconto e Saldo seguem o relatório financeiro existente: valores locais de funcionários com registro de envio e fórmulas do tipo V. Não comprovam pagamento externo nem conciliação com o RM. Uma célula vazia significa ausência de registro elegível, não valor calculado igual a zero.',
         tabela: tabela(
-          ['Pago', 'Desconto', 'Saldo', 'Funcionários'],
-          [[pago, desconto, saldo, funcionarios]],
+          ['Filial','Pago', 'Desconto', 'Saldo', 'Situação'],
+          filiais.map(f=>{
+            const serie=relatorio.series.find(s=>s.filialId===f.filial_id);
+            const pos=serie?.labels.indexOf(periodo.competencia)??-1;
+            return [f.nome,pos>=0?serie!.pago[pos]:null,pos>=0?serie!.desconto[pos]:null,pos>=0?serie!.saldo[pos]:null,pos>=0?'Com registros no relatório financeiro':'Sem registros no relatório financeiro'];
+          }),
         ),
-        grafico: [
+        grafico: funcionarios ? [
           { rotulo: 'Pago', valor: pago, moeda: true },
           { rotulo: 'Desconto', valor: desconto, moeda: true },
           { rotulo: 'Saldo', valor: saldo, moeda: true },
-        ],
+        ] : undefined,
         links: [{ texto: 'Relatórios', url: '/relatorios' }],
       };
     }

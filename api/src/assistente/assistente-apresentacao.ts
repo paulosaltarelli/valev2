@@ -3,8 +3,8 @@ import type {ResultadoAssistente} from './assistente-tipos';
 const secoes=['resumo','indicadores','grafico','composicao','detalhe'] as const;
 export function solicitouRelatorio(pergunta:string):boolean {
  const q=pergunta.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
- if(/(?:sem|nao (?:quero|gere|preciso de))[^.!?]{0,50}(?:relatorio|dashboard|html|arquivo)/.test(q)||/^(?:o que|como|onde|por que) (?:e|eh|funciona|gerar|fica)/.test(q))return false;
- return /\b(?:relatorio|dashboard|html|painel interativo)\b/.test(q);
+ if(/(?:sem|nao (?:quero|gere|preciso de))[^.!?]{0,50}(?:relatorio|dashboard|dash|html|arquivo)/.test(q)||/^(?:o que|como|onde|por que) (?:e|eh|funciona|gerar|fica)/.test(q))return false;
+ return /\b(?:relatorio|dashboard|dash|html|painel interativo)\b/.test(q);
 }
 export function validarComposicao(valor:unknown){
  if(!valor||typeof valor!=='object'||Array.isArray(valor))throw Error('Composição inválida');

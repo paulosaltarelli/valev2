@@ -239,6 +239,55 @@ it('conversa normalmente sem forçar consulta ou relatório', async () => {
   expect(sql.executar).not.toHaveBeenCalled();
   expect(r.relatorio?.solicitado).toBe(false);
 });
+it('troca de pendências para dash financeiro mantendo competência e sem reutilizar a tabela anterior', async () => {
+  queries.consultar.mockImplementation(async (intent: string) => ({
+    texto: 'Consulta real.',
+    competencia: '10/2026',
+    filial: 'Todas as filiais ativas',
+    fonte: 'Banco do Vale',
+    tabela:
+      intent === 'financeiro'
+        ? {
+            colunas: ['Filial', 'Pago'],
+            linhas: [['Filial A', null]],
+            parcial: false,
+          }
+        : {
+            colunas: ['Filial', 'Pendências'],
+            linhas: [['Filial A', 8]],
+            parcial: false,
+          },
+  }));
+  (consultarModelo as jest.Mock)
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'pendencias' }),
+    )
+    .mockResolvedValueOnce(
+      passo('resposta', 'nenhuma', 'A filial A tem pendências.', {}, ['T1']),
+    )
+    .mockResolvedValueOnce(
+      passo('ferramenta', 'consultar_operacao', '', { consulta: 'financeiro' }),
+    )
+    .mockResolvedValueOnce(
+      passo(
+        'resposta',
+        'nenhuma',
+        'Não há registros financeiros com envio nesta competência.',
+        {},
+        ['T1'],
+      ),
+    );
+  await perguntar('quais filiais têm pendências?');
+  const r = await perguntar('quero um dash financeiro dos valores pagos');
+  expect(r.competencia).toBe('10/2026');
+  expect(r.tabela?.colunas).toEqual(['Filial', 'Pago']);
+  expect(r.relatorio?.solicitado).toBe(true);
+  expect(queries.consultar).toHaveBeenLastCalledWith(
+    'financeiro',
+    expect.objectContaining({ periodoId: 1, todasFiliais: true }),
+    'operator',
+  );
+});
 it('ancora a orientação inicial em pendências e erros e corrige confusão entre execução aberta e fila', async () => {
   queries.consultar.mockImplementation(async (intent: string) => ({
     texto:

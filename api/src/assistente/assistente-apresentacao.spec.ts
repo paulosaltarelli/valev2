@@ -1,6 +1,11 @@
 import {planejarApresentacao,solicitouRelatorio,validarComposicao} from './assistente-apresentacao';
 import {consultarModelo} from './assistente-intencao';
 jest.mock('./assistente-intencao',()=>({consultarModelo:jest.fn()}));
+it('reconhece dash sem gerar arquivos quando o pedido é negado',()=>{
+ expect(solicitouRelatorio('quero um dash financeiro dos valores pagos')).toBe(true);
+ expect(solicitouRelatorio('não quero dash financeiro')).toBe(false);
+ expect(solicitouRelatorio('o que é um dash financeiro?')).toBe(false);
+});
 it.each(['tem funcionário com erro?','qual filial teve maior desconto?','não quero relatório','o que é relatório?'])('não gera arquivo por padrão: %s',p=>expect(solicitouRelatorio(p)).toBe(false));
 it.each(['gere um HTML dos erros','dashboard financeiro por filial','quero um relatório'])('respeita o pedido: %s',p=>expect(solicitouRelatorio(p)).toBe(true));
 it('valida componentes e preserva acesso ao detalhe',()=>{expect(validarComposicao({layout:'editorial',secoes:['resumo']}).secoes).toEqual(['resumo','detalhe']);expect(()=>validarComposicao({layout:'editorial',secoes:['script']})).toThrow();expect(()=>validarComposicao({layout:'editorial',secoes:['resumo','resumo']})).toThrow();expect(()=>validarComposicao({layout:'editorial',secoes:['resumo'],html:'<script>'})).toThrow();});
