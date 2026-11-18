@@ -1,7 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { variavel } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
+
+function validarChapasPorChamada(valor: unknown) {
+  if (valor == null) return;
+  if (typeof valor !== 'number' || !Number.isInteger(valor) || valor < 1 || valor > 2147483647) {
+    throw new BadRequestException('Chapas por chamada deve ser um número inteiro positivo ou ficar em branco.');
+  }
+}
 
 @Injectable()
 export class VariavelService {
@@ -21,6 +28,7 @@ export class VariavelService {
     filialId: number,
     dto: Prisma.variavelUncheckedCreateInput,
   ): Promise<variavel> {
+    validarChapasPorChamada(dto.chapas_por_chamada);
     const createdVariavel = await this.prisma.variavel.create({
       data: {
         ...dto,
@@ -35,6 +43,7 @@ export class VariavelService {
     variavelId: number,
     dto: Prisma.variavelUncheckedUpdateInput,
   ): Promise<variavel> {
+    validarChapasPorChamada(dto.chapas_por_chamada);
     try {
       if (dto.variavel_id) delete dto.variavel_id;
       const updatedVariavel = await this.prisma.variavel.update({

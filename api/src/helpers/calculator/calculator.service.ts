@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as math from 'mathjs';
 import { analisarExpressao } from './formula-expression';
+import { fixedPaymentZeroDaysError } from './fixed-payment-error';
 
 @Injectable()
 export class CalculatorService {
@@ -12,7 +13,10 @@ export class CalculatorService {
       const { normalizada } = analisarExpressao(expressaoRaw);
       const resultado: unknown = math.evaluate(normalizada, variaveis);
       if (typeof resultado !== 'number' || !Number.isFinite(resultado)) {
-        throw new Error('A fórmula deve retornar um número finito');
+        throw new Error(
+          fixedPaymentZeroDaysError(expressaoRaw, variaveis) ??
+            'A fórmula deve retornar um número finito',
+        );
       }
       return {
         status: true,

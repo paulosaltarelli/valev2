@@ -46,6 +46,7 @@ export class DashApi {
   public static async getSummary(
     periodoId?: number,
     filialId?: number,
+    includeDetails = true,
   ): Promise<DashSummary> {
     const params: Record<string, string> = {};
     if (periodoId && Number.isFinite(periodoId) && periodoId > 0) {
@@ -55,6 +56,7 @@ export class DashApi {
       params.filialId = String(filialId);
     }
 
+    if (!includeDetails) params.includeDetails = "0";
     const resp = await http.get("/dash/summary", { params });
     return resp.data as DashSummary;
   }

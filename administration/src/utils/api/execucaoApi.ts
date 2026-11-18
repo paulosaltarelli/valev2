@@ -217,7 +217,9 @@ export class ExecucaoApi {
     Array<{
       queueId: number;
       filialId: number;
+      filialNome?: string | null;
       periodoId: number;
+      periodoCompetencia?: string | null;
       usuarioExecucao: number;
       status: string;
       tentativas: number;

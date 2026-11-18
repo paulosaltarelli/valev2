@@ -1,6 +1,18 @@
 export const defaultConfig = {
   language: {
-    url: "https://cdn.datatables.net/plug-ins/2.3.6/i18n/pt-BR.json",
+    aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
+    search: "Buscar",
+    searchPlaceholder: "Digite para filtrar…",
+    lengthMenu: "_MENU_ por página",
+    info: "_START_ a _END_ de _TOTAL_ registros",
+    infoEmpty: "Nenhum registro",
+    infoFiltered: "(de _MAX_ registros)",
+    emptyTable: "Nenhum registro para exibir",
+    zeroRecords: "Nenhum resultado para a busca",
+    loadingRecords: "Carregando…",
+    processing: "Carregando…",
+    paginate: { first: "Primeira", previous: "Anterior", next: "Próxima", last: "Última" },
+    select: { aria: { rowCheckbox: "Selecionar linha", headerCheckbox: "Selecionar linhas desta página" }, rows: { _: "%d selecionados", 1: "1 selecionado", 0: "" } },
   },
   // Ajuda em React 18 (StrictMode/HMR) a evitar "Cannot reinitialise DataTable"
   retrieve: true,
@@ -13,4 +25,25 @@ export const defaultConfig = {
   fixedHeader: true,
   responsive: true,
   // order: [[0, 'asc']], // ordenação padrão
+};
+
+export const processamentoTableConfig = {
+  ...defaultConfig,
+  language: {
+    aria: { orderable: "Ativar para ordenar", orderableReverse: "Ativar para inverter a ordenação", orderableRemove: "Ativar para remover a ordenação", paginate: { first: "Primeira página", previous: "Página anterior", next: "Próxima página", last: "Última página" } },
+    search: "Buscar",
+    searchPlaceholder: "Digite para filtrar…",
+    lengthMenu: "_MENU_ por página",
+    info: "_START_ a _END_ de _TOTAL_ registros",
+    infoEmpty: "Nenhum registro",
+    infoFiltered: "(de _MAX_ registros)",
+    emptyTable: "Nenhum registro para exibir",
+    zeroRecords: "Nenhum resultado para a busca",
+    loadingRecords: "Carregando…",
+    processing: "Carregando…",
+    paginate: { first: "Primeira", previous: "Anterior", next: "Próxima", last: "Última" },
+    select: {
+      rows: { _: "%d selecionados", 1: "1 selecionado", 0: "" },
+    },
+  },
 };

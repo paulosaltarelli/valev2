@@ -1,3 +1,5 @@
+import { ReportFilters } from "../../shared/components/ReportFilters";
+import { Link } from "react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Spinner, Table } from "react-bootstrap";
 import DataTable from "datatables.net-react";
@@ -217,6 +219,7 @@ export function FinanceiroTimelineReport() {
         trigger: "axis",
         valueFormatter: (v: number) => brl.format(Number(v ?? 0)),
       },
+      color: ["#164f9d", "#64748b", "#7c3aed"],
       legend: { top: 0 },
       grid: { left: 12, right: 12, top: 32, bottom: 10, containLabel: true },
       xAxis: {
@@ -272,6 +275,7 @@ export function FinanceiroTimelineReport() {
         axisPointer: { type: "shadow" },
         valueFormatter: (v: number) => brl.format(Number(v ?? 0)),
       },
+      color: ["#164f9d", "#64748b", "#7c3aed"],
       legend: { top: 0 },
       grid: { left: 10, right: 10, top: 32, bottom: 10, containLabel: true },
       xAxis: { type: "value" },
@@ -297,80 +301,68 @@ export function FinanceiroTimelineReport() {
     };
   }, [brl, data?.extras?.topEventos]);
 
-  const scopeTitle = selectedFilialId
-    ? `Filial: ${scopeSeries?.filialNome ?? selectedFilialId}`
-    : "Todas as filiais";
-
   return (
-    <div className="card">
-      <div className="card-body">
-        <div className="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
-          <div>
-            <div className="text-secondary small">Relatório</div>
-            <h2 className="h5 m-0">Timeline financeira</h2>
-            <div className="text-secondary small mt-1">
-              {scopeTitle} •{" "}
-              {data?.range?.granularity
-                ? `Competências (${data.range.granularity})`
-                : "—"}
-            </div>
-          </div>
-
-          <div className="d-flex flex-wrap align-items-center gap-2">
-            <div>
-              <div className="text-secondary small">Início</div>
-              <DatePicker
-                selected={startDate}
-                onChange={(d: Date | null) => {
-                  if (!d) return;
-                  const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
-                  setStartDate(normalized);
-                  if (endDate && normalized.getTime() > endDate.getTime())
-                    setEndDate(normalized);
-                }}
-                dateFormat="MM/yyyy"
-                showMonthYearPicker
-                className="form-control"
-                calendarClassName="ve-datepicker"
-                popperClassName="ve-datepicker-popper"
-                showPopperArrow={false}
-                locale="pt-BR"
-              />
-            </div>
-            <div>
-              <div className="text-secondary small">Fim</div>
-              <DatePicker
-                selected={endDate}
-                onChange={(d: Date | null) => {
-                  if (!d) return;
-                  const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
-                  setEndDate(normalized);
-                  if (startDate && normalized.getTime() < startDate.getTime())
-                    setStartDate(normalized);
-                }}
-                dateFormat="MM/yyyy"
-                showMonthYearPicker
-                className="form-control"
-                calendarClassName="ve-datepicker"
-                popperClassName="ve-datepicker-popper"
-                showPopperArrow={false}
-                locale="pt-BR"
-              />
-            </div>
-            <div style={{ minWidth: 260 }}>
-              <div className="text-secondary small">Filial</div>
-              <Select
-                value={selectedFilialOption}
-                options={filialOptions}
-                onChange={(opt: SingleValue<FilialOption>) =>
-                  setSelectedFilialId(opt?.value ?? null)
-                }
-                isClearable={false}
-              />
-            </div>
-          </div>
+    <>
+      <ReportFilters summary={`${startDate?.toLocaleDateString("pt-BR", {month:"2-digit",year:"numeric"}) ?? "—"} a ${endDate?.toLocaleDateString("pt-BR", {month:"2-digit",year:"numeric"}) ?? "—"} · ${selectedFilialOption?.label ?? "Todas as filiais"}`}>
+      <section className="op-context ve-filter-bar ve-report-filters" aria-label="Filtros do relatório">
+        <div>
+          <label htmlFor="relatorio-inicio">Competência inicial</label>
+          <DatePicker
+            id="relatorio-inicio"
+            selected={startDate}
+            onChange={(d: Date | null) => {
+              if (!d) return;
+              const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
+              setStartDate(normalized);
+              if (endDate && normalized.getTime() > endDate.getTime())
+                setEndDate(normalized);
+            }}
+            dateFormat="MM/yyyy"
+            showMonthYearPicker
+            className="form-control"
+            calendarClassName="ve-datepicker"
+            popperClassName="ve-datepicker-popper"
+            showPopperArrow={false}
+            locale="pt-BR"
+          />
         </div>
+        <div>
+          <label htmlFor="relatorio-fim">Competência final</label>
+          <DatePicker
+            id="relatorio-fim"
+            selected={endDate}
+            onChange={(d: Date | null) => {
+              if (!d) return;
+              const normalized = new Date(d.getFullYear(), d.getMonth(), 1);
+              setEndDate(normalized);
+              if (startDate && normalized.getTime() < startDate.getTime())
+                setStartDate(normalized);
+            }}
+            dateFormat="MM/yyyy"
+            showMonthYearPicker
+            className="form-control"
+            calendarClassName="ve-datepicker"
+            popperClassName="ve-datepicker-popper"
+            showPopperArrow={false}
+            locale="pt-BR"
+          />
+        </div>
+        <div>
+          <label htmlFor="relatorio-filial">Filial</label>
+          <Select
+            inputId="relatorio-filial"
+            value={selectedFilialOption}
+            options={filialOptions}
+            onChange={(opt: SingleValue<FilialOption>) =>
+              setSelectedFilialId(opt?.value ?? null)
+            }
+            isClearable={false}
+          />
+        </div>
+      </section>
+      </ReportFilters>
 
+      <div className="ve-report-content">
         {error && (
           <Alert variant="danger" className="mb-3">
             <div className="d-flex align-items-center gap-2">
@@ -397,68 +389,24 @@ export function FinanceiroTimelineReport() {
                 <span>Atualizando dados…</span>
               </div>
             )}
-            <div className="row g-3 mb-3">
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Pago ao funcionário
-                  </div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.pago)}
-                  </div>
-                  <Badge bg="primary" className="fw-semibold mt-2">
-                    Pago
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Desconto (economia)
-                  </div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.desconto)}
-                  </div>
-                  <Badge bg="success" className="fw-semibold mt-2">
-                    Economia
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">Saldo líquido</div>
-                  <div className="h4 m-0 mt-1">
-                    {brl.format(data.totals.saldo)}
-                  </div>
-                  <Badge bg="secondary" className="fw-semibold mt-2">
-                    Saldo
-                  </Badge>
-                </div>
-              </div>
-              <div className="col-12 col-md-3">
-                <div className="border rounded p-3 h-100">
-                  <div className="text-secondary small">
-                    Funcionários enviados
-                  </div>
-                  <div className="h4 m-0 mt-1">{data.totals.funcionarios}</div>
-                  <div className="text-secondary small mt-2">
-                    Base: status{" "}
-                    <span className="fw-semibold">Enviado para RM</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <dl className="ve-metrics" aria-label="Totais do relatório">
+              <div><dt>Pago aos funcionários</dt><dd>{brl.format(data.totals.pago)}</dd></div>
+              <div><dt>Descontos</dt><dd>{brl.format(data.totals.desconto)}</dd></div>
+              <div><dt>Saldo líquido</dt><dd>{brl.format(data.totals.saldo)}</dd></div>
+              <div><dt>Funcionários enviados ao RM</dt><dd>{data.totals.funcionarios}</dd></div>
+            </dl>
 
+            {data.totals.funcionarios === 0 && <p className="op-notice" role="status">Sem envios ao RM neste período. <Link to="/extrato-processamento">Consultar valores calculados</Link></p>}
+            <details className="ve-finance-details" open={data.totals.funcionarios > 0}><summary>Detalhamento por competência</summary>
             <div className="row g-3">
-              <div className="col-12 col-xl-8">
+              {data.totals.funcionarios > 0 && <><div className="col-12 col-xl-8">
                 <div className="card h-100">
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                       <div>
-                        <h3 className="h6 m-0">Evolução no tempo</h3>
+                        <h2 className="h6 m-0">Evolução no tempo</h2>
                         <div className="text-secondary small">
-                          Pago, desconto e saldo ao longo do período
-                          selecionado.
+                          Valores enviados ao RM
                         </div>
                       </div>
                       <span className="text-secondary small">
@@ -481,9 +429,9 @@ export function FinanceiroTimelineReport() {
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                       <div>
-                        <h3 className="h6 m-0">Eventos com maior impacto</h3>
+                        <h2 className="h6 m-0">Eventos com maior impacto</h2>
                         <div className="text-secondary small">
-                          Top 12 por volume (no período).
+                          12 maiores eventos
                         </div>
                       </div>
                     </div>
@@ -498,26 +446,28 @@ export function FinanceiroTimelineReport() {
                 </div>
               </div>
 
+              </>}
               <div className="col-12">
                 <div className="card">
                   <div className="card-body">
                     <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
                       <div>
-                        <h3 className="h6 m-0">
-                          Detalhamento — Evolução no tempo
-                        </h3>
+                        <h2 className="h6 m-0">
+                          Valores por competência
+                        </h2>
                       </div>
                       <span className="text-secondary small">
                         {data.range.start} → {data.range.end}
                       </span>
                     </div>
 
-                    <div className="mt-3">
+                    <div className="mt-3" style={{ overflowX: "auto", maxWidth: "100%" }}>
                       <DataTable
                         className="table striped-table mb-0 w-100"
                         ref={timelineTableRef}
                         options={{
                           ...defaultConfig,
+                          responsive: false,
                           // Evita duplicar linhas na 1ª carga (React 18 StrictMode/dev pode montar 2x)
                           // e o `retrieve: true` reaproveitar instância antiga com dados já inseridos.
                           retrieve: false,
@@ -597,7 +547,8 @@ export function FinanceiroTimelineReport() {
               <div className="col-12">
                 <div className="card">
                   <div className="card-body">
-                    <h3 className="h6 m-0 mb-2">Detalhamento — Top eventos</h3>
+                    <h2 className="h6 m-0 mb-2">Eventos</h2>
+                    {!data.extras.topEventos?.length && <p className="op-muted mb-0">Nenhum evento enviado neste período.</p>}
                     <Table
                       responsive
                       striped
@@ -628,7 +579,7 @@ export function FinanceiroTimelineReport() {
                               </Badge>
                             </td>
                             <td className="text-end text-nowrap">
-                              <Badge bg="success" className="fw-semibold">
+                              <Badge bg="secondary" className="fw-semibold">
                                 {brl.format(r.desconto)}
                               </Badge>
                             </td>
@@ -643,9 +594,10 @@ export function FinanceiroTimelineReport() {
                 </div>
               </div>
             </div>
+            </details>
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

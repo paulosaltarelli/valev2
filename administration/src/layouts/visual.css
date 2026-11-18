@@ -1,0 +1,327 @@
+.ve-page {
+  max-width: 1600px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.ve-page h1,
+.ve-auth h1 {
+  font-size: clamp(24px, 2.5vw, 28px) !important;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+.ve-heading h1 {
+  margin: 4px 0 10px;
+  color: var(--op-text);
+}
+
+.ve-heading p:last-child {
+  margin-bottom: 0;
+}
+
+.ve-page .card {
+  color: var(--op-text);
+  background: var(--op-surface);
+  border: 1px solid var(--op-line);
+  border-radius: var(--ve-radius);
+  box-shadow: none;
+}
+
+.ve-page .card-body {
+  min-width: 0;
+  padding: clamp(14px, 2vw, 22px);
+}
+
+.ve-page .table {
+  --bs-table-color: var(--op-text);
+  --bs-table-bg: var(--op-surface);
+  --bs-table-border-color: var(--op-line);
+  font-size: 14px !important;
+}
+
+.ve-page .table > :is(thead, tbody) > tr > * {
+  padding: var(--ve-table-cell-padding);
+  vertical-align: middle;
+}
+
+.ve-page .table > thead > tr > th {
+  background: var(--op-soft);
+  color: var(--op-muted);
+  font-size: var(--ve-table-heading-size);
+  font-weight: 600;
+}
+
+.ve-filter-bar {
+  margin-bottom: 20px;
+}
+
+.ve-filter-bar > div {
+  flex: 1 1 190px;
+  min-width: 0;
+  max-width: 350px;
+}
+
+.ve-filter-bar label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.ve-page .table-responsive {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Shared with Processamentos: restrained surfaces, visible focus and compact controls. */
+.ve-analysis-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.ve-analysis-nav a {
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--ve-control-radius);
+  color: var(--op-muted);
+  text-decoration: none;
+}
+.ve-analysis-nav a[aria-current="page"] {
+  color: var(--op-blue);
+  background: var(--op-surface);
+  border-color: var(--op-line);
+  font-weight: 600;
+}
+.ve-analysis-nav a:hover {
+  background: var(--op-blue-soft);
+  color: var(--op-blue);
+}
+.ve-report-table { font-variant-numeric: tabular-nums; }
+.ve-report-table th:first-child { min-width: 220px; }
+.ve-report-table td { overflow-wrap: anywhere; }
+.ve-report-table thead th { overflow-wrap: normal; min-width: 86px; }
+.ve-report-table :is(th, td) { padding: 12px 14px; }
+.ve-report-table .ve-report-number { text-align: right; white-space: nowrap; }
+.ve-report-table details { min-width: 130px; max-width: 270px; }
+.ve-report-table small { display: block; color: var(--op-muted); }
+.ve-page .ve-icon-action {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px;
+  margin: 2px;
+}
+.ve-page .table tbody tr:focus-within > * {
+  background-color: var(--op-blue-soft);
+}
+.ve-page .dt-container :is(.dt-input, .form-control, .form-select) {
+  min-height: var(--ve-control-height);
+  border: 1px solid var(--op-line);
+  border-radius: var(--ve-control-radius);
+  background-color: var(--op-surface);
+  color: var(--op-text);
+}
+.ve-page .dt-container :is(.dt-info, .dt-length, .dt-search) {
+  font-size: 13px;
+  color: var(--op-muted);
+}
+.ve-page .dt-container .dt-layout-row:not(.dt-layout-table) {
+  gap: 12px;
+  align-items: center;
+}
+@media (max-width: 640px) {
+  .ve-filter-bar > div { max-width: none; flex-basis: 100%; }
+  .ve-analysis-nav a { flex: 1 1 160px; text-align: center; }
+  .ve-page .dt-container :is(.dt-search, .dt-length) { text-align: left; }
+}
+
+.ve-page .op-back {
+  color: var(--op-blue);
+}
+
+.ve-table-list {
+  min-width: 0;
+}
+
+.ve-table-list .dt-layout-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ve-table-list .dt-layout-row {
+  flex-wrap: wrap;
+}
+
+.ve-km-filters > .ve-km-branch {
+  flex: 1 1 260px;
+}
+
+.ve-operation-head,
+.ve-operation-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+.ve-operation-head h2 {
+  margin: 0 0 4px;
+}
+.ve-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(172px, 100%), 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.ve-metrics > div {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--op-line);
+  border-radius: 10px;
+  background: var(--op-surface);
+}
+
+.ve-metrics dt {
+  color: var(--op-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ve-metrics dd {
+  margin: 3px 0 0;
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ve-operation-overview .ve-metrics {
+  margin-block: 16px;
+}
+
+.ve-operation-overview .ve-metrics > div {
+  border-color: transparent;
+  background: var(--op-soft);
+}
+
+.ve-overview-actions button {
+  padding: 12px;
+  text-align: left;
+}
+
+.ve-overview-actions button strong {
+  display: block;
+  font-size: 22px;
+}
+
+.ve-overview-actions button[aria-pressed="true"] {
+  background: var(--op-blue-soft);
+  box-shadow: inset 0 -3px var(--op-blue);
+}
+
+.ve-metric-attention dd {
+  color: var(--op-danger);
+}
+
+.ve-report-filters .react-datepicker-wrapper {
+  width: 100%;
+}
+
+.ve-section-title {
+  margin: 24px 0 12px;
+  font-size: 20px;
+  color: var(--op-text);
+}
+
+.ve-operation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ve-operation-list li {
+  border-top: 1px solid var(--op-line);
+  padding: 10px 0;
+}
+
+.ve-operation-list li:last-child {
+  padding-bottom: 0;
+}
+.ve-operation-list a {
+  color: var(--op-blue);
+  font-weight: 600;
+}
+.ve-operation-list small {
+  display: block;
+  color: var(--op-muted);
+}
+
+/* Shared density and hierarchy for operation, analysis and administration. */
+.ve-page .table > tbody > tr > * { padding: 12px 14px; }
+.ve-table-list .table > :is(thead, tbody) > tr > :first-child {
+  text-align: left !important;
+}
+.ve-table-list .table > tbody > tr > :first-child { font-weight: 500; }
+.ve-km-table .table > :is(thead, tbody) > tr > :nth-child(2) { text-align: left !important; }
+.ve-page .striped-table tbody tr:nth-child(odd) > td {
+  background-color: var(--op-surface);
+}
+.ve-page .table tbody tr:hover > td { background-color: var(--op-soft); }
+.ve-page .ve-icon-action { border-color: transparent; background: transparent; }
+.ve-page .ve-icon-action:hover { border-color: currentColor; background: var(--op-soft); }
+.ve-page :is(button, a, summary):focus-visible {
+  outline: 2px solid var(--op-blue);
+  outline-offset: 3px;
+}
+.ve-row-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.ve-row-links button {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; padding: 5px 0; background: transparent;
+  color: var(--op-blue); font-size: 13px; font-weight: 500;
+}
+.ve-row-links button:hover { text-decoration: underline; }
+.ve-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--op-muted); font-size: 13px; white-space: nowrap;
+}
+.ve-state::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ve-state-active { color: var(--op-success); }
+.ve-filter-bar { padding: 16px; gap: 16px; }
+.ve-page .pagination { flex-wrap: wrap; gap: 3px; }
+.ve-page .dt-container .pagination .page-item { width: auto; height: auto; }
+.ve-page .pagination .page-link { min-width: 36px; width: auto; }
+.ve-table-list .table thead th { white-space: normal; }
+.ve-operation-overview .op-summary { gap: 0; }
+.ve-operation-overview .op-summary > * {
+  border: 0; border-radius: 0; padding: 12px 16px;
+  background: transparent;
+}
+.ve-operation-overview .op-summary > * + * { border-left: 1px solid var(--op-line); }
+.ve-overview-actions {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  border-bottom: 1px solid var(--op-line); padding-bottom: 12px;
+}
+.ve-overview-actions button {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-color: transparent; color: var(--op-muted);
+}
+.ve-overview-actions button strong { font-size: 15px; }
+.ve-overview-actions button[aria-pressed="true"] {
+  color: var(--op-blue); box-shadow: none; border-color: var(--op-line);
+}
+.ve-summary-row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--op-line);
+}
+.ve-summary-row:last-child { border-bottom: 0; }
+.ve-indicator-danger { border-inline-start: 3px solid var(--op-danger) !important; }
+.ve-indicator-warning { border-inline-start: 3px solid var(--op-warning) !important; }
+.ve-indicator-info { border-inline-start: 3px solid var(--op-blue) !important; }
+.ve-indicator-details summary { color: var(--op-blue); font-weight: 600; cursor: pointer; padding: 6px 0; }
+@media (max-width: 640px) {
+  .ve-operation-overview .op-summary { grid-template-columns: 1fr; }
+  .ve-operation-overview .op-summary > * { padding: 12px 0; }
+  .ve-operation-overview .op-summary > * + * { border-left: 0; border-top: 1px solid var(--op-line); }
+  .ve-overview-actions button { flex: 1 1 100%; justify-content: space-between; }
+  .ve-summary-row > div { flex-wrap: wrap; }
+}

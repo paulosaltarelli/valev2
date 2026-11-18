@@ -1,8 +1,11 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
+import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
-import { Modal, Form, Badge } from "react-bootstrap";
+import { Form, Badge } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../utils/Button";
-import { useNavigate, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type { Filial } from "../../models/FilialModel";
 import { filialApi } from "../../utils/api/filialApi";
 import type { Formula } from "../../models/FormulaModel";
@@ -20,7 +23,6 @@ import { VariavelApi } from "../../utils/api/variavelApi";
 import { FunctionsHelper } from "../../utils/functionsHelper";
 import { useBlockUi } from "../../app/providers/blockUiContext";
 import { Tooltip } from "../Tooltip";
-import { Limited } from "../utils/Limited";
 import { Popover } from "../Popover";
 
 // o react-hooks/rules-of-hooks confunde esse método com um Hook por ser `.use`
@@ -29,7 +31,6 @@ DataTable.use(DataTablesCore);
 
 export function FilialFormulasPage() {
   const { filialId } = useParams<{ filialId: string }>();
-  const navigate = useNavigate();
   const [filial, setFilial] = useState<Filial | null>(null);
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
   const [formulas, setFormulas] = useState<Formula[]>([]);
@@ -196,31 +197,32 @@ export function FilialFormulasPage() {
   };
 
   return (
-    <div className="card card-body">
-      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-        <div className="d-flex align-items-center gap-2">
+    <div>
+      <Link to="/filial" className="op-back">← Filiais e regras</Link>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Fórmulas"
+        context={filial?.nome}
+        actions={(
           <Button
-            variant="outline-secondary"
-            className="m-0 px-1 py-1 border-0"
-            onClick={() => navigate(`/filial`)}
-          >
-            <Icon icon="solar:alt-arrow-left-linear" width={20} height={20} />
-          </Button>
-          <h1 className="h4 m-0 p-0">Formulas de: {filial?.nome}</h1>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="primary"
-            onClick={() => {
-              setFormulaToInsert(undefined);
-              setShowInsertFormulaModal(true);
-            }}
-          >
-            <Icon icon="tabler:plus" width={20} height={20} />
-            <span className="ms-1">Nova formula</span>
-          </Button>
-        </div>
-      </div>
+          variant="primary"
+          onClick={() => {
+            setFormulaToInsert(undefined);
+            setShowInsertFormulaModal(true);
+          }}
+        >
+          <Icon icon="tabler:plus" width={20} height={20} />
+          <span className="ms-1">Nova fórmula</span>
+        </Button>
+        )}
+      />
+      {!!formulas.length && <VisualSummary items={[
+{label:"Fórmulas",value:formulas.length,icon:"tabler:list"},
+{label:"Ativas",value:formulas.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"info"},
+{label:"Inativas",value:formulas.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
+      <div className="card card-body ve-table-list ve-formula-list">
       <DataTable
         className="table striped-table mb-0"
         options={{
@@ -229,6 +231,8 @@ export function FilialFormulasPage() {
             topStart: null,
           },
           columnDefs: [
+            { targets: 0, responsivePriority: 1 },
+            { targets: -1, responsivePriority: 2 },
             {
               targets: ["_all"],
               className: "text-center",
@@ -241,6 +245,7 @@ export function FilialFormulasPage() {
             },
           ],
           ...defaultConfig,
+                responsive: false,
         }}
         data={formulas}
         columns={[
@@ -260,9 +265,9 @@ export function FilialFormulasPage() {
             <div>
               <Button
                 variant="outline-primary"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleEditFormula(row)}
-                tooltip="Editar formula"
+                tooltip="Editar fórmula"
               >
                 <Icon
                   icon="solar:pen-new-square-bold-duotone"
@@ -272,9 +277,9 @@ export function FilialFormulasPage() {
               </Button>
               <Button
                 variant="outline-danger"
-                className="m-0 px-1 py-1 border-0"
+                className="ve-icon-action"
                 onClick={() => handleDeleteFormula(row.formula_id)}
-                tooltip="Excluir formula"
+                tooltip="Excluir fórmula"
               >
                 <Icon
                   icon="solar:trash-bin-trash-bold-duotone"
@@ -291,52 +296,32 @@ export function FilialFormulasPage() {
             <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
           ),
           ativa: (data: boolean) => (
-            <span>
-              {data ? (
-                <Icon
-                  className="text-success"
-                  icon="solar:check-circle-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-              ) : (
-                <Icon
-                  className="text-danger"
-                  icon="solar:close-circle-bold-duotone"
-                  width={20}
-                  height={20}
-                />
-              )}
-            </span>
+            <span className={`ve-state ${data ? "ve-state-active" : ""}`}>{data ? "Ativa" : "Inativa"}</span>
           ),
-          expressao: (data: string) => (
+          expressao: (data: string, type: string, _row: Formula) => type === "display" ? (
             <>
-              <Limited limit={10} popover={false} tooltip={false} trigger="click" placement="right">{data}</Limited>
-              {data.length > 10 && (
+              <span>{data.length > 24 ? `${data.slice(0, 24)}…` : data}</span>
+              {data.length > 0 && (
                 <Popover popover={data} placement="right" trigger="click">
-                  <Button variant="link" className="m-0 px-1 py-1 border-0">
+                  <Button variant="link" className="ve-icon-action" aria-label="Ver expressão completa" title="Ver expressão completa">
                     <Icon icon="solar:eye-bold-duotone" width={16} height={16} />
                   </Button>
                 </Popover>
               )}
             </>
-          ),
+          ) : data,
           tipo: (data: string) => (
             <Badge bg={data == 'V' ? 'primary' : 'info'}>{data == 'V' ? 'Valor' : 'Dias'}</Badge>
           ),
           codEvento: (data: string) => (
             <span>{data}</span>
           ),
-          nome: (data: string) => (
-            <Limited
-              limit={10}
-              tooltip={true}
-            >
-              {data}
-            </Limited>
-          ),
+          nome: (data: string, type: string, row: Formula) => type === "display" ? <div className="ve-rule-name"><strong>{data}</strong>
+            <small className="ve-rule-mobile-meta">{row.ativa ? "Ativa" : "Inativa"} · {row.tipo === "V" ? "Valor" : "Dias"} · Evento {row.codEvento || "—"}</small>
+            <details className="ve-rule-details"><summary>Expressão e vigência</summary><div><code>{row.expressao}</code><small>Versão {row.versao} · {row.polaridade === "+" ? "Acréscimo" : "Desconto"}</small><small>{FunctionsHelper.formatDateOnlyPtBr(row.data_inicio_vigencia)} → {row.data_fim_vigencia ? FunctionsHelper.formatDateOnlyPtBr(row.data_fim_vigencia) : "Sem término"}</small></div></details>
+          </div> : data,
           polaridade: (data: string) => (
-            <Badge bg={data == '+' ? 'success' : 'danger'}>{data}</Badge>
+            <Badge bg={data == '+' ? 'primary' : 'secondary'}>{data}</Badge>
           ),
         }}
       >
@@ -346,8 +331,8 @@ export function FilialFormulasPage() {
             <th>Expressão</th>
             <th>Versão</th>
             <th>Ativa</th>
-            <th>Data de Início de Vigência</th>
-            <th>Data de Fim de Vigência</th>
+            <th>Início da vigência</th>
+            <th>Fim da vigência</th>
             <th>Polaridade</th>
             <th>Código do Evento</th>
             <th>Tipo</th>
@@ -355,18 +340,20 @@ export function FilialFormulasPage() {
           </tr>
         </thead>
       </DataTable>
+      </div>
 
-      <Modal
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showEditFormulaModal}
         onHide={() => setShowEditFormulaModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Formula</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Editar fórmula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form.Label className="mb-2">Variaveis</Form.Label>
+          <details className="ve-indicator-details mb-3">
+          <summary>Inserir variável na expressão</summary>
 
-          <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
+          <div className="d-flex align-items-center flex-wrap gap-2 mb-3 ve-variable-picker">
             {variaveis.map((variavel) => (
               <Button
                 key={variavel.variavel_id}
@@ -377,12 +364,11 @@ export function FilialFormulasPage() {
                   handleAddVariavelCodigoToEditFormula(variavel.codigo)
                 }
               >
-                {variavel.nome.length > 10
-                  ? variavel.nome.substring(0, 15) + "..."
-                  : variavel.nome}
+                {variavel.nome}
               </Button>
             ))}
           </div>
+          </details>
           <Form>
             <div className="row">
               <div className="col-12 mb-2">
@@ -437,8 +423,7 @@ export function FilialFormulasPage() {
                 </Form.Group> */}
                 <Form.Group controlId="expressao">
                   <Form.Label>Expressão</Form.Label>
-                  <Form.Control
-                    type="text"
+                  <Form.Control as="textarea" rows={3}
                     value={formulaToEdit?.expressao}
                     onChange={(e) =>
                       setFormulaToEdit({
@@ -449,7 +434,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              {/* <div className="col-6 mb-2">
+              {/* <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -464,9 +449,9 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div> */}
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Início de Vigência</Form.Label>
+                  <Form.Label>Início da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -486,9 +471,9 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
-                <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Fim de Vigência</Form.Label>
+              <div className="col-12 col-sm-6 mb-2">
+                <Form.Group controlId="data_fim_vigencia">
+                  <Form.Label>Fim da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -508,7 +493,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codEvento">
                   <Form.Label>Evento RM <Tooltip title="codEvento do metadados do RM"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Control
@@ -523,7 +508,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="tipo">
                   <Form.Label>Tipo de dado <Tooltip title="Dias ou Valor"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Select
@@ -590,21 +575,22 @@ export function FilialFormulasPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showInsertFormulaModal}
         onHide={() => {
           setShowInsertFormulaModal(false);
           setFormulaToInsert(undefined);
         }}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Criar Formula</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Nova fórmula</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {/* Itera pelas variaveis e cria um botãozinho badge para cada uma com seunome e valor. */}
-          <Form.Label className="mb-2">Variaveis</Form.Label>
+          <details className="ve-indicator-details mb-3">
+          <summary>Inserir variável na expressão</summary>
 
-          <div className="d-flex align-items-center flex-wrap gap-2 mb-5">
+          <div className="d-flex align-items-center flex-wrap gap-2 mb-3 ve-variable-picker">
             {variaveis.map((variavel) => (
               <Button
                 key={variavel.variavel_id}
@@ -613,12 +599,11 @@ export function FilialFormulasPage() {
                 tooltip={variavel.codigo}
                 onClick={() => handleAddVariavelCodigo(variavel.codigo)}
               >
-                {variavel.nome.length > 10
-                  ? variavel.nome.substring(0, 15) + "..."
-                  : variavel.nome}
+                {variavel.nome}
               </Button>
             ))}
           </div>
+          </details>
           <Form id="createFormulaForm" onSubmit={handleInsertFormula}>
             <div className="row">
               <div className="col-12 mb-2">
@@ -643,8 +628,7 @@ export function FilialFormulasPage() {
               <div className="col-12 mb-2">
                 <Form.Group controlId="expressao">
                   <Form.Label>Expressão</Form.Label>
-                  <Form.Control
-                    type="text"
+                  <Form.Control as="textarea" rows={3}
                     required
                     value={formulaToInsert?.expressao ?? ""}
                     onChange={(e) =>
@@ -659,9 +643,9 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Início de Vigência</Form.Label>
+                  <Form.Label>Início da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     required
@@ -677,9 +661,9 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
-                <Form.Group controlId="data_inicio_vigencia">
-                  <Form.Label>Data de Fim de Vigência</Form.Label>
+              <div className="col-12 col-sm-6 mb-2">
+                <Form.Group controlId="data_fim_vigencia">
+                  <Form.Label>Fim da vigência</Form.Label>
                   <Form.Control
                     type="date"
                     onChange={(e) =>
@@ -694,7 +678,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codEvento">
                   <Form.Label>Evento RM <Tooltip title="codEvento do metadados do RM"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Control
@@ -712,7 +696,7 @@ export function FilialFormulasPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="tipo">
                   <Form.Label>Tipo de dado <Tooltip title="Dias ou Valor"><Icon icon="solar:question-circle-bold-duotone" width={16} height={16} /></Tooltip></Form.Label>
                   <Form.Select

@@ -36,12 +36,13 @@ function fixture(concurrency: number, failEmployee?: string) {
       findMany: jest.fn().mockResolvedValue([]),
       upsert: jest.fn(({ create }) => Promise.resolve({ ...create, execucao_funcionario_id: create.execucao_funcionario_base_id * 10 + create.formula_id })),
     },
-    execucao_funcionario_base: { updateMany: jest.fn().mockResolvedValue({ count: 8 }) },
+    execucao_funcionario_base: { findMany: jest.fn().mockResolvedValue(bases), updateMany: jest.fn().mockResolvedValue({ count: 8 }) },
     memoria_calculo: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn(({ data }) => { memory.push(...data); return Promise.resolve({ count: data.length }); }),
     },
     log_execucao: { create: jest.fn().mockResolvedValue({}) },
+    $executeRaw: jest.fn().mockResolvedValue(1),
   };
   let active = 0;
   let peak = 0;
@@ -61,7 +62,7 @@ function fixture(concurrency: number, failEmployee?: string) {
       data: [{ RESULTADO: sql === 'PVE.A' ? Number(params.CHAPA) : 0 }],
     };
   }) };
-  const service = new ExecucaoService(prisma as never, {} as never, {} as never, rm as never);
+  const service = new ExecucaoService(prisma as never, {} as never, {} as never, rm as never, {} as never);
   const log = jest.spyOn((service as unknown as { logger: { log(message: string): void } }).logger, 'log').mockImplementation(() => {});
   jest.spyOn(service, 'getExecucaoById').mockResolvedValue(execution as never);
   return { service, bases, prisma, rm, memory, log, peak: () => peak, active: () => active };

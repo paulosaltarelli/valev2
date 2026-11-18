@@ -1,3 +1,5 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState, type FormEvent } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -6,10 +8,9 @@ import { PeriodoApi } from "../../utils/api/periodoApi";
 import { Icon } from "@iconify/react";
 import "datatables.net-dt";
 
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../../components/utils/Button";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
-import { useNavigate } from "react-router";
 import { Form } from "react-bootstrap";
 
 import type { Periodo } from "../../models/PeriodoModel";
@@ -25,7 +26,6 @@ import { useBlockUi } from "../../app/providers/blockUiContext";
 DataTable.use(DataTablesCore);
 
 export function PeriodoPage() {
-  const navigate = useNavigate();
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
   useEffect(() => {
@@ -142,7 +142,7 @@ export function PeriodoPage() {
   const handleDeletePeriodo = async (periodo: Periodo) => {
     console.log(`excluindo periodo: ${periodo.periodo_id}`);
     const result = await Swal.fire({
-      title: "Excluir Período",
+      title: "Excluir Competência",
       text: "Tem certeza que deseja excluir o período?",
       icon: "warning",
       showDenyButton: true,
@@ -183,35 +183,30 @@ export function PeriodoPage() {
 
   return (
     <>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Competências"
+        description="Consulte e cadastre as competências usadas em Processamentos."
+        actions={(
+          <Button
+            tooltip="Criar nova competência"
+            variant="primary"
+            onClick={openCreateModal}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Nova competência</span>
+          </Button>
+        )}
+      />
+      {!!periodos.length && <VisualSummary items={[
+{label:"Competências",value:periodos.length,icon:"tabler:list"},
+{label:"Ativas",value:periodos.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"info"},
+{label:"Inativas",value:periodos.filter(item=>!item.ativo).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <h1 className="h4 m-0 p-0">Períodos</h1>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                tooltip="Criar novo período"
-                variant="primary"
-                onClick={openCreateModal}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Novo Período</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list ve-period-list">
             <DataTable
               className="table striped-table mb-0"
               options={{
@@ -226,16 +221,19 @@ export function PeriodoPage() {
                   },
                 ],
                 ...defaultConfig,
+                responsive: false,
+                order: [[1, "desc"]],
               }}
               data={periodos}
               columns={columns}
               slots={{
+                competencia: (value: string, type: string, row: Periodo) => type === "display" ? <div>{value}<span className="ve-mobile-row-details"><span className={`ve-state ${row.ativo ? "ve-state-active" : ""}`}>{row.ativo ? "Ativa" : "Inativa"}</span></span><details className="ve-mobile-row-details"><summary>Datas</summary><small>{FunctionsHelper.formatDateOnlyPtBr(row.data_inicio)} → {FunctionsHelper.formatDateOnlyPtBr(row.data_fim)}</small></details></div> : value,
                 actions: (row: Periodo) => (
                   <div>
                     <Button
                       variant="outline-primary"
                       tooltip="Editar período"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleEditPeriodo(row)}
                     >
                       <Icon
@@ -247,7 +245,7 @@ export function PeriodoPage() {
                     <Button
                       variant="outline-danger"
                       tooltip="Excluir período"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleDeletePeriodo(row)}
                     >
                       <Icon
@@ -258,20 +256,12 @@ export function PeriodoPage() {
                     </Button>
                   </div>
                 ),
-                data_inicio: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
-                data_fim: (data: unknown) => (
-                  <span>{FunctionsHelper.formatDateOnlyPtBr(data)}</span>
-                ),
+                data_inicio: (data: unknown, type: string, _row: Periodo) => type === "display" || type === "filter"
+                  ? FunctionsHelper.formatDateOnlyPtBr(data) : String(data ?? ""),
+                data_fim: (data: unknown, type: string, _row: Periodo) => type === "display" || type === "filter"
+                  ? FunctionsHelper.formatDateOnlyPtBr(data) : String(data ?? ""),
                 ativo: (ativo: boolean) => (
-                  <span>
-                    {ativo ? (
-                      <Icon icon="solar:check-circle-bold-duotone" className="text-success" width={20} height={20} />
-                    ) : (
-                      <Icon icon="solar:close-circle-bold-duotone" className="text-danger" width={20} height={20} />
-                    )}
-                  </span>
+                  <span className={`ve-state ${ativo ? "ve-state-active" : ""}`}>{ativo ? "Ativa" : "Inativa"}</span>
                 ),
               }}
             >
@@ -280,7 +270,7 @@ export function PeriodoPage() {
                   <th scope="col">Competência</th>
                   <th scope="col">Data Início</th>
                   <th scope="col">Data Fim</th>
-                  <th scope="col">Ativo</th>
+                  <th scope="col">Situação</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
@@ -288,16 +278,16 @@ export function PeriodoPage() {
           </div>
         </div>
       </div>
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Período</Modal.Title>
+      <Modal className="ve-editor-modal" show={showEditModal} onHide={() => setShowEditModal(false)}>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Editar competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveEditPeriodo} id="editPeriodoForm">
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Data Inicial</Form.Label>
+                  <Form.Label>Data inicial</Form.Label>
                   <Form.Control
                     type="date"
                     value={toDateInputValue(periodoToEdit?.data_inicio)}
@@ -311,9 +301,9 @@ export function PeriodoPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Data Final</Form.Label>
+                  <Form.Label>Data final</Form.Label>
                   <Form.Control
                     type="date"
                     value={toDateInputValue(periodoToEdit?.data_fim)}
@@ -382,16 +372,16 @@ export function PeriodoPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Cadastrar Período</Modal.Title>
+      <Modal className="ve-editor-modal" show={showCreateModal} onHide={() => setShowCreateModal(false)}>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Nova competência</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleSaveCreatePeriodo} id="createPeriodoForm">
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Data Inicial</Form.Label>
+                  <Form.Label>Data inicial</Form.Label>
                   <Form.Control
                     type="date"
                     value={
@@ -411,9 +401,9 @@ export function PeriodoPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Data Final</Form.Label>
+                  <Form.Label>Data final</Form.Label>
                   <Form.Control
                     type="date"
                     value={

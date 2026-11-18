@@ -1,3 +1,5 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -5,9 +7,9 @@ import "datatables.net-responsive-bs5";
 import "datatables.net-dt";
 import type { Usuario } from "../../models/UsuariosModel";
 import { UsuariosApi } from "../../utils/api/usuariosApi";
-import { Button, Form, Modal } from "react-bootstrap";
+import { Button, Form } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Icon } from "@iconify/react";
-import { useNavigate } from "react-router";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import Swal from "sweetalert2";
 import { SwalHelper } from "../../utils/swalHelper";
@@ -19,7 +21,6 @@ import { FunctionsHelper } from "../../utils/functionsHelper";
 DataTable.use(DataTablesCore);
 export function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const navigate = useNavigate();
   const [usuarioToEdit, setUsuarioToEdit] = useState<Usuario | null>(null);
   const [usuarioToCreate, setUsuarioToCreate] = useState<Partial<Usuario>>({
     ativo: true,
@@ -89,34 +90,29 @@ export function UsuariosPage() {
   };
   return (
     <>
+      <PageHeading
+        area="Administração"
+        title="Usuários e acesso"
+        description="Gerencie os perfis e o acesso ao Vale Expresso."
+        actions={(
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateUsuarioModal(true)}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Novo Usuário</span>
+          </Button>
+        )}
+      />
+      {!!usuarios.length && <VisualSummary items={[
+{label:"Usuários",value:usuarios.length,icon:"tabler:list"},
+{label:"Ativos",value:usuarios.filter(item=>item.ativo).length,icon:"tabler:circle-check",tone:"success"},
+{label:"Inativos",value:usuarios.filter(item=>!item.ativo).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <h1 className="h4 m-0 p-0">Usuários</h1>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="primary"
-                onClick={() => setShowCreateUsuarioModal(true)}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Novo Usuário</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list">
             <DataTable
               className="table striped-table mb-0"
               options={{
@@ -131,6 +127,7 @@ export function UsuariosPage() {
                   },
                 ],
                 ...defaultConfig,
+                responsive: false,
               }}
               data={usuarios}
               columns={[
@@ -151,7 +148,8 @@ export function UsuariosPage() {
                     <Tooltip title="Editar">
                       <Button
                         variant="outline-primary"
-                        className="m-0 px-1 py-1 border-0"
+                        className="ve-icon-action"
+                        aria-label={`Editar usuário ${row.nome}`}
                         onClick={() => handleEditUsuario(row)}
                       >
                         <Icon
@@ -165,7 +163,8 @@ export function UsuariosPage() {
                     <Tooltip title="Excluir">
                       <Button
                         variant="outline-danger"
-                        className="m-0 px-1 py-1 border-0"
+                        className="ve-icon-action"
+                        aria-label={`Excluir usuário ${row.nome}`}
                         onClick={() => handleDeleteUsuario(row)}
                       >
                         <Icon
@@ -178,23 +177,7 @@ export function UsuariosPage() {
                   </div>
                 ),
                 ativo: (data: boolean) => (
-                  <Tooltip title={data ? "Ativo" : "Inativo"}>
-                    {data ? (
-                      <Icon
-                        icon="solar:check-circle-bold-duotone"
-                        className="text-success"
-                        width={20}
-                        height={20}
-                      />
-                    ) : (
-                      <Icon
-                        icon="solar:close-circle-bold-duotone"
-                        className="text-danger"
-                        width={20}
-                        height={20}
-                      />
-                    )}
-                  </Tooltip>
+                  <span className={`ve-state ${data ? "ve-state-active" : ""}`}>{data ? "Ativo" : "Inativo"}</span>
                 ),
                 data_criacao: (data: Date) => (
                   <span>{FunctionsHelper.formatDateTimePtBr(data)}</span>
@@ -205,7 +188,7 @@ export function UsuariosPage() {
                 <tr>
                   <th scope="col">Nome</th>
                   <th scope="col">Código do Usuário</th>
-                  <th scope="col">Ativo</th>
+                  <th scope="col">Situação</th>
                   <th scope="col">Data de Criação</th>
                   <th scope="col">Ações</th>
                 </tr>
@@ -217,17 +200,17 @@ export function UsuariosPage() {
         </div>
       </div>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showEditUsuarioModal}
         onHide={() => setShowEditUsuarioModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Usuário</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Editar usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -242,9 +225,9 @@ export function UsuariosPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
-                  <Form.Label>Código do Usuário(RM)</Form.Label>
+                  <Form.Label>Usuário RM</Form.Label>
                   <Form.Control
                     type="text"
                     defaultValue={usuarioToEdit?.login}
@@ -307,17 +290,17 @@ export function UsuariosPage() {
         </Modal.Footer>
       </Modal>
 
-      <Modal
+      <Modal className="ve-editor-modal"
         show={showCreateUsuarioModal}
         onHide={() => setShowCreateUsuarioModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Criar Usuário</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Novo usuário</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
             <div className="row">
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -332,10 +315,10 @@ export function UsuariosPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codusuario">
                   <Form.Label className="d-flex align-items-center gap-1">
-                    Código do Usuário(RM)
+                    Usuário RM
                     <Tooltip
                       title="O mesmo código do usuário(login) no RM."
                       placement="right"

@@ -1,7 +1,10 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
+import { PageHeading } from "../../shared/components/PageHeading";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
-import { Button, Modal, Form } from "react-bootstrap";
-import { useNavigate, useParams } from "react-router";
+import { Button, Form } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
+import { Link, useParams } from "react-router";
 import type { Filial } from "../../models/FilialModel";
 import { filialApi } from "../../utils/api/filialApi";
 import { VariavelApi } from "../../utils/api/variavelApi";
@@ -21,10 +24,40 @@ import { sanitizeCodigo } from "../../utils/sanitizeCodigo";
 // eslint-disable-next-line react-hooks/rules-of-hooks
 DataTable.use(DataTablesCore);
 
+function tamanhoPacoteInvalido(valor: number | null | undefined) {
+  return valor != null && (!Number.isInteger(valor) || valor < 1 || valor > 2147483647);
+}
+
+type CampoChapasPorChamadaProps = {
+  id: string;
+  valor?: number | null;
+  onChange: (valor: number | null) => void;
+};
+
+function CampoChapasPorChamada({ id, valor, onChange }: CampoChapasPorChamadaProps) {
+  return (
+    <Form.Group className="col-12 mb-2" controlId={id}>
+      <Form.Label>Chapas por chamada ao RM</Form.Label>
+      <Form.Control
+        type="number"
+        min={1}
+        max={2147483647}
+        step={1}
+        placeholder="Sem limite"
+        value={valor ?? ""}
+        isInvalid={tamanhoPacoteInvalido(valor)}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        aria-describedby={id + "_ajuda"}
+      />
+      <Form.Control.Feedback type="invalid">Informe um número inteiro positivo.</Form.Control.Feedback>
+      <Form.Text id={id + "_ajuda"}>Deixe em branco para consultar todas as chapas juntas.</Form.Text>
+    </Form.Group>
+  );
+}
+
 export function FilialVariaveisPage() {
   const { filialId } = useParams<{ filialId: string }>();
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
-  const navigate = useNavigate();
   const [filial, setFilial] = useState<Filial | null>(null);
   const [variaveis, setVariaveis] = useState<Variavel[]>([]);
   const [showEditVariavelModal, setShowEditVariavelModal] = useState(false);
@@ -43,6 +76,9 @@ export function FilialVariaveisPage() {
       throw new Error("Variavel to insert is required");
     }
     const variavelToInsertCopy: Variavel = { ...variavelToInsert };
+    if (!variavelToInsertCopy.sql_codigo_rm?.startsWith("PVE2.")) {
+      variavelToInsertCopy.chapas_por_chamada = null;
+    }
     variavelToInsertCopy.codigo = sanitizeCodigo(variavelToInsertCopy.codigo);
     if (!variavelToInsertCopy.tipo) {
       variavelToInsertCopy.tipo = "string";
@@ -101,6 +137,9 @@ export function FilialVariaveisPage() {
         ...(variavelToEdit as Variavel),
         codigo: sanitizeCodigo(variavelToEdit?.codigo ?? ""),
       };
+      if (!variavelToEditCopy.sql_codigo_rm?.startsWith("PVE2.")) {
+        variavelToEditCopy.chapas_por_chamada = null;
+      }
       const response = await VariavelApi.updateById(
         variavelToEditCopy.variavel_id as number,
         variavelToEditCopy as Variavel
@@ -158,28 +197,28 @@ export function FilialVariaveisPage() {
   };
 
   return (
-    <div className="card card-body">
-      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-        <div className="d-flex align-items-center gap-2">
+    <div>
+      <Link to="/filial" className="op-back">← Filiais e regras</Link>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Variáveis"
+        context={filial?.nome}
+        actions={(
           <Button
-            variant="outline-secondary"
-            className="m-0 px-1 py-1 border-0"
-            onClick={() => navigate(`/filial`)}
-          >
-            <Icon icon="solar:alt-arrow-left-linear" width={20} height={20} />
-          </Button>
-          <h1 className="h4 m-0 p-0">Variáveis de: {filial?.nome}</h1>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Button
-            variant="primary"
-            onClick={() => setShowInsertVariavelModal(true)}
-          >
-            <Icon icon="tabler:plus" width={20} height={20} />
-            <span className="ms-1">Nova variável</span>
-          </Button>
-        </div>
-      </div>
+          variant="primary"
+          onClick={() => setShowInsertVariavelModal(true)}
+        >
+          <Icon icon="tabler:plus" width={20} height={20} />
+          <span className="ms-1">Nova variável</span>
+        </Button>
+        )}
+      />
+      {!!variaveis.length && <VisualSummary items={[
+{label:"Variáveis",value:variaveis.length,icon:"tabler:variable"},
+{label:"Consulta RM",value:variaveis.filter(item=>!!item.sql_codigo_rm).length,icon:"tabler:database"},
+{label:"Valor fixo",value:variaveis.filter(item=>!item.sql_codigo_rm && item.valor_fixo != null).length,icon:"tabler:pin",tone:"info"}
+]} />}
+      <div className="card card-body ve-table-list ve-variable-list">
       <DataTable
         className="table striped-table mb-0"
         options={{
@@ -200,6 +239,7 @@ export function FilialVariaveisPage() {
             },
           ],
           ...defaultConfig,
+                responsive: false,
         }}
         data={variaveis}
         columns={[
@@ -207,15 +247,19 @@ export function FilialVariaveisPage() {
           { data: "codigo", name: "codigo" },
           { data: "tipo", name: "tipo" },
           { data: "sql_codigo_rm", name: "sql_codigo_rm" },
+          { data: "chapas_por_chamada", name: "chapas_por_chamada", defaultContent: "Sem limite" },
           { data: "valor_fixo", name: "valor_fixo" },
           { data: null, name: "actions", orderable: false, searchable: false },
         ]}
         slots={{
+          nome: (value: string, type: string, row: Variavel) => type === "display" ? <div className="ve-rule-name"><strong>{value}</strong><small>{row.codigo} · {row.tipo === "number" ? "Número" : row.tipo === "boolean" ? "Sim/Não" : "Texto"}</small><details className="ve-rule-details"><summary>Origem e configuração</summary><div><small>Consulta RM: {row.sql_codigo_rm || "—"}</small><small>Chapas por chamada: {row.chapas_por_chamada ?? "Sem limite"}</small><small>Valor fixo: {row.valor_fixo ?? "—"}</small></div></details></div> : value,
           actions: (row: Variavel) => (
             <div>
               <Button
                 variant="outline-primary"
-                className="m-0 px-1 py-1 border-0"
+                aria-label="Editar variável"
+                title="Editar variável"
+                className="ve-icon-action"
                 onClick={() => handleEditVariavel(row)}
               >
                 <Icon
@@ -226,7 +270,9 @@ export function FilialVariaveisPage() {
               </Button>
               <Button
                 variant="outline-danger"
-                className="m-0 px-1 py-1 border-0"
+                aria-label="Excluir variável"
+                title="Excluir variável"
+                className="ve-icon-action"
                 onClick={() => handleDeleteVariavel(row.variavel_id)}
               >
                 <Icon
@@ -244,19 +290,21 @@ export function FilialVariaveisPage() {
             <th>Nome</th>
             <th>Código</th>
             <th>Tipo</th>
-            <th>SQL Código RM</th>
+            <th>Consulta RM</th>
+            <th>Chapas por chamada</th>
             <th>Valor Fixo</th>
             <th>Ações</th>
           </tr>
         </thead>
       </DataTable>
+      </div>
 
-      <Modal
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showEditVariavelModal}
         onHide={() => setShowEditVariavelModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Variavel</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Editar variável</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -280,7 +328,7 @@ export function FilialVariaveisPage() {
                   </Form.Select>
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="nome_variavel">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -295,7 +343,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -311,9 +359,9 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
-                  <Form.Label>SQL Código RM</Form.Label>
+                  <Form.Label>Consulta RM</Form.Label>
                   <Form.Control
                     type="text"
                     value={variavelToEdit?.sql_codigo_rm ?? ""}
@@ -333,7 +381,16 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              {variavelToEdit?.sql_codigo_rm?.startsWith("PVE2.") && (
+                <CampoChapasPorChamada
+                  id="chapas_por_chamada"
+                  valor={variavelToEdit.chapas_por_chamada}
+                  onChange={(valor) => setVariavelToEdit((prev) =>
+                    prev ? { ...prev, chapas_por_chamada: valor } : prev
+                  )}
+                />
+              )}
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
                   <Form.Control
@@ -377,17 +434,22 @@ export function FilialVariaveisPage() {
           >
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleSaveEditVariavel}>
+          <Button
+            variant="primary"
+            onClick={handleSaveEditVariavel}
+            disabled={Boolean(variavelToEdit?.sql_codigo_rm?.startsWith("PVE2.")) &&
+              tamanhoPacoteInvalido(variavelToEdit?.chapas_por_chamada)}
+          >
             Salvar
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal
+      <Modal className="ve-editor-modal ve-rule-editor"
         show={showInsertVariavelModal}
         onHide={() => setShowInsertVariavelModal(false)}
       >
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Criar Variavel</Modal.Title>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Nova variável</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -412,7 +474,7 @@ export function FilialVariaveisPage() {
                   </Form.Select>
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_nome_variavel">
                   <Form.Label>Nome</Form.Label>
                   <Form.Control
@@ -427,7 +489,7 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_codigo">
                   <Form.Label>Código</Form.Label>
                   <Form.Control
@@ -445,9 +507,9 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_sql_codigo_rm">
-                  <Form.Label>SQL Código RM</Form.Label>
+                  <Form.Label>Consulta RM</Form.Label>
                   <Form.Control
                     type="text"
                     value={variavelToInsert?.sql_codigo_rm ?? ""}
@@ -467,7 +529,16 @@ export function FilialVariaveisPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              {variavelToInsert?.sql_codigo_rm?.startsWith("PVE2.") && (
+                <CampoChapasPorChamada
+                  id="new_chapas_por_chamada"
+                  valor={variavelToInsert.chapas_por_chamada}
+                  onChange={(valor) => setVariavelToInsert((prev) =>
+                    prev ? { ...prev, chapas_por_chamada: valor } : prev
+                  )}
+                />
+              )}
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="new_valor_fixo">
                   <Form.Label>Valor Fixo</Form.Label>
                   <Form.Control
@@ -511,7 +582,12 @@ export function FilialVariaveisPage() {
           >
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleInsertVariavel}>
+          <Button
+            variant="primary"
+            onClick={handleInsertVariavel}
+            disabled={Boolean(variavelToInsert?.sql_codigo_rm?.startsWith("PVE2.")) &&
+              tamanhoPacoteInvalido(variavelToInsert?.chapas_por_chamada)}
+          >
             Salvar
           </Button>
         </Modal.Footer>

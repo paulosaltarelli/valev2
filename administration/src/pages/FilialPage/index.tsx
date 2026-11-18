@@ -1,3 +1,5 @@
+import { VisualSummary } from "../../shared/components/VisualSummary";
+import { PageHeading } from "../../shared/components/PageHeading";
 import { useEffect, useState } from "react";
 import DataTable from "datatables.net-react";
 import DataTablesCore from "datatables.net-bs5";
@@ -7,7 +9,7 @@ import type { Filial } from "../../models/FilialModel";
 import { Icon } from "@iconify/react";
 import "datatables.net-dt";
 
-import { Modal } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import { Button } from "../../components/utils/Button";
 import { defaultConfig } from "../../utils/datatables/defaultConfig";
 import { useNavigate } from "react-router";
@@ -137,44 +139,43 @@ export function FilialPage() {
 
   return (
     <>
+      <PageHeading
+        area="Regras e cadastros"
+        title="Filiais e regras"
+        description="Consulte as filiais e acesse suas fórmulas e variáveis."
+        actions={(
+          <Button
+            tooltip="Criar nova filial"
+            variant="primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <Icon icon="tabler:plus" width={20} height={20} />
+            <span className="ms-1">Nova filial</span>
+          </Button>
+        )}
+      />
+      {!!filiais.length && <VisualSummary items={[
+{label:"Filiais",value:filiais.length,icon:"tabler:list"},
+{label:"Ativas",value:filiais.filter(item=>item.ativa).length,icon:"tabler:circle-check",tone:"info"},
+{label:"Inativas",value:filiais.filter(item=>!item.ativa).length,icon:"tabler:circle-pause",tone:"warning"}
+]} />}
+
       <div className="card">
         <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <h1 className="h4 m-0 p-0">Filiais</h1>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                tooltip="Criar nova filial"
-                variant="primary"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <Icon icon="tabler:plus" width={20} height={20} />
-                <span className="ms-1">Nova Filial</span>
-              </Button>
-            </div>
-          </div>
-          <div className=" p-2 w-100">
+          <div className="ve-table-list ve-branch-list">
             <DataTable
               className="table striped-table mb-0"
               options={{
                 ...defaultConfig,
+                responsive: false,
                 pageLength: 10,
                 layout: {
                   topStart: null,
                 },
                 columnDefs: [
+                  {targets: 0, responsivePriority: 1},
+                  {targets: -1, responsivePriority: 2},
+                  {targets: [1,2,3], responsivePriority: 100},
                   {
                     targets: ["_all"],
                     className: "text-center",
@@ -184,12 +185,18 @@ export function FilialPage() {
               data={filiais}
               columns={columns}
               slots={{
+                nome: (nome: string, type: string, row: Filial) => type === "display" ? (
+                  <div><span>{nome}</span><details className="ve-mobile-row-details"><summary>Dados RM</summary><small>Filial: {row.codfilial} · Coligada: {row.codcoligada}<br/>Consulta: {row.sql_codigo_rm || "—"}</small></details><div className="ve-row-links">
+                    <button type="button" onClick={() => handleVariaveisFilial(row.filial_id)} aria-label={`Variáveis de ${nome}`}><Icon icon="hugeicons:variable" width={16} />Variáveis</button>
+                    <button type="button" onClick={() => handleFormulasFilial(row.filial_id)} aria-label={`Fórmulas de ${nome}`}><Icon icon="hugeicons:function-square" width={16} />Fórmulas</button>
+                  </div></div>
+                ) : nome,
                 actions: (row: Filial) => (
                   <div>
                     <Button
                       variant="outline-primary"
                       tooltip="Editar filial"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleEditFilial(row)}
                     >
                       <Icon
@@ -201,31 +208,11 @@ export function FilialPage() {
                     <Button
                       variant="outline-danger"
                       tooltip="Excluir filial"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       onClick={() => handleDeleteFilial(row)}
                     >
                       <Icon
                         icon="solar:trash-bin-trash-bold-duotone"
-                        width={20}
-                        height={20}
-                      />
-                    </Button>
-                    <Button
-                      variant="outline-secondary"
-                      tooltip="Variaveis"
-                      className="m-0 px-1 py-1 border-0"
-                      onClick={() => handleVariaveisFilial(row.filial_id)}
-                    >
-                      <Icon icon="hugeicons:variable" width={20} height={20} />
-                    </Button>
-                    <Button
-                      variant="outline-info"
-                      tooltip="Formulas"
-                      className="m-0 px-1 py-1 border-0"
-                      onClick={() => handleFormulasFilial(row.filial_id)}
-                    >
-                      <Icon
-                        icon="hugeicons:function-square"
                         width={20}
                         height={20}
                       />
@@ -237,9 +224,9 @@ export function FilialPage() {
               <thead>
                 <tr>
                   <th scope="col">Nome</th>
-                  <th scope="col">Código da Filial</th>
-                  <th scope="col">Código da Coligada</th>
-                  <th scope="col">SQL Código RM</th>
+                  <th scope="col">Filial</th>
+                  <th scope="col">Coligada</th>
+                  <th scope="col">Consulta RM</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
@@ -249,9 +236,9 @@ export function FilialPage() {
           </div>
         </div>
       </div>
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Editar Filial</Modal.Title>
+      <Modal className="ve-editor-modal" show={showEditModal} onHide={() => setShowEditModal(false)}>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Editar filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -272,9 +259,9 @@ export function FilialPage() {
                 </Form.Group>
               </div>
 
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Código da Filial</Form.Label>
+                  <Form.Label>Filial</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={filialToEdit?.codfilial}
@@ -287,9 +274,9 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Código da Coligada</Form.Label>
+                  <Form.Label>Coligada</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={filialToEdit?.codcoligada}
@@ -302,10 +289,10 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
-                    SQL Código RM
+                    Consulta RM
                     <Tooltip
                       title="A sentença(consulta) que trará os funcionários da filial"
                       placement="right"
@@ -329,7 +316,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="km_max">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     Km Máximo
@@ -368,9 +355,9 @@ export function FilialPage() {
           </Button>
         </Modal.Footer>
       </Modal>
-      <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)}>
-        <Modal.Header closeButton className="bg-primary text-white">
-          <Modal.Title>Cadastrar Filial</Modal.Title>
+      <Modal className="ve-editor-modal" show={showCreateModal} onHide={() => setShowCreateModal(false)}>
+        <Modal.Header closeButton closeLabel="Fechar janela">
+          <Modal.Title>Nova filial</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -390,9 +377,9 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codfilial">
-                  <Form.Label>Código da Filial</Form.Label>
+                  <Form.Label>Filial</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={""}
@@ -405,9 +392,9 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="codcoligada">
-                  <Form.Label>Código da Coligada</Form.Label>
+                  <Form.Label>Coligada</Form.Label>
                   <Form.Control
                     type="number"
                     defaultValue={""}
@@ -420,10 +407,10 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
-                    SQL Código RM
+                    Consulta RM
                     <Tooltip
                       title="A sentença(consulta) que trará os funcionários da filial"
                       placement="right"
@@ -447,7 +434,7 @@ export function FilialPage() {
                   />
                 </Form.Group>
               </div>
-              <div className="col-6 mb-2">
+              <div className="col-12 col-sm-6 mb-2">
                 <Form.Group controlId="sql_codigo_rm">
                   <Form.Label className="d-flex align-items-center gap-1 mt-2 mb-1">
                     Km Máximo

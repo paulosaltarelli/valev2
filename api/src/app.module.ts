@@ -13,6 +13,7 @@ import { HttpModule } from '@nestjs/axios';
 import { CronModule } from './cron/cron.module';
 import { DashModule } from './dash/dash.module';
 import { ProfileModule } from './profile/profile.module';
+import { AssistenteModule } from './assistente/assistente.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ProfileModule } from './profile/profile.module';
     CronModule,
     DashModule,
     ProfileModule,
+    AssistenteModule,
   ],
   controllers: [AppController],
   providers: [AppService],

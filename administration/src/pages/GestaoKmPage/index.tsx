@@ -1,8 +1,10 @@
+import { PageHeading } from "../../shared/components/PageHeading";
+import { safeReturn } from "../../utils/safeReturn";
 import { Icon } from "@iconify/react";
 import { Button } from "../../components/utils/Button";
-import { useLocation, useNavigate } from "react-router";
-import { Tooltip } from "../../components/Tooltip";
-import { Alert, Form, Modal, Table } from "react-bootstrap";
+import { Link, useLocation } from "react-router";
+import { Alert, Form, Table } from "react-bootstrap";
+import { Modal } from "../../shared/components/VeModal";
 import Select, { type SingleValue } from "../../shared/components/Select";
 import type { Filial } from "../../models/FilialModel";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -32,7 +34,6 @@ import { Limited } from "../../components/utils/Limited";
 DataTable.use(DataTablesCore);
 
 export function GestaoKmPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [filialId, setFilialId] = useState<number>(0);
   const [filiais, setFiliais] = useState<Filial[]>([]);
@@ -42,7 +43,7 @@ export function GestaoKmPage() {
   const [funToShowAddress, setFunToShowAddress] =
     useState<FuncionarioRm | null>(null);
   const { show: blockUiShow, hide: blockUiHide } = useBlockUi();
-  const [, setSelectedRows] = useState<FuncionarioRm[]>([]);
+  const [selectedRows, setSelectedRows] = useState<FuncionarioRm[]>([]);
   const tableRef = useRef<DataTableRef>(null);
   const filialIdRef = useRef<number>(0);
   const [geoStatus, setGeoStatus] = useState<{
@@ -101,6 +102,7 @@ export function GestaoKmPage() {
     try {
       blockUiShow("Buscando funcionários");
       const data = await filialApi.getFuncionariosRmByFilialId(fid);
+      setSelectedRows([]);
       setFuncionarios(data);
       // Busca os últimos logs/erros da fila GEO desta filial (não chama RM)
       try {
@@ -195,7 +197,7 @@ export function GestaoKmPage() {
     void refreshGeoStatus(filialId);
 
     const id = window.setInterval(() => {
-      if (!filialId) return;
+      if (!filialId || document.hidden) return;
       void refreshGeoStatus(filialId);
     }, 20000);
 
@@ -350,111 +352,92 @@ export function GestaoKmPage() {
 
   return (
     <>
-      <div className="card">
-        <div className="card-body">
-          <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-            <div className="d-flex align-items-center gap-2">
-              <Button
-                variant="outline-secondary"
-                className="m-0 px-1 py-1 border-0"
-                onClick={() => navigate(`/`)}
-              >
-                <Icon
-                  icon="solar:alt-arrow-left-linear"
-                  width={20}
-                  height={20}
-                />
-              </Button>
-              <h1 className="h4 m-0 p-0 d-flex align-items-center gap-1">
-                Gestão de Km{" "}
-                <Tooltip
-                  title="Gerencia a distância entre a casa dos funcionários e o local de trabalho."
-                  placement="right"
-                >
-                  <Icon
-                    icon="solar:info-circle-linear"
-                    width={20}
-                    height={20}
-                  />
-                </Tooltip>
-              </h1>
-            </div>
-          </div>
-          <div className="d-flex align-items-end justify-content-start gap-2 mb-3">
-            <div className="col-md-4 col-12">
-              <Form.Label>Filial</Form.Label>
-              {(() => {
-                type FilialOption = { value: number; label: string };
+      <Link className="op-back" to={safeReturn(new URLSearchParams(location.search).get("retorno"))}>
+        ← Voltar à operação
+      </Link>
+      <PageHeading
+        area="Operação diária"
+        title="Gestão de KM"
+        description="Consulte e calcule a distância entre a residência e a unidade de trabalho."
+      />
+    <div className="op-context ve-filter-bar ve-km-filters">
+      <div className="ve-km-branch">
+        <Form.Label htmlFor="filialIdFilter">Filial</Form.Label>
+        {(() => {
+          type FilialOption = { value: number; label: string };
 
-                const options: FilialOption[] = [
-                  { value: 0, label: "Todas as filiais" },
-                  ...filiais.map((filial) => ({
-                    value: filial.filial_id,
-                    label: filial.nome,
-                  })),
-                ];
+          const options: FilialOption[] = [
+            { value: 0, label: "Selecione uma filial" },
+            ...filiais.map((filial) => ({
+              value: filial.filial_id,
+              label: filial.nome,
+            })),
+          ];
 
-                const value: FilialOption =
-                  options.find((opt) => opt.value === filialId) ?? options[0];
+          const value: FilialOption =
+            options.find((opt) => opt.value === filialId) ?? options[0];
 
-                return (
-                  <Select<FilialOption, false>
-                    inputId="filialIdFilter"
-                    options={options}
-                    value={value}
-                    onChange={(opt: SingleValue<FilialOption>) => {
-                      const nextFilialId = opt?.value ?? 0;
-                      setFilialId(nextFilialId);
-                    }}
-                  />
-                );
-              })()}
-            </div>
-            <Button
-              variant="outline-primary"
-              onClick={() => handleBuscarFuncionarios()}
-              disabled={isGeoRunning}
+          return (
+            <Select<FilialOption, false>
+              inputId="filialIdFilter"
+              options={options}
+              value={value}
+              onChange={(opt: SingleValue<FilialOption>) => {
+                const nextFilialId = opt?.value ?? 0;
+                setFilialId(nextFilialId);
+              }}
+            />
+          );
+        })()}
+      </div>
+      <Button
+        variant="outline-primary"
+        onClick={() => handleBuscarFuncionarios()}
+        disabled={isGeoRunning}
+      >
+        <Icon icon="gravity-ui:person-magnifier" width={20} height={20} />
+        <span className="ms-1">Consultar</span>
+      </Button>
+      {funcionarios.length > 0 && (
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          <Button
+            variant="outline-success"
+            onClick={() => handleCalcularTodosKm()}
+            disabled={isGeoRunning}
             >
-              <Icon icon="gravity-ui:person-magnifier" width={20} height={20} />
-              <span className="ms-1">Buscar Funcionários</span>
-            </Button>
-            {funcionarios.length > 0 && (
-              <div className="d-flex align-items-center justify-content-between gap-2">
-                <Button
-                  variant="outline-success"
-                  onClick={() => handleCalcularTodosKm()}
-                  disabled={isGeoRunning}
-                  >
-                  <Icon
-                    icon="solar:calculator-bold-duotone"
-                    width={20}
-                    height={20}
-                    />
-                  <span className="ms-1">Calcular Todos os Km</span>
-                </Button>
-                <Button
-                  variant="outline-danger"
-                  onClick={() => setShowGeoErrorsModal(true)}
-                  disabled={isGeoRunning || filialId === 0 || funcionarios.length === 0}
-                  tooltip="Ver erros/logs recentes da fila GEO desta filial"
-                  >
-                  <Icon
-                    icon="solar:danger-circle-bold-duotone"
-                    width={20}
-                    height={20}
-                    />
-                  <span className="ms-1">Ver erros</span>
-                </Button>
-              </div>
-            )}
-          </div>
+            <Icon
+              icon="solar:calculator-bold-duotone"
+              width={20}
+              height={20}
+              />
+            <span className="ms-1">Calcular KM da lista</span>
+          </Button>
+          <Button
+            variant="outline-danger"
+            onClick={() => setShowGeoErrorsModal(true)}
+            disabled={isGeoRunning || filialId === 0 || funcionarios.length === 0}
+            tooltip="Ver erros/logs recentes da fila GEO desta filial"
+            >
+            <Icon
+              icon="solar:danger-circle-bold-duotone"
+              width={20}
+              height={20}
+              />
+            <span className="ms-1">Falhas</span>
+          </Button>
+        </div>
+      )}
+    </div>
+      <div className={`card${funcionarios.length ? "" : " ve-table-empty"}`}>
+        <div className="card-body">
+          {funcionarios.length > 0 && <p className="op-muted" role="status"><span title="O checkbox do cabeçalho seleciona apenas esta página">{selectedRows.length} selecionados</span></p>}
           {filialId !== 0 && geoStatus?.hasRunning && (
             <div className="alert alert-info py-2 px-3 mb-2">
               Calculando geolocalizações... Pendentes: {geoStatus.pending} /
               Processando: {geoStatus.processing}
             </div>
           )}
-          <div className=" p-2 w-100">
+          <div className="ve-table-list ve-km-table">
             <DataTable
               className="table striped-table mb-0"
               ref={tableRef}
@@ -463,6 +446,10 @@ export function GestaoKmPage() {
               onDeselect={syncSelectedRows}
               options={{
                 ...defaultConfig,
+                language: {
+                  ...defaultConfig.language,
+                  emptyTable: "Nenhum funcionário para exibir. Use Buscar funcionários para consultar a filial.",
+                },
                 pageLength: 10,
                 layout: {
                   // troca o "pageLength" padrão (topStart) por botões e mantém search no topo (topEnd default)
@@ -504,6 +491,7 @@ export function GestaoKmPage() {
                   style: "multi+shift",
                   // Padrão oficial: primeira coluna (onde fica o checkbox)
                   selector: "td:first-child",
+                  headerCheckbox: "select-page",
                 },
               }}
               data={funcionarios}
@@ -521,7 +509,7 @@ export function GestaoKmPage() {
                     const normalized = Number(
                       String(data ?? "").replace(",", "."),
                     );
-                    const hasValue = Number.isFinite(normalized);
+                    const hasValue = data !== null && data !== undefined && String(data).trim() !== '' && Number.isFinite(normalized);
                     if (type === "sort" || type === "type") {
                       return hasValue ? normalized : -1;
                     }
@@ -544,10 +532,10 @@ export function GestaoKmPage() {
                 actions: (row: FuncionarioRm) => (
                   <div>
                     <Button
-                      variant="outline-success"
+                      variant="outline-primary"
                       onClick={() => handleCalcularFuncKm(row)}
                       tooltip="Calcular Km"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       disabled={isGeoRunning}
                     >
                       <Icon
@@ -557,10 +545,10 @@ export function GestaoKmPage() {
                       />
                     </Button>
                     <Button
-                      variant="outline-info"
+                      variant="outline-primary"
                       onClick={() => handleVisualizarKm(row)}
                       tooltip="Visualizar Km"
-                      className="m-0 px-1 py-1 border-0"
+                      className="ve-icon-action"
                       disabled={isGeoRunning}
                     >
                       <Icon
@@ -582,9 +570,9 @@ export function GestaoKmPage() {
                 <tr>
                   <th scope="col" />
                   <th scope="col">Nome</th>
-                  <th scope="col">CHAPA</th>
-                  <th scope="col">CARGO</th>
-                  <th scope="col">DATAADMISSAO</th>
+                  <th scope="col">Matrícula</th>
+                  <th scope="col">Cargo</th>
+                  <th scope="col">Admissão</th>
                   <th scope="col">KM</th>
                   <th scope="col">Ações</th>
                 </tr>
@@ -602,7 +590,7 @@ export function GestaoKmPage() {
         size="lg"
         centered
       >
-        <Modal.Header closeButton>
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>
             Endereço de <Limited limit={10}>{funToShowAddress?.NOME}</Limited>
           </Modal.Title>
@@ -637,7 +625,7 @@ export function GestaoKmPage() {
         size="xl"
         centered
       >
-        <Modal.Header closeButton className="bg-danger text-white">
+        <Modal.Header closeButton closeLabel="Fechar janela">
           <Modal.Title>Erros / logs da fila GEO</Modal.Title>
         </Modal.Header>
         <Modal.Body>

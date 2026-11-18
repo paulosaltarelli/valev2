@@ -21,6 +21,7 @@ RUN npm prune --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts
+COPY --from=build /app/assistente-knowledge.json ./assistente-knowledge.json
 
 EXPOSE 3000
 CMD ["node", "dist/src/main.js"]

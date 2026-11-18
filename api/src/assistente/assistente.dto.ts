@@ -1,0 +1,166 @@
+import {
+  IsIn,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MaxLength,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
+
+export const intents = [
+  'ajuda',
+  'pendencias',
+  'valores',
+  'variaveis',
+  'erros',
+  'comparacao',
+  'financeiro',
+  'km',
+  'formulas',
+  'esclarecer',
+] as const;
+export type Intent = (typeof intents)[number];
+export class AssistenteInicioDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  periodoId?: number;
+}
+export class AssistenteErrosFilialDto {
+  @IsInt()
+  @Min(1)
+  periodoId!: number;
+  @IsInt()
+  @Min(1)
+  filialId!: number;
+}
+export class AssistenteConfiguracaoDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 24000)
+  contexto?: string;
+
+  @IsBoolean()
+  ativo!: boolean;
+
+@IsOptional()
+  @IsBoolean()
+  gptInstitucionalAtivo?: boolean;
+
+  @IsOptional()
+  @Matches(/^gpt-[a-z0-9.-]{2,76}$/)
+  gptModelo?: string;
+
+  @IsOptional()
+  @Length(16, 512, { message: 'Chave da OpenAI inválida.' })
+  @Matches(/^sk-[a-zA-Z0-9_-]+$/, { message: 'Chave da OpenAI inválida.' })
+  gptChave?: string;
+
+  @IsString()
+  @Matches(/^claude-[a-z0-9-]{2,73}$/)
+  modelo!: string;
+
+  @IsOptional()
+  @Length(16, 512, { message: 'Chave da Anthropic inválida.' })
+  @Matches(/^sk-ant-[a-zA-Z0-9_-]+$/, {
+    message: 'Chave da Anthropic inválida.',
+  })
+  chave?: string;
+}
+
+export class AssistenteTesteDto extends AssistenteConfiguracaoDto {
+  @IsOptional()
+  @IsIn(['claude', 'gpt-institucional'])
+  provedorTeste?: 'claude' | 'gpt-institucional';
+}
+
+const provedores = ['local', 'gpt-institucional', 'claude'] as const;
+
+export class AssistenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
+
+  @IsString()
+  @Length(1, 500)
+  pergunta!: string;
+
+  @IsOptional()
+  @IsIn(intents.filter((intent) => intent !== 'esclarecer'))
+  consulta?: Intent;
+
+  @IsOptional()
+  @IsIn(provedores)
+  provedor?: (typeof provedores)[number];
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  periodoId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  filialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
+  matricula?: string;
+}
+
+export class AssistenteAgenteDto {
+  @IsOptional()
+  @IsBoolean()
+  todasFiliais?: boolean;
+
+  @IsString()
+  @Length(1, 6000)
+  pergunta!: string;
+
+  @IsOptional()
+  @IsIn(intents.filter((intent) => intent !== 'esclarecer'))
+  consulta?: Intent;
+
+  @IsOptional()
+  @IsIn(provedores)
+  provedor?: (typeof provedores)[number];
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  periodoId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  filialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  @Matches(/^[\p{L}\p{N} .\/-]+$/u, { message: 'Matrícula inválida.' })
+  matricula?: string;
+}
+
+
+export class AssistenteApresentacaoDto {
+ @IsString() @Length(1,500) objetivo!:string;
+ @IsIn(['claude','gpt-institucional']) provedor!:'claude'|'gpt-institucional';
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) colunas!:string[];
+ @IsArray() @ArrayMaxSize(40) @IsString({each:true}) @MaxLength(100,{each:true}) numericas!:string[];
+ @IsInt() @Min(0) @Max(2000) quantidadeLinhas!:number;
+ @IsBoolean() parcial!:boolean;
+}

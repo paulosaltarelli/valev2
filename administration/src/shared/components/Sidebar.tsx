@@ -1,231 +1,128 @@
-import { useEffect } from "react";
-import { NavLink, Link, useLocation } from "react-router";
+import { useEffect, useState } from "react";
+import { useLocation, NavLink, Link } from "react-router";
 import { Icon } from "@iconify/react";
 import { useThemeContext } from "../../contexts/ThemeContext/useThemeContext";
 import { ThemeActionsTypes } from "../../contexts/ThemeContext/themeActions";
+import { useAppContext } from "../../contexts/AppContext/useAppContext";
 import expressoLogo from "../../assets/images/expresso.png";
 import expressoLogoWhite from "../../assets/images/expresso_w.png";
-import expressoLogoIcon from "../../assets/images/expresso.png";
-import { useAppContext } from "../../contexts/AppContext/useAppContext";
+
+const navigation = [
+  {
+    label: "Operação",
+    links: [
+      ["/dashboard", "Visão geral", "mdi:home-outline"],
+      ["/processamento", "Processamentos", "mdi:clipboard-list-outline"],
+      ["/gestao-km", "Gestão de KM", "mdi:map-marker-distance"],
+    ],
+  },
+  {
+    label: "Análise",
+    id: "analysis",
+    icon: "mdi:chart-box-outline",
+    links: [
+      ["/relatorios", "Evolução financeira", "mdi:chart-box-outline"],
+      ["/extrato-processamento", "Valores por funcionário", "mdi:table-large"],
+    ],
+  },
+  {
+    label: "Regras e cadastros",
+    id: "registration",
+    icon: "mdi:store-outline",
+    adminOnly: true,
+    links: [
+      ["/filial", "Filiais e regras", "mdi:store-outline"],
+      ["/periodo", "Competências", "mdi:calendar-month-outline"],
+    ],
+  },
+  {
+    label: "Administração",
+    adminOnly: true,
+    links: [
+      ["/usuarios", "Usuários e acesso", "mdi:account-outline"],
+      ["/configuracao-ia", "Configuração do Vale IA", "mdi:cog-outline"],
+    ],
+  },
+  {
+    label: "Ajuda",
+    id: "help",
+    icon: "mdi:book-open-page-variant-outline",
+    links: [
+      ["/ajuda", "Documentação e ajuda", "mdi:book-open-page-variant-outline"],
+      ["/ajuda/rotina-ilustrada", "Passo a passo com prints", "mdi:clipboard-check-outline"],
+      ["/ajuda/formulas-por-filial", "Fórmulas por filial · técnica", "mdi:code-braces"],
+      ["/ajuda/erros-rm", "Problemas e soluções", "mdi:lifebuoy"],
+    ],
+  },
+];
 
 export function Sidebar() {
   const { state, dispatch } = useThemeContext();
   const { state: appState } = useAppContext();
-  const location = useLocation(); // Hook to get the current route
-  const isOperator = appState.user.perfil === "operator";
+  const locationPath = useLocation().pathname;
+  const pathname = locationPath === "/variacao-competencias" ? "/relatorios" : locationPath;
+  const activeGroup = navigation.find((group) => group.id && group.links.some(([path]) => pathname === path || pathname.startsWith(path + "/")))?.id;
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => activeGroup ? { [activeGroup]: true } : {});
   useEffect(() => {
-    const handleDropdownClick = (
-      event: React.MouseEvent<HTMLAnchorElement>,
-    ) => {
-      event.preventDefault();
-      const clickedLink = event.currentTarget;
-      const clickedDropdown = clickedLink.closest(".dropdown");
-
-      if (!clickedDropdown) return;
-
-      const isActive = clickedDropdown.classList.contains("open");
-
-      // Close all dropdowns
-      const allDropdowns = document.querySelectorAll(".sidebar-menu .dropdown");
-      allDropdowns.forEach((dropdown) => {
-        dropdown.classList.remove("open");
-        const submenu = dropdown.querySelector(".sidebar-submenu");
-        if (submenu) {
-          (submenu as HTMLElement).style.maxHeight = "0px"; // Collapse submenu
-        }
-      });
-
-      // Toggle the clicked dropdown
-      if (!isActive) {
-        clickedDropdown.classList.add("open");
-        const submenu = clickedDropdown.querySelector(".sidebar-submenu");
-        if (submenu) {
-          (submenu as HTMLElement).style.maxHeight =
-            `${submenu.scrollHeight}px`; // Expand submenu
-        }
-      }
-    };
-
-    // Attach click event listeners to all dropdown triggers
-    const dropdownTriggers = document.querySelectorAll(
-      ".sidebar-menu .dropdown > a, .sidebar-menu .dropdown > Link",
-    );
-
-    dropdownTriggers.forEach((trigger) => {
-      trigger.addEventListener(
-        "click",
-        handleDropdownClick as unknown as EventListener,
-      );
-    });
-
-    const openActiveDropdown = () => {
-      const allDropdowns = document.querySelectorAll(".sidebar-menu .dropdown");
-      allDropdowns.forEach((dropdown) => {
-        const submenuLinks = dropdown.querySelectorAll(".sidebar-submenu li a");
-        submenuLinks.forEach((link) => {
-          if (
-            link.getAttribute("href") === location.pathname ||
-            link.getAttribute("to") === location.pathname
-          ) {
-            dropdown.classList.add("open");
-            const submenu = dropdown.querySelector(".sidebar-submenu");
-            if (submenu) {
-              (submenu as HTMLElement).style.maxHeight =
-                `${submenu.scrollHeight}px`; // Expand submenu
-            }
-          }
-        });
-      });
-    };
-
-    // Open the submenu that contains the active route
-    openActiveDropdown();
-
-    // Cleanup event listeners on unmount
-    return () => {
-      dropdownTriggers.forEach((trigger) => {
-        trigger.removeEventListener(
-          "click",
-          handleDropdownClick as unknown as EventListener,
-        );
-      });
-    };
-  }, [location.pathname]);
-
-  const handleToggleMobileMenu = () => {
-    dispatch({ type: ThemeActionsTypes.TOGGLE_MOBILE_MENU });
+    if (activeGroup) setOpenGroups((open) => ({ ...open, [activeGroup]: true }));
+  }, [pathname, activeGroup]);
+  const closeMobileMenu = () => {
+    if (state.mobileMenu) dispatch({ type: ThemeActionsTypes.TOGGLE_MOBILE_MENU });
   };
+
   return (
-    // <aside className="border-end bg-white" style={{ width: 280 }}>
-    //   <div className="px-3 py-3 border-bottom fw-semibold">Menu</div>
-    //   <nav className="p-2">
-    //     <div className="nav nav-pills flex-column gap-1">
-    //       <NavLink to="/dashboard" className={navLinkClass} end>
-    //         Dashboard
-    //       </NavLink>
-    //       <NavLink to="/usuarios" className={navLinkClass}>
-    //         Usuários
-    //       </NavLink>
-    //     </div>
-    //   </nav>
-    // </aside>
     <aside
-      className={
-        state.sidebarActive
-          ? "sidebar active "
-          : state.mobileMenu
-            ? "sidebar sidebar-open"
-            : "sidebar"
-      }
+      className={`sidebar${state.sidebarActive ? " active" : ""}${state.mobileMenu ? " sidebar-open" : ""}`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") closeMobileMenu();
+      }}
     >
       <button
-        onClick={handleToggleMobileMenu}
+        onClick={closeMobileMenu}
         type="button"
         className="sidebar-close-btn"
+        aria-label="Fechar menu"
       >
-        <Icon icon="radix-icons:cross-2" />
+        <Icon icon="radix-icons:cross-2" aria-hidden="true" />
       </button>
       <div>
-        <Link to="/" className="sidebar-logo">
-          <img src={expressoLogo} alt="Vale Expresso" className="light-logo" />
-          <img
-            src={expressoLogoWhite}
-            alt="Vale Expresso"
-            className="dark-logo"
-          />
-          <img
-            src={expressoLogoIcon}
-            alt="Vale Expresso"
-            className="logo-icon"
-          />
+        <Link to="/" className="sidebar-logo" aria-label="Vale Expresso, início" onClick={closeMobileMenu}>
+          <img src={expressoLogo} alt="" className="light-logo" />
+          <img src={expressoLogoWhite} alt="" className="dark-logo" />
+          <img src={expressoLogo} alt="" className="logo-icon" />
         </Link>
       </div>
-      <div className="sidebar-menu-area">
+      <nav className="sidebar-menu-area" aria-label="Menu principal">
         <ul className="sidebar-menu" id="sidebar-menu">
-          <li className="sidebar-menu-group-title">Vale Expresso</li>
-          <li>
-            <NavLink
-              to="/dashboard"
-              className={(navData) => (navData.isActive ? "active-page" : "")}
-            >
-              <Icon icon="mdi:home" className="menu-icon" />
-              <span>Dashboard</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink
-              to="/processamento"
-              className={(navData) => (navData.isActive ? "active-page" : "")}
-            >
-              <Icon
-                icon="solar:double-alt-arrow-right-bold"
-                className="menu-icon"
-              />
-              <span>Processamentos</span>
-            </NavLink>
-          </li>
-
-          {/* Settings Dropdown */}
-          {!isOperator && (
-            <>
-              <li>
-                <NavLink
-                  to="/filial"
-                  className={(navData) =>
-                    navData.isActive ? "active-page" : ""
-                  }
-                >
-                  <Icon icon="mdi:store" className="menu-icon" />
-                  <span>Filiais</span>
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/usuarios"
-                  className={(navData) =>
-                    navData.isActive ? "active-page" : ""
-                  }
-                >
-                  <Icon icon="solar:user-linear" className="menu-icon" />
-                  <span>Usuários</span>
-                </NavLink>
-              </li>
-              <li>
-                <NavLink
-                  to="/periodo"
-                  className={(navData) =>
-                    navData.isActive ? "active-page" : ""
-                  }
-                >
-                  <Icon icon="mdi:calendar" className="menu-icon" />
-                  <span>Períodos</span>
-                </NavLink>
-              </li>
-            </>
-          )}
-          <li>
-            <NavLink
-              to="/gestao-km"
-              className={(navData) => (navData.isActive ? "active-page" : "")}
-            >
-              <Icon
-                icon="solar:map-point-wave-bold-duotone"
-                className="menu-icon"
-              />
-              <span>Gestão de Km</span>
-            </NavLink>
-          </li>
-          <li>
-            <NavLink
-              to="/relatorios"
-              className={(navData) => (navData.isActive ? "active-page" : "")}
-            >
-              <Icon icon="solar:chart-2-bold-duotone" className="menu-icon" />
-              <span>Relatórios</span>
-            </NavLink>
-          </li>
+          {navigation
+            .filter((group) => !group.adminOnly || appState.user.perfil === "admin")
+            .flatMap(({ label, links, id, icon }) => {
+              const items = links.map(([path, name, linkIcon]) => (
+                <li key={path}>
+                  <NavLink to={path} end={path === "/ajuda"} title={name} aria-label={name} onClick={closeMobileMenu}
+                    className={({ isActive }) => isActive ? "active-page" : ""}>
+                    <Icon icon={linkIcon} className="menu-icon" aria-hidden="true" />
+                    <span>{name}</span>
+                  </NavLink>
+                </li>
+              ));
+              if (!id) return [<li key={label} className="sidebar-menu-group-title">{label}</li>, ...items];
+              const expanded = !!openGroups[id];
+              return [
+                <li key={id}>
+                  <button type="button" className={`ve-analysis-toggle${activeGroup === id ? " is-current" : ""}`}
+                    aria-expanded={expanded} aria-controls={`${id}-menu`} title={label}
+                    onClick={() => setOpenGroups((open) => ({ ...open, [id]: !open[id] }))}>
+                    <Icon icon={icon!} className="menu-icon" aria-hidden="true" />
+                    <span>{label}</span>
+                    <Icon icon={expanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="ve-menu-chevron" aria-hidden="true" />
+                  </button>
+                  <ul id={`${id}-menu`} className="ve-analysis-submenu" hidden={!expanded}>{items}</ul>
+                </li>,
+              ];
+            })}
         </ul>
-      </div>
+      </nav>
     </aside>
   );
 }

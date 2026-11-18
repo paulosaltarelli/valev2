@@ -1,39 +1,33 @@
-import { createBrowserRouter, redirect } from "react-router";
+import { createBrowserRouter, redirect, type LoaderFunctionArgs, Link } from "react-router";
+import { safeReturn } from '../utils/safeReturn';
 import { AdminLayout } from "../layouts/AdminLayout";
-import { DashboardPage } from "../pages/DashboardPage";
+import { PageHeading } from "../shared/components/PageHeading";
 import { LoginPage } from "../pages/LoginPage";
 import { authApi } from "../shared/lib/http";
-import { FilialPage } from "../pages/FilialPage";
-import { FilialVariaveisPage } from "../components/Filiais/FilialVariaveisPage";
-import { UsuariosPage } from "../pages/UsuariosPage";
-import { FilialFormulasPage } from "../components/Filiais/FilialFormulasPage";
-import { PeriodoPage } from "../pages/PeriodoPage";
-import { ProcessamentoPage } from "../pages/ProcessamentoPage";
-import { ProcessamentoDetalhesPage } from "../components/Processamento/ProcessamentoDetalhesPage";
-import { GestaoKmPage } from "../pages/GestaoKmPage";
-import { RelatoriosPage } from "../pages/RelatoriosPage";
 
-async function requireAuth() {
+async function requireAuth({ request }: LoaderFunctionArgs) {
   try {
     await authApi.me();
     return null;
   } catch {
-    throw redirect("/login");
+    const url = new URL(request.url);
+    throw redirect(`/login?${new URLSearchParams({ retorno: url.pathname + url.search })}`);
   }
 }
 
 async function requireAdmin() {
+  let me;
   try {
-    const me = await authApi.me();
-    if (me.perfil !== "admin") throw redirect("/dashboard");
-    return null;
+    me = await authApi.me();
   } catch {
     // se não conseguir carregar, deixa o loader principal lidar
     throw redirect("/login");
   }
+  if (me.perfil !== 'admin') throw redirect('/acesso-restrito');
+  return null;
 }
 
-async function redirectIfAuthed() {
+async function redirectIfAuthed({ request }: LoaderFunctionArgs) {
   try {
     await authApi.me();
   } catch {
@@ -42,7 +36,7 @@ async function redirectIfAuthed() {
   }
 
   // autenticado -> manda pra home
-  throw redirect("/");
+  throw redirect(safeReturn(new URL(request.url).searchParams.get('retorno')));
 }
 
 export const router = createBrowserRouter([
@@ -57,6 +51,25 @@ export const router = createBrowserRouter([
     element: <AdminLayout />,
     children: [
       {
+        path: "ajuda/formulas-por-filial",
+        lazy: async () => ({ Component: (await import("../pages/AjudaPage/FormulasPorFilialPage")).FormulasPorFilialPage }),
+      },
+      {
+        path: "ajuda/:artigo?",
+        lazy: async () => ({ Component: (await import("../pages/AjudaPage")).AjudaPage }),
+      },
+      {
+        path: "acesso-restrito",
+        element: (
+          <PageHeading
+            area="Conta"
+            title="Acesso restrito"
+            description="Esta área exige perfil de administrador."
+            actions={<Link to="/processamento" className="btn btn-primary">Voltar à operação</Link>}
+          />
+        ),
+      },
+      {
         index: true,
         loader: () => {
           throw redirect("/dashboard");
@@ -64,49 +77,68 @@ export const router = createBrowserRouter([
       },
       {
         path: "dashboard",
-        element: <DashboardPage />,
+        lazy: async () => ({ Component: (await import("../pages/DashboardPage")).DashboardPage }),
       },
       {
         path: "usuarios",
         loader: requireAdmin,
-        element: <UsuariosPage />,
+        lazy: async () => ({ Component: (await import("../pages/UsuariosPage")).UsuariosPage }),
+      },
+      {
+        path: "configuracao-ia",
+        loader: requireAdmin,
+        lazy: async () => ({ Component: (await import("../pages/AssistenteConfiguracaoPage")).AssistenteConfiguracaoPage }),
       },
       {
         path: "filial",
         loader: requireAdmin,
-        element: <FilialPage />,
+        lazy: async () => ({ Component: (await import("../pages/FilialPage")).FilialPage }),
       },
       {
         path: "filial/variaveis/:filialId",
         loader: requireAdmin,
-        element: <FilialVariaveisPage />,
+        lazy: async () => ({ Component: (await import("../components/Filiais/FilialVariaveisPage")).FilialVariaveisPage }),
       },
       {
         path: "filial/formulas/:filialId",
         loader: requireAdmin,
-        element: <FilialFormulasPage />,
+        lazy: async () => ({ Component: (await import("../components/Filiais/FilialFormulasPage")).FilialFormulasPage }),
       },
       {
         path: "periodo",
         loader: requireAdmin,
-        element: <PeriodoPage />,
+        lazy: async () => ({ Component: (await import("../pages/PeriodoPage")).PeriodoPage }),
       },
       {
         path: "processamento",
-        element: <ProcessamentoPage />,
+        lazy: async () => ({ Component: (await import("../pages/ProcessamentoPage")).ProcessamentoPage }),
       },
       {
         path: "processamento/:execucaoId",
-        element: <ProcessamentoDetalhesPage />,
+        lazy: async () => ({ Component: (await import("../components/Processamento/ProcessamentoDetalhesPage")).ProcessamentoDetalhesPage }),
       },
       {
         path: "gestao-km",
-        element: <GestaoKmPage />,
+        lazy: async () => ({ Component: (await import("../pages/GestaoKmPage")).GestaoKmPage }),
       },
       {
         path: "relatorios",
-        element: <RelatoriosPage />,
+        lazy: async () => ({ Component: (await import("../pages/RelatoriosPage")).RelatoriosPage }),
       },
+      {
+        path: "extrato-processamento",
+        lazy: async () => ({ Component: (await import("../pages/ExtratoProcessamentoPage")).ExtratoProcessamentoPage }),
+      },
+      {
+        path: "falhas-por-causa",
+        lazy: async () => ({ Component: (await import("../pages/FalhasPage")).FalhasPage }),
+      },
+      { path: 'fechamento', loader: ({request}) => {
+        const params = new URL(request.url).searchParams;
+        params.set('detalhes', '1');
+        throw redirect(`/processamento?${params}`);
+      } },
+      { path: 'variacao-competencias', lazy: async () => ({ Component: (await import("../pages/VariacaoPage")).VariacaoPage }) },
     ],
   },
 ]);

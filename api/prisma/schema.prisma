@@ -7,6 +7,18 @@ datasource db {
   provider = "sqlserver"
 }
 
+model assistente_configuracao {
+  id                      Int      @id
+  gpt_institucional_ativo Boolean  @default(false)
+  gpt_modelo              String   @default("gpt-5.4-mini") @db.VarChar(80)
+  gpt_chave               String?  @db.VarChar(Max)
+  claude_ativo            Boolean  @default(false)
+  claude_modelo           String   @db.VarChar(80)
+  atualizado_em           DateTime @updatedAt
+  claude_chave            String?  @db.VarChar(Max)
+  contexto                String?  @db.NVarChar(Max)
+}
+
 model ajuste_manual {
   ajuste_id               Int                  @id(map: "PK__ajuste_m__AD9C431FF53BA7CB") @default(autoincrement())
   execucao_funcionario_id Int
@@ -20,12 +32,18 @@ model ajuste_manual {
 }
 
 model execucao {
+  historica_de_execucao_id Int?
+  historica_em DateTime?
+  historica_motivo String? @db.NVarChar(1000)
+  principal execucao? @relation("ExecucoesHistoricas", fields: [historica_de_execucao_id], references: [execucao_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_execucao_principal")
+  historicas execucao[] @relation("ExecucoesHistoricas")
   execucao_id               Int                         @id(map: "PK__execucao__82E1C3EA2FB7A151") @default(autoincrement())
   filial_id                 Int
   periodo_id                Int
   formula_id                Int?
   usuario_execucao          Int
   status                    String                      @db.VarChar(30)
+  controle_fila             String?                     @db.VarChar(12)
   data_execucao             DateTime                    @default(dbgenerated("sysdatetime()"), map: "DF__execucao__data_e__4F7CD00D")
   filial                    filial                      @relation(fields: [filial_id], references: [filial_id], onUpdate: NoAction, map: "fk_execucao_filial")
   formula                   formula?                    @relation(fields: [formula_id], references: [formula_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_execucao_formula")
@@ -38,6 +56,13 @@ model execucao {
 }
 
 model execucao_funcionario {
+  codigo_regra_rm String @default("") @db.VarChar(100)
+  revisao                     Int                       @default(1)
+  conferido_revisao            Int?
+  conferido_por               Int?
+  conferido_em                DateTime?
+  enviado_revisao             Int?
+  formula_snapshot            String?                   @db.NVarChar(Max)
   execucao_funcionario_id      Int                       @id(map: "PK__execucao__1DD9607F39E3D50A") @default(autoincrement())
   execucao_id                  Int
   funcionario_id_rm            String                    @db.VarChar(50)
@@ -54,12 +79,13 @@ model execucao_funcionario {
   formula                      formula                   @relation(fields: [formula_id], references: [formula_id], onUpdate: NoAction, map: "fk_exec_func_formula")
   memoria_calculo              memoria_calculo[]
 
-  @@unique([execucao_id, execucao_funcionario_base_id, formula_id], map: "ux_exec_func_exec_base_formula")
+  @@unique([execucao_id, execucao_funcionario_base_id, formula_id, codigo_regra_rm], map: "ux_exec_func_exec_base_formula_regra")
   @@index([funcionario_id_rm], map: "ix_exec_func_rm")
   @@index([execucao_id, formula_id], map: "ix_exec_func_execucao_formula")
 }
 
 model execucao_funcionario_base {
+  regras_rm String? @db.NVarChar(Max)
   execucao_funcionario_base_id Int                    @id(map: "PK__execucao__39A77246061DF61B") @default(autoincrement())
   execucao_id                  Int
   funcionario_id_rm            String                 @db.VarChar(50)
@@ -190,6 +216,7 @@ model variavel {
   codigo          String            @db.VarChar(50)
   tipo            String            @db.VarChar(20)
   sql_codigo_rm   String?           @db.VarChar(100)
+  chapas_por_chamada Int?
   valor_fixo      Decimal?          @db.Decimal(18, 4)
   ativa           Boolean           @default(true, map: "DF__variavel__ativa__45F365D3")
   data_criacao    DateTime          @default(dbgenerated("sysdatetime()"), map: "DF__variavel__data_c__46E78A0C")
@@ -200,6 +227,7 @@ model variavel {
 }
 
 model execucao_queue {
+  revisao_payload              String?                   @db.NVarChar(Max)
   queue_id                     Int                       @id(map: "PK_execucao_queue") @default(autoincrement())
   execucao_id                  Int
   execucao_funcionario_base_id Int
@@ -219,6 +247,30 @@ model execucao_queue {
   @@index([execucao_id, status], map: "IX_execucao_queue_execucao_status")
   @@index([status, tipo, next_run_at, created_at], map: "IX_execucao_queue_runnable")
   @@index([session_id], map: "IX_execucao_queue_session")
+}
+
+// Eventos imutáveis. Os registros legados continuam identificados como legados.
+model resultado_historico {
+  id           Int      @id @default(autoincrement())
+  resultado_id Int
+  execucao_id  Int
+  revisao      Int
+  tipo         String   @db.VarChar(30)
+  usuario_id   Int?
+  registrado_em DateTime @default(now())
+  detalhe      String   @db.NVarChar(Max)
+  @@index([resultado_id, id])
+  @@index([execucao_id, id])
+}
+
+model operacao_previa {
+  id           String   @id @db.VarChar(36)
+  usuario_id   Int
+  expira_em    DateTime
+  consumida_em DateTime?
+  pedido       String   @db.NVarChar(Max)
+  fingerprint  String   @db.VarChar(64)
+  @@index([expira_em])
 }
 
 model sysdiagrams {

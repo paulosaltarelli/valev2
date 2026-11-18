@@ -1,0 +1,44 @@
+.extrato-filtros {
+  margin-bottom: 16px;
+}
+
+.extrato-filtros label {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.extrato-tabela :is(td, th) {
+  min-width: 145px;
+  max-width: 250px;
+  overflow-wrap: anywhere;
+}
+
+.extrato-tabela tr > :first-child {
+  position: sticky;
+  left: 0;
+  min-width: 155px;
+  width: 220px;
+  background: var(--op-surface);
+  box-shadow: 1px 0 var(--op-line);
+}
+
+.extrato-tabela thead tr > :first-child {
+  background: var(--op-soft);
+}
+
+.extrato-tabela td {
+  font-variant-numeric: tabular-nums;
+}
+
+.extrato-tabela:focus-visible {
+  outline: 2px solid var(--op-blue);
+  outline-offset: -2px;
+}
+
+.extrato-paginacao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}

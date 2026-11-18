@@ -11,7 +11,7 @@ export function Button({
     <>
       {tooltip && (
         <Tooltip title={tooltip} placement={props.placement}>
-          <BootstrapButton {...props}>{children}</BootstrapButton>
+          <BootstrapButton aria-label={props["aria-label"] ?? tooltip} {...props}>{children}</BootstrapButton>
         </Tooltip>
       )}
       {!tooltip && <BootstrapButton {...props}>{children}</BootstrapButton>}
